@@ -1,0 +1,48 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "assets/**",
+        "docs/**",
+        "package.json",
+        "tsconfig*.json",
+        "vite.config.ts",
+        "index.html",
+        "docker/**",
+        ".env.example"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "build:front": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/front/**",
+        "assets/**",
+        "src/vite-env.d.ts",
+        "index.html",
+        "vite.config.ts",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "build:server": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/server/**",
+        "src/shared/**",
+        "package.json",
+        "tsconfig.server.json",
+        "tsconfig.json"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "deploy": {
+      "dependsOn": ["build"],
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "pdfit",
+  "version": "0.4.3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:front": "vite",
+    "dev:server": "tsx src/server/index.ts",
+    "build:front": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:front && npm run build:server && node ../../scripts/sync-shared-runtime.mjs apps/pdfit",
+    "deploy": "npm run build && docker compose -f ../../docker-compose.yml rm -sf pdfit && docker compose -f ../../docker-compose.yml up -d --build --force-recreate --remove-orphans pdfit"
+  },
+  "dependencies": {
+    "@pdfit/pdfit": "*",
+    "@emotion/react": "11.13.0",
+    "@emotion/styled": "11.13.0",
+    "@mui/icons-material": "5.16.0",
+    "@mui/material": "5.16.0",
+    "cors": "2.8.5",
+    "dotenv": "16.4.5",
+    "multer": "2.2.0",
+    "pg": "8.16.3",
+    "express": "4.22.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "7.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "22.10.0",
+    "@types/pg": "8.15.6",
+    "@types/react": "18.2.79",
+    "@types/react-dom": "18.2.25",
+    "@vitejs/plugin-react": "4.3.0",
+    "tsx": "4.19.1",
+    "typescript": "5.7.3",
+    "vite": "5.3.0"
+  }
+}

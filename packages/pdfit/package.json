@@ -1,0 +1,72 @@
+{
+  "name": "@pdfit/pdfit",
+  "version": "0.4.3",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client/service": {
+      "types": "./dist/client/entries/service/index.d.ts",
+      "default": "./dist/client/entries/service/index.js"
+    },
+    "./client/viewer": {
+      "types": "./dist/client/entries/viewer/index.d.ts",
+      "default": "./dist/client/entries/viewer/index.js"
+    },
+    "./client/shared": {
+      "types": "./dist/client/shared/index.d.ts",
+      "default": "./dist/client/shared/index.js"
+    },
+    "./front": {
+      "types": "./dist/front/index.d.ts",
+      "default": "./dist/front/index.js"
+    },
+    "./front/model/languagePreference": {
+      "types": "./dist/front/model/languagePreference.d.ts",
+      "default": "./dist/front/model/languagePreference.js"
+    },
+    "./server": {
+      "types": "./dist/server/bootstrap/index.d.ts",
+      "default": "./dist/server/bootstrap/index.js"
+    },
+    "./server/postgres": {
+      "types": "./dist/server/postgres/index.d.ts",
+      "default": "./dist/server/postgres/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "default": "./dist/shared/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.front.json",
+    "build:front": "tsc -p tsconfig.front.json",
+    "build:server": "tsc -p tsconfig.json",
+    "deploy": "npm run build"
+  },
+  "dependencies": {
+    "@emotion/react": "11.13.0",
+    "@emotion/styled": "11.13.0",
+    "@mui/icons-material": "5.16.0",
+    "@mui/material": "5.16.0",
+    "@pdfgpu/core": "file:vendor/pdfgpu-core-0.1.9.tgz",
+    "cors": "2.8.5",
+    "express": "4.22.2",
+    "multer": "2.2.0",
+    "pdfjs-dist": "6.2.108",
+    "pg": "8.16.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "7.18.2",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@types/cors": "2.8.17",
+    "@types/express": "4.17.21",
+    "@types/multer": "1.4.12",
+    "@types/node": "22.10.0",
+    "@types/pg": "8.15.6",
+    "@types/react": "18.2.79",
+    "@types/react-dom": "18.2.25",
+    "typescript": "5.7.3"
+  }
+}

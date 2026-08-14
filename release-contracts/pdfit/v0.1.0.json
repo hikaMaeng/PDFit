@@ -1,0 +1,11 @@
+{
+  "pdfitVersion": "0.1.0",
+  "pdfgpu": {
+    "packageName": "@pdfgpu/core",
+    "packageVersion": "0.1.0",
+    "releaseTag": "v0.1.0",
+    "releaseUrl": "https://github.com/hikaMaeng/PDFgpu/releases/download/v0.1.0/pdfgpu-core-0.1.0.tgz",
+    "sourceCommit": "f8b0ea5c889d26da0c642ea7cc713794dd3870e3",
+    "tarballSha256": "d09650d5b5ac1a483bf3b28ab798fd56fc06766d75e7f6f9e1e28e131aa1f107"
+  }
+}

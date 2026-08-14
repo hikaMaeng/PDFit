@@ -1,0 +1,26 @@
+services:
+  pdfit:
+    init: true
+    build:
+      context: apps/pdfit
+      dockerfile: docker/Dockerfile
+    environment:
+      BOOKS_ROOT: /app/data/books/${PDFIT_BOOKS_SUBPATH:-}
+      BOOKS_ROOT_NAME: ${PDFIT_BOOKS_ROOT_NAME:-PDF library}
+    ports:
+      - "15201:15201"
+    volumes:
+      - ./apps/pdfit/docker/volumes/data:/app/data
+      - books:/app/data/books
+    restart: unless-stopped
+    networks:
+      - pdfit
+
+networks:
+  pdfit:
+    name: pdfit
+
+volumes:
+  books:
+    name: ${PDFIT_BOOKS_VOLUME:-pdfit-usbshare1}
+    external: true

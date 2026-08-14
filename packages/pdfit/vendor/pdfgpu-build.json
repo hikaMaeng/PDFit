@@ -1,0 +1,10 @@
+{
+  "packageName": "@pdfgpu/core",
+  "packageVersion": "0.1.9",
+  "sourceRepo": "sibling:pdfgpu",
+  "sourceCommit": "249af2298cde015b42383494266943135990558c",
+  "sourceDirty": false,
+  "sourceSpec": "file:vendor/pdfgpu-core-0.1.9.tgz",
+  "tarball": "pdfgpu-core-0.1.9.tgz",
+  "tarballSha256": "c330778a45907b2116615f989c9f7d6015e89e2c903eb1e0e470518c418dfcf7"
+}
