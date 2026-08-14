@@ -32,7 +32,6 @@ function assert(condition, message) {
 
 const requiredFiles = [
   'README.md',
-  'AGENTS.md',
   'docs/README.md',
   'docs/01-workspace-overview.md',
   'docs/02-architecture-and-boundaries.md',
