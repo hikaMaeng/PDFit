@@ -6,6 +6,10 @@
 * Do not let viewer composition import service layout, LNB, home, folder, or tag routes.
 * Do not let common server bootstrap import app-owned settings storage.
 * Keep app composition on `client/service`, `client/viewer`, `client/shared`, `server`, and `server/postgres`.
+* Hosted variants must use `createPdfitServer`,
+  `createPdfitMetadataRouterMounts`, and `createPdfitRemoteFoldersRouter`.
+  Storage, authentication, and billing belong in adapters; HTTP validation and
+  API response contracts must not be copied into an app module.
 * Consumer: `apps/pdfit` service entrypoint. Invariants: `pdfit.language` wins over browser detection, unsupported or absent browser language resolves to English, and the selector updates the same external model before and after authentication.
 * Treat `front/*` as compatibility-only during migration; new app code must not target it.
 * `PdfGpuViewer` owns the PDFium controller/resource lifecycle; React reads its

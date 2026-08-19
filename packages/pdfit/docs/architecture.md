@@ -9,6 +9,7 @@
 | `src/front/model/windowSync.ts` | Shared cross-window transport, message envelope, and topic router. | `src/front/model/windowSync.ts#subscribeWindowSyncMessage` |
 | `src/front/model/languagePreference.ts` | Shared browser-language detection, persisted preference, document direction, and external-store model. | `src/front/model/languagePreference.ts#pdfitLanguagePreferenceModel` |
 | `src/server` | Express route factories, filesystem services, and PostgreSQL adapter. | `src/server/bootstrap/index.ts#createPdfitServer` |
+| `src/server/routes/remoteFolders.ts` | Shared remote-storage folder/file HTTP contract. | `createPdfitRemoteFoldersRouter` |
 | `src/shared` | Runtime-neutral metadata and application types. | `src/shared/index.ts` |
 
 Client:
@@ -32,6 +33,7 @@ Server:
 * `server/api/*`: folders, tags, progress, viewer-state, events router factories
 * `server/bootstrap/*`: common router assembly and `createPdfitServer(options)`
 * `server/postgres`: shared PostgreSQL metadata store
+* `server/routes/metadataStoreResolver.ts`: request-scoped account adapter for the same metadata routers
 
 Contracts:
 

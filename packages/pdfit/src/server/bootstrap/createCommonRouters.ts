@@ -1,4 +1,5 @@
 import type { Router } from 'express';
+import type { EventEmitter } from 'node:events';
 import type { MetadataStore } from '../../shared/index.js';
 import { createEventsRouter } from '../api/events/index.js';
 import { createFoldersRouter } from '../api/folders/index.js';
@@ -10,6 +11,7 @@ import { createFilesystemService } from '../services/filesystem.js';
 import { createWatcher } from '../services/watcher.js';
 import express from 'express';
 import path from 'node:path';
+import type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -20,6 +22,20 @@ export interface PdfitCommonRouterAssembly {
   routers: PdfitServerRouterMount[];
   filesystem: ReturnType<typeof createFilesystemService>;
   watcher: ReturnType<typeof createWatcher>;
+}
+
+/** Builds the canonical PDFit metadata, bookmark, viewer-state, and event routes. */
+export function createPdfitMetadataRouterMounts(
+  metadataStore: MetadataStoreResolver,
+  eventBus: EventEmitter,
+): PdfitServerRouterMount[] {
+  return [
+    { path: '/api/progress', router: createProgressRouter(metadataStore) },
+    { path: '/api/tags', router: createTagsRouter(metadataStore) },
+    { path: '/api/events', router: createEventsRouter(eventBus) },
+    { path: '/api/viewer-state', router: createViewerStateRouter(metadataStore) },
+    { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore) },
+  ];
 }
 
 export function createPdfitCommonRouterAssembly(options: {
@@ -56,11 +72,7 @@ export function createPdfitCommonRouterAssembly(options: {
         (folder, color) => options.metadataStore.updateFolderColor(folder, color),
         options.maxUploadBytes,
       ) },
-      { path: '/api/progress', router: createProgressRouter(options.metadataStore) },
-      { path: '/api/tags', router: createTagsRouter(options.metadataStore) },
-      { path: '/api/events', router: createEventsRouter(watcher.bus) },
-      { path: '/api/viewer-state', router: createViewerStateRouter(options.metadataStore) },
-      { path: '/api/bookmarks', router: createBookmarksRouter(options.metadataStore) },
+      ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
     ],
   };

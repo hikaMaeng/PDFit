@@ -1,12 +1,10 @@
 services:
   pdfit:
     init: true
-    env_file:
-      - path: .env
-        required: false
     build:
       context: apps/pdfit
       dockerfile: docker/Dockerfile
+    # 로컬 PDFit 전용: 호스트 서재 볼륨과 표시 이름만 전달합니다.
     environment:
       BOOKS_ROOT: /app/data/books/${PDFIT_BOOKS_SUBPATH:-}
       BOOKS_ROOT_NAME: ${PDFIT_BOOKS_ROOT_NAME:-PDF library}
@@ -23,17 +21,21 @@ services:
 
   service:
     init: true
-    env_file:
-      - path: .env
-        required: false
     build:
       context: apps/service
       dockerfile: docker/Dockerfile
+    # PDFit 서비스 전용: Google Drive, 업로드 제한, Paddle 결제 설정만 전달합니다.
     environment:
       GOOGLE_CLIENT_ID: ${SERVICE_GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${SERVICE_GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${SERVICE_GOOGLE_REDIRECT_URI:-https://pdfit.neurondev.net/api/auth/callback}
       MAX_UPLOAD_MB: ${SERVICE_MAX_UPLOAD_MB:-2048}
+      BILLING_MOCK_ENABLED: ${BILLING_MOCK_ENABLED:-false}
+      PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-production}
+      PADDLE_CLIENT_TOKEN: ${PADDLE_CLIENT_TOKEN:-}
+      PADDLE_PRICE_ID: ${PADDLE_PRICE_ID:-}
+      PADDLE_API_KEY: ${PADDLE_API_KEY:-}
+      PADDLE_WEBHOOK_SECRET: ${PADDLE_WEBHOOK_SECRET:-}
     ports:
       - "127.0.0.1:15202:15202"
     volumes:

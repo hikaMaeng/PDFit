@@ -96,6 +96,19 @@ npm run deploy
 
 Docker 배포에는 반드시 `npm run deploy`를 사용합니다. 런타임 이미지는 미리 빌드된 `apps/pdfit/dist`를 복사하며 Docker 내부에서 프로젝트를 빌드하지 않습니다.
 
+Windows의 NAS 매핑 드라이브를 로컬 서재로 사용할 때는 루트 `.env`에 Docker 외부 볼륨과 SMB 연결을 명시합니다. `PDFIT_SMB_PASSWORD`는 로컬 파일에만 저장하고 공유하거나 커밋하지 않습니다. 배포 명령은 Windows 호스트의 로컬 전용 SMB 중계를 준비하고, 읽기 전용 CIFS 볼륨을 확인한 뒤 서재 인덱스를 갱신합니다.
+
+```dotenv
+PDFIT_BOOKS_VOLUME=pdfit-usbshare1-cifs
+PDFIT_BOOKS_SUBPATH=이북
+PDFIT_BOOKS_ROOT_NAME=이북
+PDFIT_SMB_HOST=192.168.0.13
+PDFIT_SMB_SHARE=usbshare1
+PDFIT_SMB_PROXY_PORT=1445
+PDFIT_SMB_USERNAME=<NAS 사용자>
+PDFIT_SMB_PASSWORD=<NAS 비밀번호>
+```
+
 ## 아키텍처 개요
 
 ```text

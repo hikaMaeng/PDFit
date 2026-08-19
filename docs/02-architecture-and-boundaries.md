@@ -4,6 +4,11 @@
 
 `packages/pdfit` exports client service/viewer entries, the common server bootstrap, PostgreSQL metadata, and shared types. It owns the common route factories and WebGPU/PDFium viewer implementation.
 
+Hosted storage variants also use the common server bootstrap, request-scoped
+metadata router assembly, remote-library HTTP router, upload validation, and
+byte-range parser. They provide storage/account adapters rather than a second
+PDFit server implementation.
+
 ## Integrated app
 
 `apps/pdfit` owns application composition:

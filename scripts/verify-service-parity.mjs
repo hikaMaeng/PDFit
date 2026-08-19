@@ -15,6 +15,10 @@ const serviceDomain = readJson('packages/service_domain/package.json');
 const serviceRuntime = readJson('apps/service/docker/package.json');
 const serviceMain = readFileSync('apps/service/src/front/auth/AuthGate.tsx', 'utf8');
 const serviceViewer = readFileSync('apps/service/src/front/viewer-main.tsx', 'utf8');
+const serviceServer = readFileSync('apps/service/src/server/app.ts', 'utf8');
+const serviceLibrary = readFileSync('apps/service/src/server/libraryRouter.ts', 'utf8');
+const serviceMetadata = readFileSync('apps/service/src/server/metadataRouter.ts', 'utf8');
+const serviceSecurity = readFileSync('apps/service/src/server/httpSecurity.ts', 'utf8');
 
 assert(rootPackage.version === dockerApp.version, 'root and Docker PDFit versions differ');
 assert(serviceApp.version === dockerApp.version, 'service app must follow the Docker PDFit version');
@@ -25,6 +29,12 @@ assert(serviceApp.dependencies['@pdfit/service_domain'] === serviceDomain.versio
 assert(serviceMain.includes('createPdfitServiceApp'), 'service must reuse the Docker PDFit service client');
 assert(serviceMain.includes('v{__APP_VERSION__}'), 'service login must expose the Docker PDFit version');
 assert(serviceViewer.includes("appName: 'PDFit Viewer'"), 'service viewer branding must match Docker PDFit');
+assert(serviceServer.includes('createPdfitServer'), 'service server must reuse the PDFit server bootstrap');
+assert(serviceLibrary.includes('createPdfitRemoteFoldersRouter'), 'service library must reuse the PDFit remote-library router');
+assert(serviceMetadata.includes('createPdfitMetadataRouterMounts'), 'service metadata APIs must reuse the PDFit metadata routers');
+assert(!serviceMetadata.includes("status(501)"), 'service must not replace PDFit bookmarks with unsupported stubs');
+assert(serviceSecurity.includes('parsePdfitByteRange as parseByteRange'), 'service byte-range parsing must reuse PDFit');
+assert(serviceApp.scripts.build.includes('sync-shared-runtime.mjs apps/service'), 'service build must package the shared PDFit server runtime');
 assert(existsSync('docker-compose.yml') && !existsSync('apps/service/docker/docker-compose.yml'), 'root Compose must be the only deployment entry point');
 
 console.log(`service parity passed: PDFit ${dockerApp.version}`);

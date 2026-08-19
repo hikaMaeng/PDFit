@@ -60,6 +60,18 @@ Options:
 
 App-owned routers use the `extraRouters` option as `{ path, router }` mounts.
 
+The server bootstrap also accepts `commonRouters`, `configureApp`, and
+`defaultMiddlewareEnabled` so authenticated hosted runtimes reuse PDFit's
+logging, health, static service/viewer entries, and API fallback.
+
+`createPdfitMetadataRouterMounts(storeResolver, eventBus)` builds the canonical
+progress, tags, viewer-state, bookmarks, and SSE routes. The resolver may
+return an account-scoped `MetadataStore` for each request.
+
+`createPdfitRemoteFoldersRouter(adapter, options)` owns folder/file HTTP
+validation, multipart upload handling, byte ranges, and response contracts;
+the adapter owns only remote storage operations.
+
 ## PostgreSQL
 
 `createPostgresMetadataStore(pool)` initializes the shared metadata schema in the

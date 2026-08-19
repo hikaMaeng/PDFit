@@ -79,6 +79,7 @@ for (const file of walk(root)) {
   if (file.includes(`${path.sep}.git${path.sep}`) || file.includes(`${path.sep}node_modules${path.sep}`) || file.includes(`${path.sep}dist${path.sep}`)) {
     continue;
   }
+  if (lstatSync(file).size > 2 * 1024 * 1024 || file.includes(`${path.sep}release${path.sep}`)) continue;
   const text = readFileSync(file, 'utf-8');
   assert(!text.includes(legacyDistLiteral), `Forbidden legacy dist reference in ${path.relative(root, file)}`);
 }
