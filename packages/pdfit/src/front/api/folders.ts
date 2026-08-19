@@ -59,9 +59,15 @@ export const foldersApi = {
         if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 70));
       };
       xhr.onload = () => {
-        const data = JSON.parse(xhr.responseText);
+        let data: { error?: string } & { name: string; size: number }[];
+        try {
+          data = JSON.parse(xhr.responseText) as typeof data;
+        } catch {
+          reject(new Error(`업로드 실패 (HTTP ${xhr.status})`));
+          return;
+        }
         if (xhr.status >= 400) reject(new Error(data.error ?? '업로드 실패'));
-        else { onPhase?.('indexing'); onProgress?.(85); resolve(data); }
+        else { onPhase?.('indexing'); onProgress?.(85); resolve(data as { name: string; size: number }[]); }
       };
       xhr.onerror = () => reject(new Error('네트워크 오류'));
       xhr.send(form);

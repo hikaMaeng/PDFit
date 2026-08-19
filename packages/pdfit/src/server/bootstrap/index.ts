@@ -19,6 +19,7 @@ export interface PdfitServerOptions {
   serviceIndexFile?: string;
   viewerIndexFile?: string;
   viewerBasePath?: string;
+  maxUploadBytes?: number;
 }
 
 const SILENT_PATTERNS = [
@@ -49,6 +50,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
     booksRoot,
     booksRootName,
     watcherEnabled,
+    maxUploadBytes: options.maxUploadBytes,
   });
 
   const app = express();

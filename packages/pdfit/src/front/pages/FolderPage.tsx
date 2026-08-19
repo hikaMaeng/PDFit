@@ -27,6 +27,10 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
+
 
 interface TagDialogState {
   file: string;
@@ -37,6 +41,7 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
 
   const folderName = requestedFolderName ?? decodeURIComponent(name ?? '');
 
@@ -48,6 +53,7 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'indexing' | 'refreshing'>('uploading');
+  const [dragActive, setDragActive] = useState(false);
 
   // 이동 다이얼로그
   const [moveDialog, setMoveDialog] = useState<{ file: string } | null>(null);
@@ -104,11 +110,9 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
     return () => window.removeEventListener('tag-added', onTagAdded);
   }, [folderName, folderModel]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files ?? []);
-    if (selected.length === 0) return;
-    e.target.value = '';
-
+  const uploadFiles = useCallback(async (selected: File[]) => {
+    if (selected.length === 0 || uploading) return;
+    setError(null);
     setUploading(true);
     setUploadProgress(0);
     setUploadPhase('uploading');
@@ -128,6 +132,52 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
     } finally {
       setUploading(false);
       setUploadProgress(0);
+    }
+  }, [folderModel, folderName, uploading]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    await uploadFiles(selected);
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files') || uploading) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files') || uploading) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    if (uploading) return;
+
+    const dropped = Array.from(e.dataTransfer.files);
+    const pdfFiles = dropped.filter(isPdfFile);
+    if (pdfFiles.length === 0) {
+      setError('PDF 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    await uploadFiles(pdfFiles);
+    if (pdfFiles.length !== dropped.length) {
+      setError(`PDF가 아닌 파일 ${dropped.length - pdfFiles.length}개를 제외했습니다.`);
     }
   };
 
@@ -244,7 +294,42 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   }
 
   return (
-    <Box>
+    <Box
+      data-testid="folder-drop-zone"
+      aria-label="PDF 드래그 앤 드롭 업로드 영역"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => void handleDrop(e)}
+      sx={{ position: 'relative', minHeight: 'calc(100vh - 96px)' }}
+    >
+      {dragActive && (
+        <Box
+          data-testid="pdf-drop-overlay"
+          role="status"
+          aria-live="polite"
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            border: '2px dashed',
+            borderColor: 'primary.main',
+            borderRadius: 2,
+            bgcolor: 'rgba(18, 25, 38, 0.92)',
+            backdropFilter: 'blur(2px)',
+            pointerEvents: 'none',
+          }}
+        >
+          <UploadFileIcon color="primary" sx={{ fontSize: 56 }} />
+          <Typography variant="h6" fontWeight={700}>PDF 파일을 놓아 업로드</Typography>
+          <Typography variant="body2" color="text.secondary">여러 PDF를 한 번에 업로드할 수 있습니다.</Typography>
+        </Box>
+      )}
       {/* 폴더 헤더 */}
       <Box sx={{ px: 1, py: 0, mb: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -303,6 +388,9 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <PictureAsPdfIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
             <Typography color="text.secondary">PDF 파일이 없습니다.</Typography>
+            <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>
+              PDF 파일을 여기로 드래그하거나 버튼을 눌러 업로드하세요.
+            </Typography>
             <Button
               startIcon={<UploadFileIcon />}
               onClick={() => fileInputRef.current?.click()}

@@ -27,6 +27,7 @@ export function createPdfitCommonRouterAssembly(options: {
   booksRoot: string;
   booksRootName?: string;
   watcherEnabled?: boolean;
+  maxUploadBytes?: number;
 }): PdfitCommonRouterAssembly {
   const filesystem = createFilesystemService(options.booksRoot, options.booksRootName);
   filesystem.ensureBooksRoot();
@@ -53,6 +54,7 @@ export function createPdfitCommonRouterAssembly(options: {
         () => options.metadataStore.listFolderBookCounts(),
         () => options.metadataStore.listFolderColors(),
         (folder, color) => options.metadataStore.updateFolderColor(folder, color),
+        options.maxUploadBytes,
       ) },
       { path: '/api/progress', router: createProgressRouter(options.metadataStore) },
       { path: '/api/tags', router: createTagsRouter(options.metadataStore) },

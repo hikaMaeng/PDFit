@@ -1,12 +1,16 @@
 services:
   pdfit:
     init: true
+    env_file:
+      - path: .env
+        required: false
     build:
       context: apps/pdfit
       dockerfile: docker/Dockerfile
     environment:
       BOOKS_ROOT: /app/data/books/${PDFIT_BOOKS_SUBPATH:-}
       BOOKS_ROOT_NAME: ${PDFIT_BOOKS_ROOT_NAME:-PDF library}
+      MAX_UPLOAD_MB: ${PDFIT_MAX_UPLOAD_MB:-2048}
     ports:
       - "15201:15201"
     volumes:
@@ -15,12 +19,46 @@ services:
     restart: unless-stopped
     networks:
       - pdfit
+      - pdfit-host
+
+  service:
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    build:
+      context: apps/service
+      dockerfile: docker/Dockerfile
+    environment:
+      GOOGLE_CLIENT_ID: ${SERVICE_GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${SERVICE_GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${SERVICE_GOOGLE_REDIRECT_URI:-https://pdfit.neurondev.net/api/auth/callback}
+      MAX_UPLOAD_MB: ${SERVICE_MAX_UPLOAD_MB:-2048}
+    ports:
+      - "127.0.0.1:15202:15202"
+    volumes:
+      - service-data:/app/data
+    restart: unless-stopped
+    networks:
+      - service
+      - linker
 
 networks:
   pdfit:
     name: pdfit
+    internal: true
+  pdfit-host:
+    name: pdfit-host
+  service:
+    name: pdfit-service
+    internal: true
+  linker:
+    external: true
+    name: linker
 
 volumes:
   books:
     name: ${PDFIT_BOOKS_VOLUME:-pdfit-usbshare1}
     external: true
+  service-data:
+    name: pdfit-service-data

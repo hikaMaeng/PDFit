@@ -7,7 +7,13 @@ import type { BookRecord } from '../../shared/index.js';
 
 type ReqWithParams = { params: Record<string, string> };
 
-function createUpload(filesystem: FilesystemService, getFolderName: (req: ReqWithParams) => string) {
+const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+function createUpload(
+  filesystem: FilesystemService,
+  getFolderName: (req: ReqWithParams) => string,
+  maxUploadBytes: number,
+) {
   return multer({
     storage: multer.diskStorage({
       destination: (req, _file, callback) => {
@@ -22,7 +28,7 @@ function createUpload(filesystem: FilesystemService, getFolderName: (req: ReqWit
     fileFilter: (_req, file, callback) => {
       callback(null, path.extname(file.originalname).toLowerCase() === '.pdf');
     },
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: maxUploadBytes },
   });
 }
 
@@ -47,9 +53,10 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
+  maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
 ): Router {
   const router = Router();
-  const upload = createUpload(filesystem, (req) => req.params.name);
+  const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
 
   router.post('/refresh', async (_req: Request, res: Response) => {
     try {
@@ -162,7 +169,14 @@ export function createFoldersRouter(
   router.post(
     '/:name/files',
     (req: Request, res: Response, next) => {
-      upload.array('files')(req as Request, res as Response, next);
+      upload.array('files')(req as Request, res as Response, (error) => {
+        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+          const limitMb = Math.floor(maxUploadBytes / (1024 * 1024));
+          res.status(413).json({ error: `파일당 최대 업로드 용량은 ${limitMb}MB입니다.` });
+          return;
+        }
+        next(error);
+      });
     },
     (req: Request, res: Response) => {
       const files = (req.files as Express.Multer.File[]) ?? [];

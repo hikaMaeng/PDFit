@@ -22,10 +22,19 @@ function readBooksRoot(value: string | undefined): string {
   return path.resolve(process.cwd(), value);
 }
 
+function readMaxUploadBytes(value: string | undefined): number {
+  const megabytes = Number(value ?? '2048');
+  if (!Number.isInteger(megabytes) || megabytes < 1 || megabytes > 10240) {
+    throw new Error('MAX_UPLOAD_MB must be an integer between 1 and 10240.');
+  }
+  return megabytes * 1024 * 1024;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = readPort(process.env.SERVER_PORT);
 const booksRoot = readBooksRoot(process.env.BOOKS_ROOT);
 const booksRootName = process.env.BOOKS_ROOT_NAME ?? '이북';
+const maxUploadBytes = readMaxUploadBytes(process.env.MAX_UPLOAD_MB);
 const pool = new Pool({
   host: process.env.PGHOST ?? '127.0.0.1',
   port: Number(process.env.PGPORT ?? '5432'),
@@ -48,6 +57,7 @@ const app = createPdfitServer({
   watcherEnabled: true,
   viewerBasePath: '/viewer',
   viewerIndexFile: path.join('viewer', 'index.html'),
+  maxUploadBytes,
 });
 
 // Establish the first database connections and load the two initial read

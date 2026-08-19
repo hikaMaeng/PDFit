@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fetchJson } from './lib/runtime.mjs';
 import { createPageNumberPdf } from './lib/pdf-fixtures.mjs';
 
@@ -94,8 +94,25 @@ async function dragByText(page, sourceText, targetText) {
   }, { sourceText, targetText });
 }
 
-async function uploadPdfFiles(page, files) {
-  await page.locator('input[type="file"]').setInputFiles(files);
+async function dropPdfFiles(page, files) {
+  const payload = await Promise.all(files.map(async (filePath) => ({
+    name: path.basename(filePath),
+    base64: (await readFile(filePath)).toString('base64'),
+  })));
+  const dataTransfer = await page.evaluateHandle((items) => {
+    const transfer = new DataTransfer();
+    for (const item of items) {
+      const bytes = Uint8Array.from(atob(item.base64), (character) => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], item.name, { type: 'application/pdf' }));
+    }
+    return transfer;
+  }, payload);
+  const dropZone = page.getByTestId('folder-drop-zone');
+  await dropZone.dispatchEvent('dragenter', { dataTransfer });
+  await page.getByTestId('pdf-drop-overlay').waitFor({ state: 'visible' });
+  await dropZone.dispatchEvent('dragover', { dataTransfer });
+  await dropZone.dispatchEvent('drop', { dataTransfer });
+  await dataTransfer.dispose();
 }
 
 async function tempPdf(root, browser, dirName, fileName, pages, label) {
@@ -211,7 +228,7 @@ export const B03 = {
 export const B04 = {
   id: 'B04',
   group: 'B',
-  title: 'PDF upload UI',
+  title: 'PDF drag-and-drop upload UI',
   seed: seed({
     folders: [{ name: 'uploads', files: [] }],
   }),
@@ -219,8 +236,7 @@ export const B04 = {
     await openFolder(page, 'uploads');
     const f1 = await tempPdf(root, browser, 'b04', 'page-1.pdf', 1, 'Upload One');
     const f2 = await tempPdf(root, browser, 'b04', 'page-3.pdf', 3, 'Upload Three');
-    await iconButton(page, 'UploadFileIcon').click();
-    await uploadPdfFiles(page, [f1, f2]);
+    await dropPdfFiles(page, [f1, f2]);
     await waitText(page, 'page-1.pdf');
     await waitText(page, 'page-3.pdf');
     await waitText(page, 'PDF 2');
