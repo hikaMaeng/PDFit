@@ -24,7 +24,7 @@
     "verify:pdfit:acceptance": "node scripts/verify-pdfit-acceptance.mjs",
     "verify:repo": "node scripts/verify-repo.mjs && node scripts/verify-release-contract.mjs",
     "verify:service-parity": "node scripts/verify-service-parity.mjs",
-    "test:service": "npm run test:language --workspace=service && npm run test:security --workspace=service && npm run test:billing --workspace=service && npm run test:repositories --workspace=service && npm run test:spreadsheets --workspace=service && npm run test:drive-system --workspace=service && npm run test:drive-id-range --workspace=service && npm run test:indexeddb-cache --workspace=service && npm run test:metadata-mutations --workspace=service && npm run test:shared-runtime --workspace=service",
+    "test:service": "npm run test:language --workspace=service && npm run test:security --workspace=service && npm run test:billing --workspace=service && npm run test:repositories --workspace=service && npm run test:spreadsheets --workspace=service && npm run test:drive-system --workspace=service && npm run test:drive-id-range --workspace=service && npm run test:direct-upload --workspace=service && npm run test:indexeddb-cache --workspace=service && npm run test:metadata-mutations --workspace=service && npm run test:shared-runtime --workspace=service",
     "test:pdfgpu": "node scripts/sync-pdfgpu.mjs && node scripts/verify-release-contract.mjs && npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/pdfgpu-integration.test.mjs",
     "release:stage": "node scripts/release-stage.mjs"
   },

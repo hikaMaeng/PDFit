@@ -91,3 +91,12 @@ in the viewer URL, and the viewer chooses `/api/folders/by-id/:driveFileId` for 
 The folder/name URL remains a compatibility fallback only when no ID is available. The
 hosted adapter can therefore serve repeated PDF Range reads without rebuilding a Drive
 snapshot or searching by mutable names.
+
+## Direct resumable upload
+
+The hosted client first validates the `%PDF-` signature, requests a metadata-only remote
+session, and uploads sequential 8 MiB chunks from `File` slices. A network interruption
+causes an empty status PUT; the next offset always comes from the remote `Range` response.
+One expired session may be recreated. Multiple selected files share aggregate progress and
+the IndexedDB snapshot is invalidated only after every completed file has been verified by
+the service. Local adapters continue using the multipart endpoint.

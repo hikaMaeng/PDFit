@@ -127,4 +127,4 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
 export { createPdfitMetadataRouterMounts } from './createCommonRouters.js';
 export type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
 export { createPdfitRemoteFoldersRouter, parsePdfitByteRange } from '../routes/remoteFolders.js';
-export type { PdfitRemoteFile, PdfitRemoteFoldersRouterOptions, PdfitRemoteLibraryAdapter } from '../routes/remoteFolders.js';
+export type { PdfitRemoteFile, PdfitRemoteFoldersRouterOptions, PdfitRemoteLibraryAdapter, PdfitResumableUploadSession } from '../routes/remoteFolders.js';

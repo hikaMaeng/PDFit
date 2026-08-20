@@ -82,6 +82,11 @@ the adapter owns only remote storage operations. An adapter may implement
 `getFileById` and `openFileById` to expose `GET /by-id/:driveFileId`; common code
 validates the identifier and Range response while the adapter verifies ownership.
 
+Adapters may also implement `createResumableUploadSession` and
+`completeResumableUpload`. The common router then exposes metadata-only session and
+completion routes while the browser uploads PDF chunks directly to the returned remote
+session. Adapters without those methods retain the multipart compatibility endpoint.
+
 ## PostgreSQL
 
 `createPostgresMetadataStore(pool)` initializes the shared metadata schema in the

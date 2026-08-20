@@ -12,6 +12,13 @@ export interface PdfitRemoteFile extends PdfInfo {
   mimeType?: string;
 }
 
+/** Browser-facing resumable session issued by a remote content authority. */
+export interface PdfitResumableUploadSession {
+  driveFileId: string;
+  sessionUrl: string;
+  expiresAt: string;
+}
+
 /** Storage port used by the shared PDFit folder/file HTTP implementation. */
 export interface PdfitRemoteLibraryAdapter {
   listFolders(request: Request, refresh: boolean): Promise<FolderInfo[]>;
@@ -21,6 +28,8 @@ export interface PdfitRemoteLibraryAdapter {
   deleteFolder(request: Request, name: string): Promise<void>;
   listFiles(request: Request, folder: string): Promise<PdfInfo[]>;
   uploadFile(request: Request, folder: string, filename: string, body: NodeJS.ReadableStream): Promise<PdfInfo>;
+  createResumableUploadSession?(request: Request, folder: string, filename: string, size: number): Promise<PdfitResumableUploadSession>;
+  completeResumableUpload?(request: Request, folder: string, driveFileId: string, filename: string, size: number): Promise<PdfInfo>;
   afterUpload?(request: Request): Promise<void>;
   getFile(request: Request, folder: string, filename: string): Promise<PdfInfo>;
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
@@ -115,6 +124,25 @@ export function createPdfitRemoteFoldersRouter(
       const metadata = await adapter.getFileById(req, driveFileId);
       await sendRemoteFile(req, res, metadata, (range) => adapter.openFileById!(req, driveFileId, range));
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
+  });
+  router.post('/:name/uploads/resumable', async (req, res) => {
+    if (!adapter.createResumableUploadSession) { res.status(404).json({ error: 'Direct upload is unavailable.' }); return; }
+    const folder = sanitizeName(req.params.name);
+    const filename = sanitizeName(String(req.body?.filename ?? ''));
+    const size = Number(req.body?.size);
+    if (!folder || !filename.toLowerCase().endsWith('.pdf') || !Number.isSafeInteger(size) || size <= 0 || size > maxUploadBytes) { res.status(400).json({ error: 'Invalid PDF upload metadata.' }); return; }
+    try { res.json(await adapter.createResumableUploadSession(req, folder, filename, size)); }
+    catch (error) { sendError(res, 502, 'Resumable upload session could not be created.', error); }
+  });
+  router.post('/:name/uploads/complete', async (req, res) => {
+    if (!adapter.completeResumableUpload) { res.status(404).json({ error: 'Direct upload is unavailable.' }); return; }
+    const folder = sanitizeName(req.params.name);
+    const driveFileId = String(req.body?.driveFileId ?? '');
+    const filename = sanitizeName(String(req.body?.filename ?? ''));
+    const size = Number(req.body?.size);
+    if (!folder || !DRIVE_FILE_ID.test(driveFileId) || !filename.toLowerCase().endsWith('.pdf') || !Number.isSafeInteger(size) || size <= 0 || size > maxUploadBytes) { res.status(400).json({ error: 'Invalid upload completion metadata.' }); return; }
+    try { res.json(await adapter.completeResumableUpload(req, folder, driveFileId, filename, size)); }
+    catch (error) { sendError(res, 400, 'Uploaded file could not be verified.', error); }
   });
   router.patch('/:name/color', async (req, res) => {
     const color = String(req.body?.color ?? '');
