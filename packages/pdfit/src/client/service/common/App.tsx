@@ -2,9 +2,9 @@ import { lazy, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { usePdfitFrontConfig } from '../../../front/context.js';
 import Layout from '../../../front/layout/Layout.js';
+import FolderPage from '../../../front/pages/FolderPage.js';
 import HomePage from '../../../front/pages/HomePage.js';
 
-const FolderPage = lazy(() => import('../../../front/pages/FolderPage.js'));
 const TagPage = lazy(() => import('../../../front/pages/TagPage.js'));
 const BookmarkPage = lazy(() => import('../../../front/pages/BookmarkPage.js'));
 
@@ -13,7 +13,6 @@ function warmRouteModulesAfterFirstPaint(): () => void {
     // Start route code and PDF.js after the first paint. The initial service
     // shell never waits for these imports to resolve.
     void import('../../../front/pdfjs.js').then(({ loadPdfJs }) => loadPdfJs());
-    void import('../../../front/pages/FolderPage.js');
     void import('../../../front/pages/TagPage.js');
     void import('../../../front/pages/BookmarkPage.js');
   };

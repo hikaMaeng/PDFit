@@ -2,9 +2,9 @@ import { lazy, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { usePdfitFrontConfig } from './context.js';
 import Layout from './layout/Layout';
+import FolderPage from './pages/FolderPage';
 import HomePage from './pages/HomePage';
 
-const FolderPage = lazy(() => import('./pages/FolderPage.js'));
 const PdfViewerPage = lazy(() => import('./pages/PdfViewerPage.js'));
 const TagPage = lazy(() => import('./pages/TagPage.js'));
 const BookmarkPage = lazy(() => import('./pages/BookmarkPage.js'));
@@ -14,7 +14,6 @@ function warmRouteModulesAfterFirstPaint(): () => void {
     // Route code and PDF.js are allowed to download immediately, but no
     // initial render waits for either import to finish.
     void import('./pdfjs.js').then(({ loadPdfJs }) => loadPdfJs());
-    void import('./pages/FolderPage.js');
     void import('./pages/PdfViewerPage.js');
     void import('./pages/TagPage.js');
     void import('./pages/BookmarkPage.js');
