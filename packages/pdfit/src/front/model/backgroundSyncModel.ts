@@ -26,6 +26,8 @@ class BackgroundSyncModel {
 
   syncing(id: string): void { this.update(id, { status: 'syncing', error: undefined }); }
 
+  setLabel(id: string, label: string): void { this.update(id, { label }); }
+
   complete(id: string): void {
     this.update(id, { status: 'synced', error: undefined });
     queueMicrotask(() => { if (this.entries.get(id)?.status === 'synced') { this.entries.delete(id); this.emit(); } });

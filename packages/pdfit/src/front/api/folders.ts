@@ -28,7 +28,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
-interface ResumableSession { driveFileId: string; sessionUrl: string; expiresAt: string }
+interface ResumableSession { driveFileId: string; sessionUrl: string; expiresAt: string; completed?: boolean }
 interface RefreshResult {
   mode: 'delta' | 'replace'; folders: FolderInfo[]; folderUpserts: FolderInfo[]; folderDeletes: string[];
   fileUpserts: Array<PdfInfo & { folder: string }>; fileDeletes: string[];
@@ -40,7 +40,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 function notifyFoldersChanged(): void {
-  window.dispatchEvent(new Event('folders-changed'));
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('folders-changed'));
 }
 
 function runInBackground(label: string, action: () => Promise<void>, retry: () => void): void {
@@ -51,29 +51,29 @@ function runInBackground(label: string, action: () => Promise<void>, retry: () =
   });
 }
 
-async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void): Promise<PdfInfo[] | null> {
+async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void, operationIds?: string[]): Promise<PdfInfo[] | null> {
   if (!(await Promise.all(files.map(isPdfFile))).every(Boolean)) throw new Error('유효한 PDF 파일만 업로드할 수 있습니다.');
   if (files.length === 0) return [];
   const total = files.reduce((sum, file) => sum + file.size, 0);
   const loadedBytes = files.map(() => 0);
   const results = new Array<PdfInfo>(files.length);
-  const createSession = async (file: File) => {
+  const createSession = async (file: File, index: number) => {
     const startedAt = performance.now();
-    const response = await fetch(`/api/folders/${encodeURIComponent(folder)}/uploads/resumable`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, size: file.size, mimeType: file.type || 'application/pdf' }) });
+    const response = await fetch(`/api/folders/${encodeURIComponent(folder)}/uploads/resumable`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, size: file.size, mimeType: file.type || 'application/pdf', operationId: operationIds?.[index] }) });
     const body = await response.json() as ResumableSession & { error?: string };
     console.info('[library-performance]', JSON.stringify({ operation: 'upload.session-create', filename: file.name, durationMs: Math.round(performance.now() - startedAt) }));
     return { response, body };
   };
-  const firstSession = await createSession(files[0]);
+  const firstSession = await createSession(files[0], 0);
   if (firstSession.response.status === 404) return null;
   if (!firstSession.response.ok) throw new Error(firstSession.body.error ?? '업로드 세션 생성 실패');
   let nextIndex = 0;
   const uploadOne = async (index: number) => {
     const file = files[index];
-    let session = index === 0 ? firstSession : await createSession(file);
+    let session = index === 0 ? firstSession : await createSession(file, index);
     if (!session.response.ok) throw new Error(session.body.error ?? '업로드 세션 생성 실패');
     const driveStartedAt = performance.now();
-    for (let sessionAttempt = 0; ; sessionAttempt += 1) {
+    for (let sessionAttempt = 0; !session.body.completed; sessionAttempt += 1) {
       try {
         await uploadPdfToResumableSession(session.body.sessionUrl, file, (loaded) => {
           loadedBytes[index] = loaded;
@@ -82,7 +82,7 @@ async function directUpload(folder: string, files: File[], onProgress?: (pct: nu
         break;
       } catch (error) {
         if (!(error instanceof ResumableSessionExpiredError) || sessionAttempt >= 1) throw error;
-        session = await createSession(file);
+        session = await createSession(file, index);
         if (!session.response.ok) throw new Error(session.body.error ?? '업로드 세션 재생성 실패');
       }
     }
@@ -258,6 +258,60 @@ async function moveFileOptimistically(fromFolder: string, toFolder: string, file
   return { ok: true, ...cached };
 }
 
+const pendingUploads = new Map<string, PdfInfo>();
+
+async function uploadFilesOptimistically(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void, retryOperationIds?: Map<string, string>): Promise<PdfInfo[]> {
+  if (!(await Promise.all(files.map(isPdfFile))).every(Boolean)) throw new Error('유효한 PDF 파일만 업로드할 수 있습니다.');
+  const timestamp = new Date().toISOString();
+  const operations = files.map((file) => {
+    const key = `${folder}\0${file.name}`;
+    const existing = pendingUploads.get(key);
+    if (existing) return { key, file, operationId: '', placeholder: existing, duplicate: true };
+    const operationId = retryOperationIds?.get(key) ?? crypto.randomUUID();
+    const placeholder: PdfInfo = { name: file.name, size: file.size, modifiedAt: timestamp, driveFileId: `pending-upload-${operationId}` };
+    pendingUploads.set(key, placeholder);
+    return { key, file, operationId, placeholder, duplicate: false };
+  });
+  const created = operations.filter((operation) => !operation.duplicate);
+  for (const operation of created) publishLibraryFileMutation({ kind: 'upsert', folder, file: operation.placeholder });
+  await Promise.all(created.map((operation) => upsertCachedFile(folder, operation.placeholder)));
+  notifyFoldersChanged();
+  const progress = new Map(created.map((operation) => [operation.key, 0]));
+  const updateProgress = () => onProgress?.(Math.round([...progress.values()].reduce((sum, value) => sum + value, 0) / Math.max(1, progress.size)));
+  let nextIndex = 0;
+  const uploadOne = async (operation: typeof created[number]) => {
+    const timing = beginMutationPerformance('file.upload', operation.operationId);
+    timing.mark('ui'); timing.mark('indexeddb');
+    const retry = () => retryMutation(() => uploadFilesOptimistically(folder, [operation.file], onProgress, onPhase, new Map([[operation.key, operation.operationId]])));
+    const syncId = backgroundSyncModel.begin(`Uploading ${operation.file.name}`, retry);
+    backgroundSyncModel.syncing(syncId); timing.mark('request-start');
+    try {
+      const result = (await directUpload(folder, [operation.file], (value) => { progress.set(operation.key, value); updateProgress(); }, (phase) => {
+        onPhase?.(phase);
+        backgroundSyncModel.setLabel(syncId, phase === 'uploading' ? `Uploading ${operation.file.name}` : `Saving ${operation.file.name}`);
+      }, [operation.operationId])) ?? await legacyUpload(folder, [operation.file]);
+      const saved = result[0];
+      timing.mark('server-response');
+      await deleteCachedFile(operation.placeholder.driveFileId!);
+      await upsertCachedFile(folder, saved);
+      publishLibraryFileMutation({ kind: 'upsert', folder, file: saved });
+      notifyFoldersChanged(); timing.mark('sync-complete'); backgroundSyncModel.complete(syncId);
+    } catch (error) {
+      await deleteCachedFile(operation.placeholder.driveFileId!).catch(() => undefined);
+      publishLibraryFileMutation({ kind: 'remove', folder, filename: operation.file.name });
+      notifyFoldersChanged(); timing.mark('failed');
+      backgroundSyncModel.fail(syncId, errorMessage(error, 'Upload failed.'), retry);
+    } finally {
+      pendingUploads.delete(operation.key);
+    }
+  };
+  const workers = Array.from({ length: Math.min(3, created.length) }, async () => {
+    while (nextIndex < created.length) { const index = nextIndex; nextIndex += 1; await uploadOne(created[index]); }
+  });
+  void Promise.all(workers);
+  return operations.map((operation) => operation.placeholder);
+}
+
 export const foldersApi = {
   list: async () => (await listCachedFolders()) ?? request<FolderInfo[]>('/folders'),
 
@@ -285,8 +339,7 @@ export const foldersApi = {
 
   listFiles: async (folder: string) => (await listCachedFiles(folder)) ?? request<PdfInfo[]>(`/folders/${encodeURIComponent(folder)}/files`),
 
-  upload: async (folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void) =>
-    (await directUpload(folder, files, onProgress, onPhase)) ?? legacyUpload(folder, files, onProgress, onPhase),
+  upload: uploadFilesOptimistically,
 
   deleteFile: deleteFileOptimistically,
 

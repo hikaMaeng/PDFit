@@ -17,6 +17,7 @@ export interface PdfitResumableUploadSession {
   driveFileId: string;
   sessionUrl: string;
   expiresAt: string;
+  completed?: boolean;
 }
 
 /** Incremental browser-cache changes returned by an explicit Drive refresh. */
@@ -40,7 +41,7 @@ export interface PdfitRemoteLibraryAdapter {
   deleteFolder(request: Request, name: string): Promise<{ driveFolderId: string }>;
   listFiles(request: Request, folder: string): Promise<PdfInfo[]>;
   uploadFile(request: Request, folder: string, filename: string, body: NodeJS.ReadableStream): Promise<PdfInfo>;
-  createResumableUploadSession?(request: Request, folder: string, filename: string, size: number): Promise<PdfitResumableUploadSession>;
+  createResumableUploadSession?(request: Request, folder: string, filename: string, size: number, operationId?: string): Promise<PdfitResumableUploadSession>;
   completeResumableUpload?(request: Request, folder: string, driveFileId: string, filename: string, size: number): Promise<PdfInfo>;
   afterUpload?(request: Request): Promise<void>;
   getFile(request: Request, folder: string, filename: string): Promise<PdfInfo>;
@@ -142,8 +143,9 @@ export function createPdfitRemoteFoldersRouter(
     const folder = sanitizeName(req.params.name);
     const filename = sanitizeName(String(req.body?.filename ?? ''));
     const size = Number(req.body?.size);
-    if (!folder || !filename.toLowerCase().endsWith('.pdf') || !Number.isSafeInteger(size) || size <= 0 || size > maxUploadBytes) { res.status(400).json({ error: 'Invalid PDF upload metadata.' }); return; }
-    try { res.json(await adapter.createResumableUploadSession(req, folder, filename, size)); }
+    const operationId = req.body?.operationId == null ? undefined : String(req.body.operationId);
+    if (!folder || !filename.toLowerCase().endsWith('.pdf') || !Number.isSafeInteger(size) || size <= 0 || size > maxUploadBytes || (operationId !== undefined && !/^[0-9a-f-]{36}$/i.test(operationId))) { res.status(400).json({ error: 'Invalid PDF upload metadata.' }); return; }
+    try { res.json(await adapter.createResumableUploadSession(req, folder, filename, size, operationId)); }
     catch (error) { sendError(res, 502, 'Resumable upload session could not be created.', error); }
   });
   router.post('/:name/uploads/complete', async (req, res) => {

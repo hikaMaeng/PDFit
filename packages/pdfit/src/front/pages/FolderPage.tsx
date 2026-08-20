@@ -118,15 +118,7 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
     setUploadPhase('uploading');
     try {
       await foldersApi.upload(folderName, selected, setUploadProgress, setUploadPhase);
-      // Upload writes files to disk, but the watcher intentionally does not
-      // synchronize metadata automatically. Complete the same explicit
-      // refresh used by the refresh button before reloading this folder.
-      setUploadPhase('refreshing');
-      setUploadProgress(92);
-      await foldersApi.refresh();
-      await folderModel.refresh();
       setUploadProgress(100);
-      window.dispatchEvent(new Event('folders-changed'));
     } catch (e) {
       setError(e instanceof Error ? e.message : '업로드 실패');
     } finally {
