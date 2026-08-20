@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { foldersApi } from '../api/folders';
@@ -9,12 +9,13 @@ import PdfViewer from '../components/PdfViewer';
 import PdfGpuViewer from '../components/PdfGpuViewer';
 import type { ViewerStatePayload } from '../api/viewerState';
 import { isPointInViewerCenterGrid, ViewerSessionModel } from '../viewer/sessionModel';
-import { createBookmark, deleteBookmark, listBookmarks, updateBookmark } from '../api/bookmarks';
+import { listBookmarks } from '../api/bookmarks';
 import { BookmarkModel } from '../model/bookmarkModel';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { getViewerNavigationModel } from '../model/viewerNavigationModel.js';
-import { publishBookmarkChange, subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
+import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
+import { createBookmarkOptimistically, deleteBookmarkOptimistically, updateBookmarkOptimistically } from '../model/optimisticBookmarks.js';
 import { isViewerCommand, registerViewerWindow } from '../viewer/openViewer.js';
 
 function decodeRouteParam(value: string | undefined): string {
@@ -89,21 +90,35 @@ export default function PdfViewerPage() {
   const bookmarkModel = bookmarkModelRef.current;
   useSyncExternalStore(bookmarkModel.subscribe, bookmarkModel.getSnapshot, bookmarkModel.getSnapshot);
   const bookmarks = bookmarkModel.getAll();
+  const [bookmarkError, setBookmarkError] = useState<string | null>(null);
   const handleBookmarkCaptured = useCallback(async (capture: PdfGpuCaptureResult) => {
-    const saved = await createBookmark(folderName, fileName, { pageIndex: capture.pageIndex, rect: capture.rect, borderColor: '#f59e0b', fillColor: null, fillOpacity: 0.2, comment: null, imageMimeType: capture.mimeType, imageBase64: capture.imageBase64 });
-    bookmarkModel.upsert(saved);
-    publishBookmarkChange({ folder: folderName, filename: fileName, kind: 'created' });
-    return saved;
+    setBookmarkError(null);
+    return createBookmarkOptimistically(folderName, fileName, { pageIndex: capture.pageIndex, rect: capture.rect, borderColor: '#f59e0b', fillColor: null, fillOpacity: 0.2, comment: null, imageMimeType: capture.mimeType, imageBase64: capture.imageBase64 }, {
+      upsert: (record) => bookmarkModel.upsert(record),
+      remove: (id) => bookmarkModel.remove(id),
+      failed: (message) => setBookmarkError(message),
+    }).optimistic;
   }, [bookmarkModel, fileName, folderName]);
   const handleBookmarkUpdated = useCallback(async (id: string, request: UpdateBookmarkRequest) => {
-    bookmarkModel.upsert(await updateBookmark(id, request));
-    publishBookmarkChange({ folder: folderName, filename: fileName, kind: 'updated' });
-  }, [bookmarkModel, fileName, folderName]);
+    const current = bookmarkModel.getAll().find((bookmark) => bookmark.id === id);
+    if (!current) return;
+    setBookmarkError(null);
+    updateBookmarkOptimistically(current, request, {
+      upsert: (record) => bookmarkModel.upsert(record),
+      remove: (bookmarkId) => bookmarkModel.remove(bookmarkId),
+      failed: (message) => setBookmarkError(message),
+    });
+  }, [bookmarkModel]);
   const handleBookmarkDeleted = useCallback(async (id: string) => {
-    await deleteBookmark(id);
-    bookmarkModel.remove(id);
-    publishBookmarkChange({ folder: folderName, filename: fileName, kind: 'deleted' });
-  }, [bookmarkModel, fileName, folderName]);
+    const current = bookmarkModel.getAll().find((bookmark) => bookmark.id === id);
+    if (!current) return;
+    setBookmarkError(null);
+    deleteBookmarkOptimistically(current, {
+      upsert: (record) => bookmarkModel.upsert(record),
+      remove: (bookmarkId) => bookmarkModel.remove(bookmarkId),
+      failed: (message) => setBookmarkError(message),
+    });
+  }, [bookmarkModel]);
   const sessionState = useSyncExternalStore(
     sessionModel.subscribe,
     sessionModel.getState,
@@ -135,7 +150,10 @@ export default function PdfViewerPage() {
     };
     reload();
     const unsubscribe = subscribeBookmarkChanges((signal) => {
-      if (signal.folder === folderName && signal.filename === fileName) reload();
+      if (signal.folder !== folderName || signal.filename !== fileName) return;
+      if (signal.record) bookmarkModel.upsert(signal.record);
+      else if (signal.id) bookmarkModel.remove(signal.id);
+      else reload();
     });
     return () => {
       cancelled = true;
@@ -221,6 +239,8 @@ export default function PdfViewerPage() {
           </Typography>
         </Box>
       )}
+
+      {bookmarkError && <Alert severity="error" onClose={() => setBookmarkError(null)} sx={{ position: 'absolute', zIndex: 20, top: 8, right: 12, maxWidth: 440 }}>{bookmarkError}</Alert>}
 
       {stateLoaded ? viewerEngine === 'gpu' ? (
         <PdfGpuViewer

@@ -10,6 +10,8 @@ export interface BookmarkChangeTarget {
   folder: string;
   filename: string;
   kind: BookmarkChangeKind;
+  record?: import('../../common/protocol/bookmarks/index.js').BookmarkRecord;
+  id?: string;
 }
 
 export function publishBookmarkChange(target: BookmarkChangeTarget) {
@@ -22,6 +24,8 @@ export function subscribeBookmarkChanges(listener: (signal: BookmarkChangeTarget
       typeof payload?.folder !== 'string'
       || typeof payload.filename !== 'string'
       || (payload.kind !== 'created' && payload.kind !== 'updated' && payload.kind !== 'deleted')
+      || (payload.record !== undefined && typeof payload.record?.id !== 'string')
+      || (payload.id !== undefined && typeof payload.id !== 'string')
     ) return;
     listener(payload);
   });
