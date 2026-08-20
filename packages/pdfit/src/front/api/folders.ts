@@ -15,7 +15,7 @@ export interface PdfInfo {
   driveFileId?: string;
 }
 
-import { deleteCachedFile, deleteCachedFolder, invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders, moveCachedFile, updateCachedFolderColor, upsertCachedFile, upsertCachedFolder } from '../cache/metadataCache.js';
+import { deleteCachedFile, deleteCachedFolder, invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders, moveCachedFile, updateCachedFolderColor, upsertCachedFile, upsertCachedFolder, upsertCachedSyncState } from '../cache/metadataCache.js';
 import { isPdfFile, ResumableSessionExpiredError, uploadPdfToResumableSession } from '../upload/resumableUpload.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -26,6 +26,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 interface ResumableSession { driveFileId: string; sessionUrl: string; expiresAt: string }
+interface RefreshResult {
+  mode: 'delta' | 'replace'; folders: FolderInfo[]; folderUpserts: FolderInfo[]; folderDeletes: string[];
+  fileUpserts: Array<PdfInfo & { folder: string }>; fileDeletes: string[];
+  syncState?: { key: string; value: string; updatedAt: string };
+}
 
 async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void): Promise<PdfInfo[] | null> {
   if (!(await Promise.all(files.map(isPdfFile))).every(Boolean)) throw new Error('유효한 PDF 파일만 업로드할 수 있습니다.');
@@ -99,9 +104,17 @@ export const foldersApi = {
   list: async () => (await listCachedFolders()) ?? request<FolderInfo[]>('/folders'),
 
   refresh: async () => {
-    await request<FolderInfo[]>('/folders/refresh', { method: 'POST' });
-    await invalidatePdfitMetadataCache();
-    return (await listCachedFolders()) ?? request<FolderInfo[]>('/folders');
+    const result = await request<FolderInfo[] | RefreshResult>('/folders/refresh', { method: 'POST' });
+    if (Array.isArray(result) || result.mode === 'replace') {
+      await invalidatePdfitMetadataCache();
+      return (await listCachedFolders()) ?? (Array.isArray(result) ? result : result.folders);
+    }
+    for (const driveFolderId of result.folderDeletes) await deleteCachedFolder(driveFolderId);
+    for (const driveFileId of result.fileDeletes) await deleteCachedFile(driveFileId);
+    for (const folder of result.folderUpserts) await upsertCachedFolder(folder);
+    for (const file of result.fileUpserts) await upsertCachedFile(file.folder, file);
+    if (result.syncState) await upsertCachedSyncState(result.syncState);
+    return result.folders;
   },
 
   create: async (name: string) => {

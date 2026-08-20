@@ -358,6 +358,13 @@ export async function moveCachedFile(driveFileId: string, targetFolderName: stri
   }));
 }
 
+/** Stores the latest explicit Drive refresh token without replacing cached entities. */
+export async function upsertCachedSyncState(row: { key: string; value: string; updatedAt: string }): Promise<void> {
+  await timedCacheMutation('refresh.sync-state', async (scope) => mutateStores(scope, ['syncState'], async (transaction) => {
+    transaction.objectStore('syncState').put(row);
+  }));
+}
+
 export async function invalidatePdfitMetadataCache(): Promise<void> {
   if (!options || typeof indexedDB === 'undefined') return;
   const scope = options.scope();

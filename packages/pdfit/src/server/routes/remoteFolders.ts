@@ -19,9 +19,21 @@ export interface PdfitResumableUploadSession {
   expiresAt: string;
 }
 
+/** Incremental browser-cache changes returned by an explicit Drive refresh. */
+export interface PdfitRemoteRefreshResult {
+  mode: 'delta' | 'replace';
+  folders: FolderInfo[];
+  folderUpserts: FolderInfo[];
+  folderDeletes: string[];
+  fileUpserts: Array<PdfInfo & { folder: string }>;
+  fileDeletes: string[];
+  syncState?: { key: string; value: string; updatedAt: string };
+}
+
 /** Storage port used by the shared PDFit folder/file HTTP implementation. */
 export interface PdfitRemoteLibraryAdapter {
   listFolders(request: Request, refresh: boolean): Promise<FolderInfo[]>;
+  refreshLibrary?(request: Request): Promise<PdfitRemoteRefreshResult>;
   createFolder(request: Request, name: string): Promise<FolderInfo>;
   updateFolderColor(request: Request, name: string, color: string): Promise<void>;
   renameFolder(request: Request, name: string, newName: string, color?: string, createdAt?: string): Promise<FolderInfo>;
@@ -107,7 +119,7 @@ export function createPdfitRemoteFoldersRouter(
     catch (error) { sendError(res, 502, 'Library is temporarily unavailable.', error); }
   });
   router.post('/refresh', async (req, res) => {
-    try { res.json(await adapter.listFolders(req, true)); }
+    try { res.json(adapter.refreshLibrary ? await adapter.refreshLibrary(req) : await adapter.listFolders(req, true)); }
     catch (error) { sendError(res, 502, 'Library refresh failed.', error); }
   });
   router.post('/', async (req, res) => {
