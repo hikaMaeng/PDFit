@@ -237,6 +237,7 @@ export async function listCachedFolders(): Promise<FolderInfo[] | null> {
   return folders.filter((folder) => !folder.trashed).map((folder) => ({
     name: folder.name, pdfCount: counts.get(folder.driveFolderId) ?? 0,
     createdAt: folder.createdAt, isRoot: folder.isRoot, color: folder.color || '#3b82f6',
+    driveFolderId: folder.driveFolderId, parentFolderId: folder.parentFolderId,
   }));
 }
 
@@ -311,6 +312,16 @@ export async function deleteCachedFolder(driveFolderId: string): Promise<void> {
   }));
 }
 
+/** Hides or restores one folder while a remote delete is pending, retaining all relations for rollback. */
+export async function setCachedFolderTrashed(driveFolderId: string, trashed: boolean): Promise<void> {
+  if (!driveFolderId) return;
+  await timedCacheMutation('folder.tombstone', async (scope) => mutateStores(scope, ['folders'], async (transaction) => {
+    const store = transaction.objectStore('folders');
+    const row = await requestResult<CachedFolderRow | undefined>(store.get(driveFolderId));
+    if (row) store.put({ ...row, trashed, updatedAt: new Date().toISOString() });
+  }));
+}
+
 /** Adds or replaces one PDF under the named cached folder. */
 export async function upsertCachedFile(folderName: string, file: PdfInfo): Promise<void> {
   if (!file.driveFileId) return;
@@ -342,6 +353,16 @@ export async function deleteCachedFile(driveFileId: string): Promise<void> {
   await timedCacheMutation('file.delete', async (scope) => mutateStores(scope, ['pdfs', 'pdfTags', 'bookmarks', 'progress', 'viewerStates'], async (transaction) => {
     transaction.objectStore('pdfs').delete(driveFileId);
     await deletePdfRelations(transaction, new Set([driveFileId]));
+  }));
+}
+
+/** Hides or restores one PDF while a remote delete is pending, retaining file-scoped metadata for rollback. */
+export async function setCachedFileTrashed(driveFileId: string, trashed: boolean): Promise<void> {
+  if (!driveFileId) return;
+  await timedCacheMutation('file.tombstone', async (scope) => mutateStores(scope, ['pdfs'], async (transaction) => {
+    const store = transaction.objectStore('pdfs');
+    const row = await requestResult<CachedPdfRow | undefined>(store.get(driveFileId));
+    if (row) store.put({ ...row, trashed, updatedAt: new Date().toISOString() });
   }));
 }
 

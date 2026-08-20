@@ -1,6 +1,7 @@
-import type { FolderInfo, PdfInfo } from '../api/folders';
-import { foldersApi } from '../api/folders';
-import { tagsApi } from '../api/tags';
+import type { FolderInfo, PdfInfo } from '../api/folders.js';
+import { foldersApi } from '../api/folders.js';
+import { tagsApi } from '../api/tags.js';
+import { subscribeLibraryFileMutations } from './libraryMutationEvents.js';
 
 export interface FolderLibraryState {
   files: PdfInfo[];
@@ -79,6 +80,11 @@ class FolderModel {
     this.emit();
   }
 
+  upsertFile(file: PdfInfo): void {
+    this.state.files = [...this.state.files.filter((current) => current.name !== file.name), file];
+    this.emit();
+  }
+
   addTag(filename: string, tag: string): void {
     const current = this.state.fileTags[filename] ?? [];
     if (current.includes(tag)) return;
@@ -131,6 +137,15 @@ class FolderModel {
 
 class FolderLibraryModel {
   private readonly folders = new Map<string, FolderModel>();
+
+  constructor() {
+    subscribeLibraryFileMutations((mutation) => {
+      const model = this.folders.get(mutation.folder);
+      if (!model) return;
+      if (mutation.kind === 'remove') model.removeFile(mutation.filename);
+      else model.upsertFile(mutation.file);
+    });
+  }
 
   get(folderName: string): FolderModel {
     let model = this.folders.get(folderName);

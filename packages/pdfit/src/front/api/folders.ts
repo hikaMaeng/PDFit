@@ -15,8 +15,11 @@ export interface PdfInfo {
   driveFileId?: string;
 }
 
-import { deleteCachedFile, deleteCachedFolder, invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders, moveCachedFile, updateCachedFolderColor, upsertCachedFile, upsertCachedFolder, upsertCachedSyncState } from '../cache/metadataCache.js';
+import { deleteCachedFile, deleteCachedFolder, invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders, moveCachedFile, setCachedFileTrashed, setCachedFolderTrashed, updateCachedFolderColor, upsertCachedFile, upsertCachedFolder, upsertCachedSyncState } from '../cache/metadataCache.js';
 import { isPdfFile, ResumableSessionExpiredError, uploadPdfToResumableSession } from '../upload/resumableUpload.js';
+import { backgroundSyncModel } from '../model/backgroundSyncModel.js';
+import { publishLibraryFileMutation } from '../model/libraryMutationEvents.js';
+import { beginMutationPerformance } from '../model/mutationPerformance.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch('/api' + url, options);
@@ -30,6 +33,22 @@ interface RefreshResult {
   mode: 'delta' | 'replace'; folders: FolderInfo[]; folderUpserts: FolderInfo[]; folderDeletes: string[];
   fileUpserts: Array<PdfInfo & { folder: string }>; fileDeletes: string[];
   syncState?: { key: string; value: string; updatedAt: string };
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function notifyFoldersChanged(): void {
+  window.dispatchEvent(new Event('folders-changed'));
+}
+
+function runInBackground(label: string, action: () => Promise<void>, retry: () => void): void {
+  const syncId = backgroundSyncModel.begin(label, retry);
+  backgroundSyncModel.syncing(syncId);
+  void action().then(() => backgroundSyncModel.complete(syncId)).catch((error) => {
+    backgroundSyncModel.fail(syncId, errorMessage(error, `${label} failed.`), retry);
+  });
 }
 
 async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void): Promise<PdfInfo[] | null> {
@@ -100,6 +119,145 @@ function legacyUpload(folder: string, files: File[], onProgress?: (pct: number) 
   });
 }
 
+function retryMutation(action: () => Promise<unknown>): void {
+  void action().catch(() => undefined);
+}
+
+async function createFolderOptimistically(name: string): Promise<FolderInfo> {
+  const timestamp = new Date().toISOString();
+  const optimistic: FolderInfo = { name, pdfCount: 0, createdAt: timestamp, isRoot: false, color: '#3b82f6', driveFolderId: `pending-folder-${crypto.randomUUID()}`, parentFolderId: 'root' };
+  const timing = beginMutationPerformance('folder.create');
+  await upsertCachedFolder(optimistic);
+  timing.mark('indexeddb');
+  notifyFoldersChanged();
+  timing.mark('ui');
+  const retry = () => retryMutation(() => createFolderOptimistically(name));
+  runInBackground('Creating folder', async () => {
+    timing.mark('request-start');
+    try {
+      const saved = await request<FolderInfo>('/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      timing.mark('server-response');
+      await deleteCachedFolder(optimistic.driveFolderId!);
+      await upsertCachedFolder(saved);
+      notifyFoldersChanged();
+      timing.mark('sync-complete');
+    } catch (error) {
+      await deleteCachedFolder(optimistic.driveFolderId!).catch(() => undefined);
+      notifyFoldersChanged();
+      timing.mark('failed');
+      throw error;
+    }
+  }, retry);
+  return optimistic;
+}
+
+async function renameFolderOptimistically(name: string, newName: string): Promise<FolderInfo> {
+  const current = (await listCachedFolders())?.find((folder) => folder.name === name);
+  if (!current?.driveFolderId) return request<FolderInfo>(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newName, color: current?.color, createdAt: current?.createdAt }) });
+  const optimistic = { ...current, name: newName };
+  const timing = beginMutationPerformance('folder.rename');
+  await upsertCachedFolder(optimistic);
+  timing.mark('indexeddb'); notifyFoldersChanged(); timing.mark('ui');
+  const retry = () => retryMutation(() => renameFolderOptimistically(name, newName));
+  runInBackground('Renaming folder', async () => {
+    timing.mark('request-start');
+    try {
+      const saved = await request<FolderInfo>(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newName, color: current.color, createdAt: current.createdAt }) });
+      timing.mark('server-response'); await upsertCachedFolder(saved); notifyFoldersChanged(); timing.mark('sync-complete');
+    } catch (error) {
+      await upsertCachedFolder(current).catch(() => undefined); notifyFoldersChanged(); timing.mark('failed'); throw error;
+    }
+  }, retry);
+  return optimistic;
+}
+
+async function deleteFolderOptimistically(name: string): Promise<{ ok: boolean; driveFolderId: string }> {
+  const current = (await listCachedFolders())?.find((folder) => folder.name === name);
+  if (!current?.driveFolderId) return request<{ ok: boolean; driveFolderId: string }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const currentId = current.driveFolderId;
+  const timing = beginMutationPerformance('folder.delete');
+  await setCachedFolderTrashed(currentId, true);
+  timing.mark('indexeddb'); notifyFoldersChanged(); timing.mark('ui');
+  const retry = () => retryMutation(() => deleteFolderOptimistically(name));
+  runInBackground('Deleting folder', async () => {
+    timing.mark('request-start');
+    try {
+      const saved = await request<{ ok: boolean; driveFolderId: string }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      timing.mark('server-response');
+      await deleteCachedFolder(saved.driveFolderId || currentId);
+      timing.mark('sync-complete');
+    } catch (error) {
+      await setCachedFolderTrashed(currentId, false).catch(() => undefined);
+      notifyFoldersChanged(); timing.mark('failed'); throw error;
+    }
+  }, retry);
+  return { ok: true, driveFolderId: currentId };
+}
+
+async function updateFolderColorOptimistically(name: string, color: string): Promise<{ ok: boolean }> {
+  const current = (await listCachedFolders())?.find((folder) => folder.name === name);
+  const timing = beginMutationPerformance('folder.color');
+  await updateCachedFolderColor(name, color);
+  timing.mark('indexeddb'); notifyFoldersChanged(); timing.mark('ui');
+  const retry = () => retryMutation(() => updateFolderColorOptimistically(name, color));
+  runInBackground('Saving folder color', async () => {
+    timing.mark('request-start');
+    try {
+      await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}/color`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color }) });
+      timing.mark('server-response'); timing.mark('sync-complete');
+    } catch (error) {
+      if (current) await updateCachedFolderColor(name, current.color).catch(() => undefined);
+      notifyFoldersChanged(); timing.mark('failed'); throw error;
+    }
+  }, retry);
+  return { ok: true };
+}
+
+async function deleteFileOptimistically(folder: string, filename: string): Promise<{ ok: boolean } & PdfInfo> {
+  const cached = (await listCachedFiles(folder))?.find((file) => file.name === filename);
+  if (!cached?.driveFileId) return request<{ ok: boolean } & PdfInfo>(`/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const timing = beginMutationPerformance('file.delete');
+  publishLibraryFileMutation({ kind: 'remove', folder, filename }); timing.mark('ui');
+  await setCachedFileTrashed(cached.driveFileId, true); timing.mark('indexeddb'); notifyFoldersChanged();
+  const retry = () => retryMutation(() => deleteFileOptimistically(folder, filename));
+  runInBackground('Deleting PDF', async () => {
+    timing.mark('request-start');
+    try {
+      await request<{ ok: boolean } & PdfInfo>(`/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: cached.driveFileId }) });
+      timing.mark('server-response'); await deleteCachedFile(cached.driveFileId!); timing.mark('sync-complete');
+    } catch (error) {
+      await setCachedFileTrashed(cached.driveFileId!, false).catch(() => undefined);
+      publishLibraryFileMutation({ kind: 'upsert', folder, file: cached }); notifyFoldersChanged(); timing.mark('failed'); throw error;
+    }
+  }, retry);
+  return { ok: true, ...cached };
+}
+
+async function moveFileOptimistically(fromFolder: string, toFolder: string, filename: string): Promise<{ ok: boolean } & PdfInfo> {
+  const cached = (await listCachedFiles(fromFolder))?.find((file) => file.name === filename);
+  if (!cached?.driveFileId) return request<{ ok: boolean } & PdfInfo>('/folders/move', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromFolder, toFolder, filename }) });
+  const timing = beginMutationPerformance('file.move');
+  publishLibraryFileMutation({ kind: 'remove', folder: fromFolder, filename });
+  publishLibraryFileMutation({ kind: 'upsert', folder: toFolder, file: cached });
+  timing.mark('ui');
+  await moveCachedFile(cached.driveFileId, toFolder); timing.mark('indexeddb'); notifyFoldersChanged();
+  const retry = () => retryMutation(() => moveFileOptimistically(fromFolder, toFolder, filename));
+  runInBackground('Moving PDF', async () => {
+    timing.mark('request-start');
+    try {
+      const saved = await request<{ ok: boolean } & PdfInfo>('/folders/move', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fromFolder, toFolder, filename, driveFileId: cached.driveFileId }) });
+      timing.mark('server-response'); timing.mark('sync-complete');
+      if (saved.driveFileId) await moveCachedFile(saved.driveFileId, toFolder);
+    } catch (error) {
+      await moveCachedFile(cached.driveFileId!, fromFolder).catch(() => undefined);
+      publishLibraryFileMutation({ kind: 'remove', folder: toFolder, filename });
+      publishLibraryFileMutation({ kind: 'upsert', folder: fromFolder, file: cached });
+      notifyFoldersChanged(); timing.mark('failed'); throw error;
+    }
+  }, retry);
+  return { ok: true, ...cached };
+}
+
 export const foldersApi = {
   list: async () => (await listCachedFolders()) ?? request<FolderInfo[]>('/folders'),
 
@@ -117,66 +275,22 @@ export const foldersApi = {
     return result.folders;
   },
 
-  create: async (name: string) => {
-    const result = await request<FolderInfo>('/folders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    await upsertCachedFolder(result);
-    return result;
-  },
+  create: createFolderOptimistically,
 
-  rename: async (name: string, newName: string) => {
-    const current = (await listCachedFolders())?.find((folder) => folder.name === name);
-    const result = await request<FolderInfo>(`/folders/${encodeURIComponent(name)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newName, color: current?.color, createdAt: current?.createdAt }),
-    });
-    await upsertCachedFolder(result);
-    return result;
-  },
+  rename: renameFolderOptimistically,
 
-  delete: async (name: string) => {
-    const result = await request<{ ok: boolean; driveFolderId: string }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    await deleteCachedFolder(result.driveFolderId);
-    return result;
-  },
+  delete: deleteFolderOptimistically,
 
-  updateColor: async (name: string, color: string) => {
-    const result = await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}/color`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color }),
-    });
-    await updateCachedFolderColor(name, color);
-    return result;
-  },
+  updateColor: updateFolderColorOptimistically,
 
   listFiles: async (folder: string) => (await listCachedFiles(folder)) ?? request<PdfInfo[]>(`/folders/${encodeURIComponent(folder)}/files`),
 
   upload: async (folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void) =>
     (await directUpload(folder, files, onProgress, onPhase)) ?? legacyUpload(folder, files, onProgress, onPhase),
 
-  deleteFile: async (folder: string, filename: string) => {
-    const cached = (await listCachedFiles(folder))?.find((file) => file.name === filename);
-    const result = await request<{ ok: boolean } & PdfInfo>(
-      `/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
-      { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: cached?.driveFileId }) },
-    );
-    if (result.driveFileId) await deleteCachedFile(result.driveFileId);
-    return result;
-  },
+  deleteFile: deleteFileOptimistically,
 
-  moveFile: async (fromFolder: string, toFolder: string, filename: string) => {
-    const cached = (await listCachedFiles(fromFolder))?.find((file) => file.name === filename);
-    const result = await request<{ ok: boolean } & PdfInfo>('/folders/move', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromFolder, toFolder, filename, driveFileId: cached?.driveFileId }),
-    });
-    if (result.driveFileId) await moveCachedFile(result.driveFileId, toFolder);
-    return result;
-  },
+  moveFile: moveFileOptimistically,
 
   fileUrl: (folder: string, filename: string, driveFileId?: string | null) => driveFileId
     ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}`
