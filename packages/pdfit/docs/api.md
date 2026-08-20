@@ -14,6 +14,10 @@ Extension fields:
 * `metadataCache`: optional `{ scope, bootstrapUrl }` adapter for account-scoped
   IndexedDB hydration and folder/PDF list reads
 
+When the adapter is configured, tag, progress, viewer-state, and bookmark reads use the
+same cache. Tag changes update IndexedDB before the service request; progress and viewer
+state remote writes use a 750 ms debounce.
+
 ## Client Viewer
 
 `createPdfitViewerApp(extension)` from `@pdfit/pdfit/client/viewer`

@@ -69,6 +69,12 @@ IndexedDB -> folder/PDF UI. A missing cache calls the configured bootstrap endpo
 atomically replaces all cache stores, and then serves normal folder navigation locally.
 The integrated local app does not configure this adapter and retains its HTTP behavior.
 
+Hosted metadata mutation path:
+
+UI mutation -> account-scoped IndexedDB -> service metadata API -> Spreadsheet. Progress
+and viewer state coalesce rapid writes with a short debounce. Bookmark image persistence
+completes through the hosted Drive adapter before the returned metadata is cached.
+
 Bookmark library path:
 
 `front/layout/LNB.tsx` -> `front/pages/BookmarkPage.tsx` ->

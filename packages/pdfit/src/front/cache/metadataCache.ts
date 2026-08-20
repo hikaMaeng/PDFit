@@ -1,4 +1,6 @@
 import type { FolderInfo, PdfInfo } from '../api/folders.js';
+import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
+import type { ViewerStatePayload } from '../api/viewerState.js';
 
 export const PDFIT_METADATA_CACHE_SCHEMA_VERSION = '1';
 
@@ -142,6 +144,89 @@ async function readAll<T>(scope: string, storeName: string): Promise<T[]> {
     return await requestResult<T[]>(transaction.objectStore(storeName).getAll());
   } finally { database.close(); }
 }
+
+async function cachedScope(): Promise<string | null> { return ensureHydrated(); }
+
+async function mutateStores(scope: string, stores: string[], action: (transaction: IDBTransaction) => Promise<void>): Promise<void> {
+  const database = await openDatabase(scope);
+  try { const transaction = database.transaction(stores, 'readwrite'); await action(transaction); await transactionDone(transaction); }
+  finally { database.close(); }
+}
+
+async function cachedFile(scope: string, folderName: string, filename: string): Promise<CachedPdfRow | null> {
+  const [folders, pdfs] = await Promise.all([readAll<CachedFolderRow>(scope, 'folders'), readAll<CachedPdfRow>(scope, 'pdfs')]);
+  const folder = folders.find((row) => !row.trashed && row.name === folderName);
+  return pdfs.find((row) => !row.trashed && row.parentFolderId === folder?.driveFolderId && row.name === filename) ?? null;
+}
+
+type CachedTag = { tagId: string; name: string; color: string; createdAt: string; updatedAt: string; deletedAt: string };
+type CachedRelation = { relationId: string; driveFileId: string; tagId: string; createdAt: string; updatedAt: string; deletedAt: string };
+
+export async function listCachedTagSummaries(): Promise<Array<{ name: string; bookCount: number; color: string }> | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const [tags, relations] = await Promise.all([readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags')]);
+  return tags.filter((tag) => !tag.deletedAt).map((tag) => ({ name: tag.name, color: tag.color, bookCount: new Set(relations.filter((row) => !row.deletedAt && row.tagId === tag.tagId).map((row) => row.driveFileId)).size }));
+}
+
+export async function listCachedBookTags(folder: string, filename: string): Promise<string[] | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const file = await cachedFile(scope, folder, filename); if (!file) return [];
+  const [tags, relations] = await Promise.all([readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags')]);
+  const ids = new Set(relations.filter((row) => row.driveFileId === file.driveFileId && !row.deletedAt).map((row) => row.tagId));
+  return tags.filter((tag) => ids.has(tag.tagId) && !tag.deletedAt).map((tag) => tag.name).sort();
+}
+
+export async function listCachedFolderTags(folder: string): Promise<Record<string, string[]> | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const files = await listCachedFiles(folder) ?? []; const result: Record<string, string[]> = {};
+  for (const file of files) result[file.name] = await listCachedBookTags(folder, file.name) ?? [];
+  return result;
+}
+
+export async function mutateCachedTag(folder: string, filename: string, name: string, deleted: boolean): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  const file = await cachedFile(scope, folder, filename); if (!file) return;
+  await mutateStores(scope, ['tags', 'pdfTags'], async (transaction) => {
+    const tags = await requestResult<CachedTag[]>(transaction.objectStore('tags').getAll());
+    const existing = tags.find((tag) => tag.name === name); const timestamp = new Date().toISOString();
+    const tag = existing ?? { tagId: crypto.randomUUID(), name, color: '#3b82f6', createdAt: timestamp, updatedAt: timestamp, deletedAt: '' };
+    transaction.objectStore('tags').put({ ...tag, deletedAt: '' });
+    const relations = await requestResult<CachedRelation[]>(transaction.objectStore('pdfTags').getAll());
+    const relation = relations.find((row) => row.driveFileId === file.driveFileId && row.tagId === tag.tagId);
+    transaction.objectStore('pdfTags').put({ relationId: relation?.relationId ?? crypto.randomUUID(), driveFileId: file.driveFileId, tagId: tag.tagId, createdAt: relation?.createdAt ?? timestamp, updatedAt: timestamp, deletedAt: deleted ? timestamp : '' });
+  });
+}
+
+export async function deleteCachedTag(name: string): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  await mutateStores(scope, ['tags'], async (transaction) => { const store = transaction.objectStore('tags'); const tags = await requestResult<CachedTag[]>(store.getAll()); const tag = tags.find((row) => row.name === name); if (tag) store.put({ ...tag, deletedAt: new Date().toISOString() }); });
+}
+
+export async function updateCachedTagColor(name: string, color: string): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  await mutateStores(scope, ['tags'], async (transaction) => { const store = transaction.objectStore('tags'); const tags = await requestResult<CachedTag[]>(store.getAll()); const tag = tags.find((row) => row.name === name); if (tag) store.put({ ...tag, color, updatedAt: new Date().toISOString(), deletedAt: '' }); });
+}
+
+export async function getCachedProgress(folder: string, filename: string): Promise<number | null> { const scope = await cachedScope(); if (!scope) return null; const file = await cachedFile(scope, folder, filename); if (!file) return 1; const rows = await readAll<{ driveFileId: string; lastPage: number }>(scope, 'progress'); return rows.find((row) => row.driveFileId === file.driveFileId)?.lastPage ?? 1; }
+export async function saveCachedProgress(folder: string, filename: string, page: number): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename); if (!file) return; await mutateStores(scope, ['progress'], async (transaction) => { transaction.objectStore('progress').put({ driveFileId: file.driveFileId, lastPage: page, updatedAt: new Date().toISOString() }); }); }
+export async function getCachedViewerState(folder: string, filename: string): Promise<ViewerStatePayload | null | undefined> { const scope = await cachedScope(); if (!scope) return undefined; const file = await cachedFile(scope, folder, filename); if (!file) return null; const rows = await readAll<ViewerStatePayload & { driveFileId: string }>(scope, 'viewerStates'); const row = rows.find((value) => value.driveFileId === file.driveFileId); if (!row) return null; const { driveFileId: _, ...state } = row; return state; }
+export async function saveCachedViewerState(folder: string, filename: string, state: ViewerStatePayload): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename); if (!file) return; await mutateStores(scope, ['viewerStates'], async (transaction) => { transaction.objectStore('viewerStates').put({ driveFileId: file.driveFileId, ...state, updatedAt: new Date().toISOString() }); }); }
+
+type CachedBookmark = Record<string, unknown> & { bookmarkId: string; driveFileId: string; deletedAt: string };
+export async function listCachedBookmarks(folder?: string, filename?: string): Promise<BookmarkRecord[] | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const [rows, pdfs, folders] = await Promise.all([readAll<CachedBookmark>(scope, 'bookmarks'), readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders')]);
+  const result: BookmarkRecord[] = [];
+  for (const row of rows) {
+    if (row.deletedAt) continue;
+    const pdf = pdfs.find((value) => value.driveFileId === row.driveFileId); const parent = folders.find((value) => value.driveFolderId === pdf?.parentFolderId);
+    if (!pdf || !parent || (folder && parent.name !== folder) || (filename && pdf.name !== filename)) continue;
+    result.push({ id: row.bookmarkId, folder: parent.name, filename: pdf.name, pageIndex: Number(row.pageIndex), rect: { x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height) }, borderColor: String(row.borderColor), fillColor: row.fillColor ? String(row.fillColor) : null, fillOpacity: Number(row.fillOpacity), comment: row.memo ? String(row.memo) : null, imageMimeType: String(row.imageMimeType || 'image/jpeg') as BookmarkRecord['imageMimeType'], imageUrl: `/api/bookmark-assets/${encodeURIComponent(row.bookmarkId)}`, createdAt: String(row.createdAt), updatedAt: String(row.updatedAt) });
+  }
+  return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+export async function cacheBookmarkRecord(record: BookmarkRecord): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, record.folder, record.filename); if (!file) return; await mutateStores(scope, ['bookmarks'], async (transaction) => { transaction.objectStore('bookmarks').put({ bookmarkId: record.id, driveFileId: file.driveFileId, pageIndex: record.pageIndex, x: record.rect.x, y: record.rect.y, width: record.rect.width, height: record.rect.height, borderColor: record.borderColor, fillColor: record.fillColor ?? '', fillOpacity: record.fillOpacity, memo: record.comment ?? '', imageDriveId: '', imageMimeType: record.imageMimeType, createdAt: record.createdAt, updatedAt: record.updatedAt, deletedAt: '' }); }); }
+export async function deleteCachedBookmark(id: string): Promise<void> { const scope = await cachedScope(); if (!scope) return; await mutateStores(scope, ['bookmarks'], async (transaction) => { const store = transaction.objectStore('bookmarks'); const row = await requestResult<CachedBookmark | undefined>(store.get(id)); if (row) store.put({ ...row, deletedAt: new Date().toISOString() }); }); }
 
 export async function listCachedFolders(): Promise<FolderInfo[] | null> {
   const scope = await ensureHydrated();
