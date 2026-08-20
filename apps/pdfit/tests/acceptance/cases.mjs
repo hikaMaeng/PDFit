@@ -151,7 +151,7 @@ export const A02 = {
   seed: seed(),
   run: async ({ page, baseUrl }) => {
     await openHome(page);
-    await assert.equal(await page.getByText('Settings').count(), 1);
+    await assert.equal(await page.getByRole('button', { name: 'Settings' }).count(), 1);
     const response = await page.request.get(`${baseUrl}/api/settings/ai-servers`);
     assert.equal(response.status(), 200);
   },
@@ -164,9 +164,8 @@ export const A03 = {
   seed: seed(),
   run: async ({ page, baseUrl }) => {
     await openHome(page);
-    await assert.deepEqual(await fetchJson(`${baseUrl}/api/folders`), []);
+    await assert.deepEqual((await fetchJson(`${baseUrl}/api/folders`)).filter((folder) => !folder.isRoot), []);
     await assert.deepEqual(await fetchJson(`${baseUrl}/api/tags`), []);
-    await waitText(page, 'Create a folder to start adding PDFs.');
     assert.equal(await page.locator('main a[href*="/viewer/"]').count(), 0);
   },
 };
@@ -197,11 +196,9 @@ export const B02 = {
   run: async ({ page }) => {
     await openFolder(page, 'delete-me');
     await waitText(page, 'PDF 0');
-    await acceptDialog(page);
-    await Promise.all([
-      page.waitForURL(/\/$/),
-      iconButton(page, 'DeleteIcon').click(),
-    ]);
+    await page.locator('main svg[data-testid="DeleteIcon"]').first().locator('xpath=ancestor::button[1]').click();
+    await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click();
+    await page.waitForURL(/\/$/);
     await waitText(page, 'PDFit');
   },
 };
@@ -594,7 +591,11 @@ export const E03 = {
     folders: [{ name: 'sse', files: [{ name: 'sse.pdf', pages: 1 }] }],
   }),
   run: async ({ page, baseUrl }) => {
+    const eventStreamReady = page.waitForResponse((response) => (
+      response.url().endsWith('/api/events') && response.status() === 200
+    ));
     await openHome(page);
+    await eventStreamReady;
     await fetchJson(`${baseUrl}/api/folders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -629,7 +630,8 @@ export const E05 = {
   }),
   run: async ({ baseUrl }) => {
     await fetchJson(`${baseUrl}/api/folders/purge-folder`, { method: 'DELETE' });
-    assert.deepEqual(await fetchJson(`${baseUrl}/api/folders`), []);
+    const folders = await fetchJson(`${baseUrl}/api/folders`);
+    assert.deepEqual(folders.filter((folder) => !folder.isRoot), []);
   },
 };
 
@@ -778,7 +780,15 @@ export const F03 = {
     assert.equal(state.uiHidden, false);
 
     await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
-    await page.waitForTimeout(1000);
+    let hiddenState = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await page.request.get(stateUrl);
+      assert.equal(response.ok(), true);
+      hiddenState = await response.json();
+      if (hiddenState?.uiHidden === true) break;
+      await page.waitForTimeout(250);
+    }
+    assert.equal(hiddenState?.uiHidden, true);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(600);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);

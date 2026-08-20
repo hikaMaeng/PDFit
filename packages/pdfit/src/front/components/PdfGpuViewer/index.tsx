@@ -215,6 +215,10 @@ export default function PdfGpuViewer({
   useEffect(() => {
     if (!state.activePage) return;
     setPageInput(String(state.activePage));
+  }, [state.activePage]);
+
+  useEffect(() => {
+    if (!state.activePage) return;
     const legacyState: Omit<ViewerStatePayload, 'uiHidden'> = {
       page: state.activePage,
       scale: state.zoom,
@@ -263,11 +267,11 @@ export default function PdfGpuViewer({
     }
   }, [controller, goToPage, initialPage, initialScrollTop, state.loadPhase]);
 
-  const submitPageInput = useCallback(() => {
-    const page = Number.parseInt(pageInput, 10);
+  const submitPageInput = useCallback((value: string) => {
+    const page = Number.parseInt(value, 10);
     if (Number.isFinite(page)) goToPage(page);
     else setPageInput(String(currentPage));
-  }, [currentPage, goToPage, pageInput]);
+  }, [currentPage, goToPage]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!bookmarkPanelOpen || event.button !== 0) return;
@@ -329,6 +333,9 @@ export default function PdfGpuViewer({
     const parts = viewerModeParts(next);
     controller.setScrollMode(parts.scrollMode);
     controller.setViewMode(parts.viewMode);
+    // A scroll-mode-only transition does not rebuild @pdfgpu/core's layout.
+    // Reapplying the current fit mode makes page positions match the new mode.
+    controller.setFitMode(controller.getState().fitMode);
   }, [controller]);
 
   if (initError) {
@@ -345,7 +352,7 @@ export default function PdfGpuViewer({
         >
           <Tooltip title="이전 페이지" arrow><span><IconButton size="small" aria-label="이전 페이지" title="이전 페이지" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}><NavigateBeforeIcon fontSize="small" /></IconButton></span></Tooltip>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <TextField size="small" value={pageInput} onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitPageInput(); }} onBlur={submitPageInput} inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': 'page number' }} />
+            <TextField size="small" value={pageInput} onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitPageInput((event.target as HTMLInputElement).value); }} onBlur={(event) => submitPageInput((event.target as HTMLInputElement).value)} inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': 'page number' }} />
             <Typography variant="caption" color="text.secondary">/ {state.pageCount}</Typography>
           </Box>
           <Tooltip title="다음 페이지" arrow><span><IconButton size="small" aria-label="다음 페이지" title="다음 페이지" onClick={() => goToPage(currentPage + 1)} disabled={!state.pageCount || currentPage >= state.pageCount}><NavigateNextIcon fontSize="small" /></IconButton></span></Tooltip>

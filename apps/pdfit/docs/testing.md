@@ -15,6 +15,10 @@ Acceptance is destructive by design and is fail-closed: it refuses the productio
 port `15201` and refuses to reset any repository runtime data directory. Run it
 only against a separately provisioned test Compose project and test database,
 with `PDFIT_ACCEPTANCE_ALLOW_DESTRUCTIVE_RESET=PDFIT-ACCEPTANCE-ISOLATED-RESET`.
+Set `PDFIT_ACCEPTANCE_BASE_URL` to the isolated service URL when invoking the npm
+verification script on platforms that consume `--base-url` as an npm option. Use
+`PDFIT_ACCEPTANCE_REPORT_PATH` to keep disposable verification evidence outside the
+checked-in report directory.
 
 Plans and reports are under `apps/pdfit/tests/plans/` and `apps/pdfit/tests/reports/`. Browser screenshots and machine-readable artifacts belong under `test/YYYYMMDD/<run>/`.
 

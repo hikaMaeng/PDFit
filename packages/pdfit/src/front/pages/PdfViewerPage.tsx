@@ -110,6 +110,12 @@ export default function PdfViewerPage() {
   );
   const uiInitializedRef = useRef(false);
 
+  useEffect(() => {
+    uiInitializedRef.current = false;
+    sessionModel.dispatch({ type: 'setUiHidden', value: false });
+    sessionModel.dispatch({ type: 'setInverted', value: false });
+  }, [fileName, folderName, sessionModel]);
+
   // savedState가 처음 도착하면 uiHidden 복원
   useEffect(() => {
     if (savedState && !uiInitializedRef.current) {
@@ -118,12 +124,6 @@ export default function PdfViewerPage() {
       sessionModel.dispatch({ type: 'setInverted', value: savedState.inverted });
     }
   }, [savedState, sessionModel]);
-
-  useEffect(() => {
-    uiInitializedRef.current = false;
-    sessionModel.dispatch({ type: 'setUiHidden', value: false });
-    sessionModel.dispatch({ type: 'setInverted', value: false });
-  }, [fileName, folderName, sessionModel]);
 
   useEffect(() => {
     let cancelled = false;

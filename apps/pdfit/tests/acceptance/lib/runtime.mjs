@@ -91,7 +91,7 @@ export async function resetPdfitService(root, baseUrl) {
   execFileSync('docker', [
     ...composeArgs, 'exec', '-T', 'pdfit',
     'psql', '-U', 'books', '-d', 'books', '-v', 'ON_ERROR_STOP=1', '-c',
-    'TRUNCATE reading_progress, book_tags, viewer_state, tags RESTART IDENTITY CASCADE',
+    'TRUNCATE bookmarks, reading_progress, book_tags, viewer_state, tags, books, folders RESTART IDENTITY CASCADE',
   ], { cwd: root, stdio: 'ignore' });
 }
 
@@ -99,7 +99,7 @@ export async function waitForService(baseUrl) {
   const started = Date.now();
   while (Date.now() - started < 120_000) {
     try {
-      const response = await fetch(`${baseUrl}/api/folders`);
+      const response = await fetch(`${baseUrl}/api/folders`, { signal: AbortSignal.timeout(5000) });
       if (response.ok) return;
     } catch {
       // retry
@@ -193,7 +193,9 @@ export async function cleanupSeed(baseUrl, seed) {
           `${baseUrl}/api/folders/${encodeURIComponent(folder.name)}/files/${encodeURIComponent(file.name)}`,
           { method: 'DELETE' },
         );
-        if (!deleteFileResponse.ok && deleteFileResponse.status !== 404) {
+        const deleteFileText = deleteFileResponse.ok ? '' : await deleteFileResponse.text();
+        const missingFile = deleteFileResponse.status === 400 && /does not exist|not found/i.test(deleteFileText);
+        if (!deleteFileResponse.ok && deleteFileResponse.status !== 404 && !missingFile) {
           throw new Error(`Failed to clean acceptance file ${folder.name}/${file.name}: ${deleteFileResponse.status}`);
         }
       }
