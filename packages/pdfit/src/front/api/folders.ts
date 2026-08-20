@@ -4,6 +4,8 @@ export interface FolderInfo {
   createdAt: string;
   isRoot: boolean;
   color: string;
+  driveFolderId?: string;
+  parentFolderId?: string;
 }
 
 export interface PdfInfo {
@@ -13,7 +15,7 @@ export interface PdfInfo {
   driveFileId?: string;
 }
 
-import { invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders } from '../cache/metadataCache.js';
+import { deleteCachedFile, deleteCachedFolder, invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders, moveCachedFile, updateCachedFolderColor, upsertCachedFile, upsertCachedFolder } from '../cache/metadataCache.js';
 import { isPdfFile, ResumableSessionExpiredError, uploadPdfToResumableSession } from '../upload/resumableUpload.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -25,11 +27,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 interface ResumableSession { driveFileId: string; sessionUrl: string; expiresAt: string }
 
-async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void): Promise<{ name: string; size: number }[] | null> {
+async function directUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void): Promise<PdfInfo[] | null> {
   if (!(await Promise.all(files.map(isPdfFile))).every(Boolean)) throw new Error('유효한 PDF 파일만 업로드할 수 있습니다.');
   const total = files.reduce((sum, file) => sum + file.size, 0);
   let completedBytes = 0;
-  const results: { name: string; size: number }[] = [];
+  const results: PdfInfo[] = [];
   for (const file of files) {
     let sessionResponse = await fetch(`/api/folders/${encodeURIComponent(folder)}/uploads/resumable`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, size: file.size, mimeType: file.type || 'application/pdf' }) });
     if (sessionResponse.status === 404) return null;
@@ -45,27 +47,27 @@ async function directUpload(folder: string, files: File[], onProgress?: (pct: nu
       }
     }
     onPhase?.('indexing');
-    const completed = await request<{ name: string; size: number }>(`/folders/${encodeURIComponent(folder)}/uploads/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: body.driveFileId, filename: file.name, size: file.size }) });
+    const completed = await request<PdfInfo>(`/folders/${encodeURIComponent(folder)}/uploads/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: body.driveFileId, filename: file.name, size: file.size }) });
+    await upsertCachedFile(folder, completed);
     results.push(completed);
     completedBytes += file.size;
   }
   onPhase?.('refreshing'); onProgress?.(100);
-  await invalidatePdfitMetadataCache();
   return results;
 }
 
 function legacyUpload(folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void) {
-  return new Promise<{ name: string; size: number }[]>((resolve, reject) => {
+  return new Promise<PdfInfo[]>((resolve, reject) => {
     const form = new FormData();
     files.forEach((f) => form.append('files', f));
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/folders/${encodeURIComponent(folder)}/files`);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 70)); };
     xhr.onload = async () => {
-      let data: { error?: string } & { name: string; size: number }[];
+      let data: { error?: string } & PdfInfo[];
       try { data = JSON.parse(xhr.responseText) as typeof data; } catch { reject(new Error(`업로드 실패 (HTTP ${xhr.status})`)); return; }
       if (xhr.status >= 400) reject(new Error(data.error ?? '업로드 실패'));
-      else { onPhase?.('indexing'); onProgress?.(85); await invalidatePdfitMetadataCache(); resolve(data as { name: string; size: number }[]); }
+      else { onPhase?.('indexing'); onProgress?.(85); await Promise.all((data as PdfInfo[]).map((file) => upsertCachedFile(folder, file))); resolve(data as PdfInfo[]); }
     };
     xhr.onerror = () => reject(new Error('네트워크 오류'));
     xhr.send(form);
@@ -82,28 +84,29 @@ export const foldersApi = {
   },
 
   create: async (name: string) => {
-    const result = await request<{ name: string }>('/folders', {
+    const result = await request<FolderInfo>('/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    await invalidatePdfitMetadataCache();
+    await upsertCachedFolder(result);
     return result;
   },
 
   rename: async (name: string, newName: string) => {
-    const result = await request<{ name: string }>(`/folders/${encodeURIComponent(name)}`, {
+    const current = (await listCachedFolders())?.find((folder) => folder.name === name);
+    const result = await request<FolderInfo>(`/folders/${encodeURIComponent(name)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newName }),
+      body: JSON.stringify({ newName, color: current?.color, createdAt: current?.createdAt }),
     });
-    await invalidatePdfitMetadataCache();
+    await upsertCachedFolder(result);
     return result;
   },
 
   delete: async (name: string) => {
-    const result = await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    await invalidatePdfitMetadataCache();
+    const result = await request<{ ok: boolean; driveFolderId: string }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    await deleteCachedFolder(result.driveFolderId);
     return result;
   },
 
@@ -111,7 +114,7 @@ export const foldersApi = {
     const result = await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}/color`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color }),
     });
-    await invalidatePdfitMetadataCache();
+    await updateCachedFolderColor(name, color);
     return result;
   },
 
@@ -121,21 +124,21 @@ export const foldersApi = {
     (await directUpload(folder, files, onProgress, onPhase)) ?? legacyUpload(folder, files, onProgress, onPhase),
 
   deleteFile: async (folder: string, filename: string) => {
-    const result = await request<{ ok: boolean }>(
+    const result = await request<{ ok: boolean } & PdfInfo>(
       `/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
       { method: 'DELETE' },
     );
-    await invalidatePdfitMetadataCache();
+    if (result.driveFileId) await deleteCachedFile(result.driveFileId);
     return result;
   },
 
   moveFile: async (fromFolder: string, toFolder: string, filename: string) => {
-    const result = await request<{ ok: boolean }>('/folders/move', {
+    const result = await request<{ ok: boolean } & PdfInfo>('/folders/move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fromFolder, toFolder, filename }),
     });
-    await invalidatePdfitMetadataCache();
+    if (result.driveFileId) await moveCachedFile(result.driveFileId, toFolder);
     return result;
   },
 

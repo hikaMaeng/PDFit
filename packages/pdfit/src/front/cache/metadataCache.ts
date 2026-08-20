@@ -250,6 +250,114 @@ export async function listCachedFiles(folderName: string): Promise<PdfInfo[] | n
     .map((pdf) => ({ name: pdf.name, size: pdf.size, modifiedAt: pdf.modifiedTime || pdf.createdTime, driveFileId: pdf.driveFileId }));
 }
 
+async function timedCacheMutation(operation: string, action: (scope: string) => Promise<void>): Promise<void> {
+  const scope = await cachedScope();
+  if (!scope) return;
+  const startedAt = performance.now();
+  await action(scope);
+  console.info('[library-performance]', JSON.stringify({ operation, indexedDbMetadataMs: Math.round(performance.now() - startedAt), fullInvalidation: false }));
+}
+
+/** Adds or replaces one folder without invalidating the hydrated metadata database. */
+export async function upsertCachedFolder(folder: FolderInfo): Promise<void> {
+  if (!folder.driveFolderId) return;
+  const driveFolderId = folder.driveFolderId;
+  await timedCacheMutation('folder.upsert', async (scope) => mutateStores(scope, ['folders'], async (transaction) => {
+    const timestamp = new Date().toISOString();
+    transaction.objectStore('folders').put({
+      driveFolderId,
+      parentFolderId: folder.parentFolderId ?? 'root',
+      name: folder.name,
+      color: folder.color,
+      isRoot: folder.isRoot,
+      trashed: false,
+      createdAt: folder.createdAt || timestamp,
+      updatedAt: timestamp,
+    } satisfies CachedFolderRow);
+  }));
+}
+
+/** Updates one cached folder color while preserving its stable Drive identity. */
+export async function updateCachedFolderColor(name: string, color: string): Promise<void> {
+  await timedCacheMutation('folder.color', async (scope) => mutateStores(scope, ['folders'], async (transaction) => {
+    const store = transaction.objectStore('folders');
+    const rows = await requestResult<CachedFolderRow[]>(store.getAll());
+    const row = rows.find((value) => !value.trashed && value.name === name);
+    if (row) store.put({ ...row, color, updatedAt: new Date().toISOString() });
+  }));
+}
+
+async function deletePdfRelations(transaction: IDBTransaction, driveFileIds: Set<string>): Promise<void> {
+  const relations = await requestResult<CachedRelation[]>(transaction.objectStore('pdfTags').getAll());
+  for (const relation of relations) if (driveFileIds.has(relation.driveFileId)) transaction.objectStore('pdfTags').delete(relation.relationId);
+  const bookmarks = await requestResult<CachedBookmark[]>(transaction.objectStore('bookmarks').getAll());
+  for (const bookmark of bookmarks) if (driveFileIds.has(bookmark.driveFileId)) transaction.objectStore('bookmarks').delete(bookmark.bookmarkId);
+  for (const driveFileId of driveFileIds) {
+    transaction.objectStore('progress').delete(driveFileId);
+    transaction.objectStore('viewerStates').delete(driveFileId);
+  }
+}
+
+/** Removes one folder, its PDFs, and file-scoped metadata in one transaction. */
+export async function deleteCachedFolder(driveFolderId: string): Promise<void> {
+  if (!driveFolderId) return;
+  await timedCacheMutation('folder.delete', async (scope) => mutateStores(scope, ['folders', 'pdfs', 'pdfTags', 'bookmarks', 'progress', 'viewerStates'], async (transaction) => {
+    const pdfStore = transaction.objectStore('pdfs');
+    const pdfs = await requestResult<CachedPdfRow[]>(pdfStore.getAll());
+    const removedIds = new Set(pdfs.filter((pdf) => pdf.parentFolderId === driveFolderId).map((pdf) => pdf.driveFileId));
+    transaction.objectStore('folders').delete(driveFolderId);
+    for (const driveFileId of removedIds) pdfStore.delete(driveFileId);
+    await deletePdfRelations(transaction, removedIds);
+  }));
+}
+
+/** Adds or replaces one PDF under the named cached folder. */
+export async function upsertCachedFile(folderName: string, file: PdfInfo): Promise<void> {
+  if (!file.driveFileId) return;
+  const driveFileId = file.driveFileId;
+  await timedCacheMutation('file.upsert', async (scope) => mutateStores(scope, ['folders', 'pdfs'], async (transaction) => {
+    const folders = await requestResult<CachedFolderRow[]>(transaction.objectStore('folders').getAll());
+    const folder = folders.find((value) => !value.trashed && value.name === folderName);
+    if (!folder) throw new Error(`Cached folder ${folderName} does not exist.`);
+    const timestamp = new Date().toISOString();
+    transaction.objectStore('pdfs').put({
+      driveFileId,
+      parentFolderId: folder.driveFolderId,
+      name: file.name,
+      mimeType: 'application/pdf',
+      size: file.size,
+      md5Checksum: '',
+      driveVersion: '',
+      createdTime: file.modifiedAt,
+      modifiedTime: file.modifiedAt,
+      trashed: false,
+      updatedAt: timestamp,
+    } satisfies CachedPdfRow);
+  }));
+}
+
+/** Removes one PDF and all file-scoped cached metadata. */
+export async function deleteCachedFile(driveFileId: string): Promise<void> {
+  if (!driveFileId) return;
+  await timedCacheMutation('file.delete', async (scope) => mutateStores(scope, ['pdfs', 'pdfTags', 'bookmarks', 'progress', 'viewerStates'], async (transaction) => {
+    transaction.objectStore('pdfs').delete(driveFileId);
+    await deletePdfRelations(transaction, new Set([driveFileId]));
+  }));
+}
+
+/** Reparents one PDF to an existing cached folder. */
+export async function moveCachedFile(driveFileId: string, targetFolderName: string): Promise<void> {
+  if (!driveFileId) return;
+  await timedCacheMutation('file.move', async (scope) => mutateStores(scope, ['folders', 'pdfs'], async (transaction) => {
+    const folders = await requestResult<CachedFolderRow[]>(transaction.objectStore('folders').getAll());
+    const target = folders.find((value) => !value.trashed && value.name === targetFolderName);
+    if (!target) throw new Error(`Cached folder ${targetFolderName} does not exist.`);
+    const store = transaction.objectStore('pdfs');
+    const file = await requestResult<CachedPdfRow | undefined>(store.get(driveFileId));
+    if (file) store.put({ ...file, parentFolderId: target.driveFolderId, updatedAt: new Date().toISOString() });
+  }));
+}
+
 export async function invalidatePdfitMetadataCache(): Promise<void> {
   if (!options || typeof indexedDB === 'undefined') return;
   const scope = options.scope();
