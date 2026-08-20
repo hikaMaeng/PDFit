@@ -10,6 +10,7 @@ export interface PdfInfo {
   name: string;
   size: number;
   modifiedAt: string;
+  driveFileId?: string;
 }
 
 export interface FilesystemService {

@@ -36,6 +36,8 @@ Extension fields:
 * `appVersion`
 * `basename`
 * `themeOptions`
+* `metadataCache`: optional `{ scope, bootstrapUrl }` adapter shared with the service
+  entry so a dedicated viewer can resolve account-scoped IndexedDB state
 
 ## Client Shared
 
@@ -76,7 +78,9 @@ return an account-scoped `MetadataStore` for each request.
 
 `createPdfitRemoteFoldersRouter(adapter, options)` owns folder/file HTTP
 validation, multipart upload handling, byte ranges, and response contracts;
-the adapter owns only remote storage operations.
+the adapter owns only remote storage operations. An adapter may implement
+`getFileById` and `openFileById` to expose `GET /by-id/:driveFileId`; common code
+validates the identifier and Range response while the adapter verifies ownership.
 
 ## PostgreSQL
 

@@ -85,3 +85,9 @@ The optional browser cache owns `meta`, `folders`, `pdfs`, `tags`, `pdfTags`,
 `bookmarks`, `progress`, `viewerStates`, and `syncState`. A schema-versioned hydration
 marker makes subsequent service loads read locally. Cache replacement uses one read-write
 transaction so the UI never observes a partially hydrated snapshot.
+
+PDF list projections retain each row's `driveFileId`. Folder navigation places that ID
+in the viewer URL, and the viewer chooses `/api/folders/by-id/:driveFileId` for PDF bytes.
+The folder/name URL remains a compatibility fallback only when no ID is available. The
+hosted adapter can therefore serve repeated PDF Range reads without rebuilding a Drive
+snapshot or searching by mutable names.

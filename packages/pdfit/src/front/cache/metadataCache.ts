@@ -247,7 +247,7 @@ export async function listCachedFiles(folderName: string): Promise<PdfInfo[] | n
   const folder = folders.find((row) => !row.trashed && row.name === folderName);
   if (!folder) return [];
   return pdfs.filter((pdf) => !pdf.trashed && pdf.parentFolderId === folder.driveFolderId)
-    .map((pdf) => ({ name: pdf.name, size: pdf.size, modifiedAt: pdf.modifiedTime || pdf.createdTime }));
+    .map((pdf) => ({ name: pdf.name, size: pdf.size, modifiedAt: pdf.modifiedTime || pdf.createdTime, driveFileId: pdf.driveFileId }));
 }
 
 export async function invalidatePdfitMetadataCache(): Promise<void> {

@@ -95,6 +95,7 @@ export interface PdfListItemProps {
   filename: string;
   href: string;
   folder: string;
+  driveFileId?: string;
   size?: number;
   modifiedAt?: string;
   secondaryLinkLabel?: string;
@@ -114,6 +115,7 @@ function PdfListItem({
   filename,
   href,
   folder,
+  driveFileId,
   size,
   modifiedAt,
   secondaryLinkLabel,
@@ -157,7 +159,7 @@ function PdfListItem({
         onClick={(event) => {
           if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
-          openViewer({ folder, filename });
+          openViewer({ folder, filename, driveFileId });
         }}
       >
         <PictureAsPdfIcon color="error" sx={{ mt: 0.25, flexShrink: 0 }} />

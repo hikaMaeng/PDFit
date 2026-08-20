@@ -10,6 +10,7 @@ export interface PdfInfo {
   name: string;
   size: number;
   modifiedAt: string;
+  driveFileId?: string;
 }
 
 import { invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders } from '../cache/metadataCache.js';
@@ -109,6 +110,7 @@ export const foldersApi = {
     return result;
   },
 
-  fileUrl: (folder: string, filename: string) =>
-    `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
+  fileUrl: (folder: string, filename: string, driveFileId?: string | null) => driveFileId
+    ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}`
+    : `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
 };

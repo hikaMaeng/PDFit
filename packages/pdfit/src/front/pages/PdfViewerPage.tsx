@@ -37,9 +37,11 @@ export default function PdfViewerPage() {
 
   const folderName = decodeRouteParam(folder);
   const fileName = decodeRouteParam(filename);
-  const requestedPage = Number.parseInt(new URLSearchParams(search).get('page') ?? '', 10);
+  const searchParams = new URLSearchParams(search);
+  const requestedPage = Number.parseInt(searchParams.get('page') ?? '', 10);
+  const driveFileId = searchParams.get('driveFileId');
   const initialPageFromUrl = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : null;
-  const pdfUrl = foldersApi.fileUrl(folderName, fileName);
+  const pdfUrl = foldersApi.fileUrl(folderName, fileName, driveFileId);
   const returnToFolder = useCallback(() => {
     // The dedicated viewer is mounted under BrowserRouter basename="/viewer".
     // Leaving through navigate() would keep that basename and reinterpret the

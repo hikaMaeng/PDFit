@@ -405,8 +405,9 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
               <PdfListItem
                 key={file.name}
                 filename={file.name}
-                href={`/viewer/${encodeURIComponent(folderName)}/${encodeURIComponent(file.name)}`}
+                href={`/viewer/${encodeURIComponent(folderName)}/${encodeURIComponent(file.name)}${file.driveFileId ? `?driveFileId=${encodeURIComponent(file.driveFileId)}` : ''}`}
                 folder={folderName}
+                driveFileId={file.driveFileId}
                 size={file.size}
                 modifiedAt={file.modifiedAt}
                 tags={fileTags[file.name] ?? []}

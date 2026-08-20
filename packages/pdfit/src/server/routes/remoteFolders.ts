@@ -24,6 +24,8 @@ export interface PdfitRemoteLibraryAdapter {
   afterUpload?(request: Request): Promise<void>;
   getFile(request: Request, folder: string, filename: string): Promise<PdfInfo>;
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
+  getFileById?(request: Request, driveFileId: string): Promise<PdfInfo>;
+  openFileById?(request: Request, driveFileId: string, range?: string): Promise<PdfitRemoteFile>;
   deleteFile(request: Request, folder: string, filename: string): Promise<void>;
   moveFile(request: Request, fromFolder: string, toFolder: string, filename: string): Promise<void>;
 }
@@ -36,6 +38,7 @@ export interface PdfitRemoteFoldersRouterOptions {
 }
 
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+const DRIVE_FILE_ID = /^[A-Za-z0-9_-]{1,256}$/;
 
 /** Normalized single HTTP byte range. */
 export interface ByteRange { start: number; end: number; header: string }
@@ -61,6 +64,25 @@ export function parsePdfitByteRange(value: string | undefined, size: number): By
   return { start, end, header: `bytes=${start}-${end}` };
 }
 
+async function sendRemoteFile(
+  req: Request,
+  res: Response,
+  metadata: PdfInfo,
+  openFile: (range?: string) => Promise<PdfitRemoteFile>,
+): Promise<void> {
+  const requestedRange = req.headers.range;
+  const range = requestedRange ? parsePdfitByteRange(requestedRange, metadata.size) : null;
+  if (requestedRange && !range) { res.status(416).setHeader('Content-Range', `bytes */${metadata.size}`).end(); return; }
+  const file = await openFile(range?.header);
+  res.setHeader('Content-Type', file.mimeType ?? 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Last-Modified', file.modifiedAt);
+  if (range) res.status(206).setHeader('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`).setHeader('Content-Length', String(range.end - range.start + 1));
+  else res.setHeader('Content-Length', String(file.size));
+  file.stream.pipe(res);
+}
+
 /** Creates PDFit's folder/file API over a remote content adapter such as Google Drive. */
 export function createPdfitRemoteFoldersRouter(
   adapter: PdfitRemoteLibraryAdapter,
@@ -84,6 +106,15 @@ export function createPdfitRemoteFoldersRouter(
     if (!name) { res.status(400).json({ error: 'Folder name is required.' }); return; }
     try { await adapter.createFolder(req, name); res.json({ name }); }
     catch (error) { sendError(res, 400, 'Folder could not be created.', error); }
+  });
+  router.get('/by-id/:driveFileId', async (req, res) => {
+    const driveFileId = String(req.params.driveFileId ?? '');
+    if (!DRIVE_FILE_ID.test(driveFileId)) { res.status(400).json({ error: 'Invalid Drive file ID.' }); return; }
+    if (!adapter.getFileById || !adapter.openFileById) { res.status(404).json({ error: 'Drive ID lookup is unavailable.' }); return; }
+    try {
+      const metadata = await adapter.getFileById(req, driveFileId);
+      await sendRemoteFile(req, res, metadata, (range) => adapter.openFileById!(req, driveFileId, range));
+    } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
   });
   router.patch('/:name/color', async (req, res) => {
     const color = String(req.body?.color ?? '');
@@ -139,17 +170,7 @@ export function createPdfitRemoteFoldersRouter(
       const folder = sanitizeName(req.params.name);
       const filename = sanitizeName(req.params.filename);
       const metadata = await adapter.getFile(req, folder, filename);
-      const requestedRange = req.headers.range;
-      const range = requestedRange ? parsePdfitByteRange(requestedRange, metadata.size) : null;
-      if (requestedRange && !range) { res.status(416).setHeader('Content-Range', `bytes */${metadata.size}`).end(); return; }
-      const file = await adapter.openFile(req, folder, filename, range?.header);
-      res.setHeader('Content-Type', file.mimeType ?? 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
-      res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Last-Modified', file.modifiedAt);
-      if (range) res.status(206).setHeader('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`).setHeader('Content-Length', String(range.end - range.start + 1));
-      else res.setHeader('Content-Length', String(file.size));
-      file.stream.pipe(res);
+      await sendRemoteFile(req, res, metadata, (range) => adapter.openFile(req, folder, filename, range));
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
   });
   router.delete('/:name/files/:filename', async (req, res) => {

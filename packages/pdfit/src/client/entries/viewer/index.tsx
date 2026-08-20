@@ -5,10 +5,12 @@ import type { PdfitViewerExtension } from '../../shared/runtime.js';
 import { PdfitFrontProvider } from '../../shared/runtime.js';
 import { pdfitBaseTheme } from '../../shared/theme.js';
 import PdfitViewerAppRoutes from '../../viewer/common/App.js';
+import { configurePdfitMetadataCache } from '../../../front/cache/metadataCache.js';
 
 export type { PdfitViewerExtension } from '../../shared/runtime.js';
 
 export function createPdfitViewerApp(extension: PdfitViewerExtension = {}) {
+  configurePdfitMetadataCache(extension.metadataCache);
   const config = {
     appName: extension.appName ?? 'PDFit',
     appVersion: extension.appVersion ?? '0.0.0',
