@@ -128,8 +128,10 @@ export default function PdfGpuViewer({
   const captureStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressCaptureClickRef = useRef(false);
   const recentBookmarkTimerRef = useRef<number | null>(null);
+  const captureNoticeTimerRef = useRef<number | null>(null);
   const [captureDrag, setCaptureDrag] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [captureNotice, setCaptureNotice] = useState<{ message: string; error: boolean } | null>(null);
   const [recentBookmarkId, setRecentBookmarkId] = useState<string | null>(null);
   const [editingBookmark, setEditingBookmark] = useState<BookmarkRecord | null>(null);
   const [bookmarkDraft, setBookmarkDraft] = useState<UpdateBookmarkRequest>({});
@@ -235,6 +237,16 @@ export default function PdfGpuViewer({
 
   useEffect(() => () => {
     if (recentBookmarkTimerRef.current !== null) window.clearTimeout(recentBookmarkTimerRef.current);
+    if (captureNoticeTimerRef.current !== null) window.clearTimeout(captureNoticeTimerRef.current);
+  }, []);
+
+  const showCaptureNotice = useCallback((message: string, error: boolean) => {
+    if (captureNoticeTimerRef.current !== null) window.clearTimeout(captureNoticeTimerRef.current);
+    setCaptureNotice({ message, error });
+    captureNoticeTimerRef.current = window.setTimeout(() => {
+      captureNoticeTimerRef.current = null;
+      setCaptureNotice(null);
+    }, error ? 4200 : 2200);
   }, []);
 
   useEffect(() => {
@@ -309,7 +321,7 @@ export default function PdfGpuViewer({
     suppressCaptureClickRef.current = true;
     setCaptureBusy(true);
     try {
-      const capture = await controller.captureRegion(start, end);
+      const capture = await controller.captureRegion(start, end, { minSize: 8 });
       const created = await onBookmarkCaptured?.(capture);
       if (created) {
         if (recentBookmarkTimerRef.current !== null) window.clearTimeout(recentBookmarkTimerRef.current);
@@ -318,14 +330,23 @@ export default function PdfGpuViewer({
           recentBookmarkTimerRef.current = null;
           setRecentBookmarkId((current) => current === created.id ? null : current);
         }, 3200);
+        showCaptureNotice('북마크가 저장되었습니다.', false);
       }
     } catch (error) {
+      const code = (error as { code?: string }).code;
       const message = error instanceof Error ? error.message : 'Bookmark capture failed';
-      if (message.includes('high-resolution')) window.dispatchEvent(new CustomEvent('pdfit-snackbar', { detail: 'High-resolution capture is loading…' }));
+      const userMessage = code === 'capture-too-small'
+        ? '북마크 영역을 조금 더 크게 드래그하세요.'
+        : code === 'invalid-coordinates'
+          ? '한 페이지 안에서 북마크 영역을 드래그하세요.'
+          : code === 'high-resolution-not-ready' || message.includes('high-resolution')
+            ? '고해상도 페이지를 불러오는 중입니다. 잠시 후 다시 시도하세요.'
+            : `북마크를 저장하지 못했습니다. ${message}`;
+      showCaptureNotice(userMessage, true);
     } finally {
       setCaptureBusy(false);
     }
-  }, [controller, onBookmarkCaptured]);
+  }, [controller, onBookmarkCaptured, showCaptureNotice]);
 
   const openBookmarkEditor = useCallback((bookmark: BookmarkRecord) => {
     setEditingBookmark(bookmark);
@@ -453,7 +474,7 @@ export default function PdfGpuViewer({
           </Box>
         </Box>
       </Box>
-      {captureBusy && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: 'rgba(30,30,30,.9)', color: 'grey.200', fontSize: 12 }}>High-resolution capture loading…</Box>}
+      {(captureBusy || captureNotice) && <Box role={captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: captureNotice?.error ? 'rgba(127,29,29,.95)' : captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{captureNotice?.message ?? '북마크를 저장하는 중입니다…'}</Box>}
       <Dialog data-testid="bookmark-editor" open={Boolean(editingBookmark)} onClose={() => setEditingBookmark(null)} fullWidth maxWidth="xs">
         <DialogTitle>북마크 수정</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>

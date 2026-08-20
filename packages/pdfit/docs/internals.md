@@ -72,7 +72,9 @@ API remains the shared source of truth.
 state only. Region capture is always available on the page surface; the toolbar
 bookmark control changes only the visibility of the bookmark sidebar. A newly
 created bookmark temporarily emphasizes its delete affordance before fading to
-the normal resting opacity. The adapter passes PDF-point absolute rectangles to
+the normal resting opacity. The UI and PDFGPU capture engine share an 8-pixel
+minimum drag threshold, and capture success or failure is always surfaced in the
+viewer. The adapter passes PDF-point absolute rectangles to
 `PdfGpuViewerController.projectOverlays()`. PDFGPU normalizes them using each
 manifest page's point size and returns projections for visible pages only.
 The React overlay is a sibling of the PDFGPU-owned viewport because the core

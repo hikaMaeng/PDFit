@@ -40,7 +40,8 @@ overlay without opening the bookmark sidebar or reloading, PATCH persistence thr
 and a changed overlay bounding box after zoom.
 It must also assert that the toolbar bookmark control only toggles the sidebar
 and that a newly created bookmark's delete affordance fades from emphasized to
-resting opacity.
+resting opacity. Successful capture must show its confirmation message; rejected
+capture must never fail silently.
 It must also assert that the card's page-jump icon navigates to that bookmark's
 page without opening the editor.
 The bookmark-library new-window flow must first persist a different viewer page,

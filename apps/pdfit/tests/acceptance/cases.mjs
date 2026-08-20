@@ -810,7 +810,7 @@ export const F04 = {
     const canvasBox = await canvas.boundingBox();
     assert.notEqual(canvasBox, null);
     const start = { x: canvasBox.x + canvasBox.width * 0.2, y: canvasBox.y + canvasBox.height * 0.2 };
-    const end = { x: canvasBox.x + canvasBox.width * 0.55, y: canvasBox.y + canvasBox.height * 0.42 };
+    const end = { x: start.x + 16, y: start.y + 16 };
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 5 });
@@ -818,6 +818,7 @@ export const F04 = {
     const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
     await page.mouse.up();
     assert.equal((await createdResponse).ok(), true);
+    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
 
     const overlay = page.getByTestId('bookmark-page-overlay').first();
     await overlay.waitFor({ state: 'visible' });
