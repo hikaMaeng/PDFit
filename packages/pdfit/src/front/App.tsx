@@ -4,6 +4,7 @@ import { usePdfitFrontConfig } from './context.js';
 import Layout from './layout/Layout';
 import FolderPage from './pages/FolderPage';
 import HomePage from './pages/HomePage';
+import BackgroundSyncIndicator from './components/BackgroundSyncIndicator.js';
 
 const PdfViewerPage = lazy(() => import('./pages/PdfViewerPage.js'));
 const TagPage = lazy(() => import('./pages/TagPage.js'));
@@ -37,17 +38,20 @@ export default function App() {
   useEffect(() => warmRouteModulesAfterFirstPaint(), []);
 
   return (
-    <Routes>
-      <Route path="/viewer/:folder/:filename" element={<PdfViewerPage />} />
-      <Route element={<Layout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/folder/:name" element={<FolderPage />} />
-        <Route path="/bookmarks" element={<BookmarkPage />} />
-        <Route path="/tag/:name" element={<TagPage />} />
-        {extraRoutes.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-      </Route>
-    </Routes>
+    <>
+      <BackgroundSyncIndicator />
+      <Routes>
+        <Route path="/viewer/:folder/:filename" element={<PdfViewerPage />} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/folder/:name" element={<FolderPage />} />
+          <Route path="/bookmarks" element={<BookmarkPage />} />
+          <Route path="/tag/:name" element={<TagPage />} />
+          {extraRoutes.map((route) => (
+            <Route key={route.path} path={route.path} element={route.element} />
+          ))}
+        </Route>
+      </Routes>
+    </>
   );
 }

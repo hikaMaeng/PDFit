@@ -3,6 +3,7 @@ import { createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks
 import { cacheBookmarkRecord, deleteCachedBookmark } from '../cache/metadataCache.js';
 import { publishBookmarkChange } from './bookmarkEvents.js';
 import { beginMutationPerformance } from './mutationPerformance.js';
+import { backgroundSyncModel } from './backgroundSyncModel.js';
 
 export interface BookmarkMutationHooks {
   upsert(record: BookmarkRecord): void;
@@ -43,6 +44,8 @@ export function createBookmarkOptimistically(
     updatedAt: timestamp,
   };
   const timing = beginMutationPerformance('bookmark.create', operationId);
+  const retry = () => { createBookmarkOptimistically(folder, filename, { ...input, operationId }, hooks); };
+  const syncId = backgroundSyncModel.begin('Saving bookmark', retry);
   hooks.upsert(optimistic);
   publishBookmarkChange({ folder, filename, kind: 'created', record: optimistic });
   timing.mark('ui');
@@ -52,6 +55,7 @@ export function createBookmarkOptimistically(
       await cacheBookmarkRecord(optimistic);
       timing.mark('indexeddb');
       timing.mark('request-start');
+      backgroundSyncModel.syncing(syncId);
       const saved = await createBookmark(folder, filename, { ...input, operationId });
       timing.mark('server-response');
       await deleteCachedBookmark(optimistic.id);
@@ -60,13 +64,14 @@ export function createBookmarkOptimistically(
       publishBookmarkChange({ folder, filename, kind: 'deleted', id: optimistic.id });
       publishBookmarkChange({ folder, filename, kind: 'created', record: saved });
       timing.mark('sync-complete');
+      backgroundSyncModel.complete(syncId);
       return true;
     } catch (error) {
       await deleteCachedBookmark(optimistic.id).catch(() => undefined);
       hooks.remove(optimistic.id);
       publishBookmarkChange({ folder, filename, kind: 'deleted', id: optimistic.id });
-      const retry = () => { createBookmarkOptimistically(folder, filename, { ...input, operationId }, hooks); };
       hooks.failed?.(errorMessage(error, '북마크를 저장하지 못했습니다.'), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 저장하지 못했습니다.'), retry);
       timing.mark('failed');
       return false;
     }
@@ -81,6 +86,8 @@ export function updateBookmarkOptimistically(
 ): BookmarkMutationResult {
   const optimistic = { ...current, ...update, updatedAt: new Date().toISOString() };
   const timing = beginMutationPerformance('bookmark.update');
+  const retry = () => { updateBookmarkOptimistically(current, update, hooks); };
+  const syncId = backgroundSyncModel.begin('Saving bookmark', retry);
   hooks.upsert(optimistic);
   publishBookmarkChange({ folder: current.folder, filename: current.filename, kind: 'updated', record: optimistic });
   timing.mark('ui');
@@ -89,18 +96,20 @@ export function updateBookmarkOptimistically(
       await cacheBookmarkRecord(optimistic);
       timing.mark('indexeddb');
       timing.mark('request-start');
+      backgroundSyncModel.syncing(syncId);
       const saved = await updateBookmark(current.id, update);
       timing.mark('server-response');
       hooks.upsert(saved);
       publishBookmarkChange({ folder: saved.folder, filename: saved.filename, kind: 'updated', record: saved });
       timing.mark('sync-complete');
+      backgroundSyncModel.complete(syncId);
       return true;
     } catch (error) {
       await cacheBookmarkRecord(current).catch(() => undefined);
       hooks.upsert(current);
       publishBookmarkChange({ folder: current.folder, filename: current.filename, kind: 'updated', record: current });
-      const retry = () => { updateBookmarkOptimistically(current, update, hooks); };
       hooks.failed?.(errorMessage(error, '북마크를 수정하지 못했습니다.'), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 수정하지 못했습니다.'), retry);
       timing.mark('failed');
       return false;
     }
@@ -110,6 +119,8 @@ export function updateBookmarkOptimistically(
 
 export function deleteBookmarkOptimistically(record: BookmarkRecord, hooks: BookmarkMutationHooks): BookmarkMutationResult {
   const timing = beginMutationPerformance('bookmark.delete');
+  const retry = () => { deleteBookmarkOptimistically(record, hooks); };
+  const syncId = backgroundSyncModel.begin('Deleting bookmark', retry);
   hooks.remove(record.id);
   publishBookmarkChange({ folder: record.folder, filename: record.filename, kind: 'deleted', id: record.id });
   timing.mark('ui');
@@ -118,16 +129,18 @@ export function deleteBookmarkOptimistically(record: BookmarkRecord, hooks: Book
       await deleteCachedBookmark(record.id);
       timing.mark('indexeddb');
       timing.mark('request-start');
+      backgroundSyncModel.syncing(syncId);
       await deleteBookmark(record.id);
       timing.mark('server-response');
       timing.mark('sync-complete');
+      backgroundSyncModel.complete(syncId);
       return true;
     } catch (error) {
       await cacheBookmarkRecord(record).catch(() => undefined);
       hooks.upsert(record);
       publishBookmarkChange({ folder: record.folder, filename: record.filename, kind: 'created', record });
-      const retry = () => { deleteBookmarkOptimistically(record, hooks); };
       hooks.failed?.(errorMessage(error, '북마크를 삭제하지 못했습니다.'), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 삭제하지 못했습니다.'), retry);
       timing.mark('failed');
       return false;
     }
