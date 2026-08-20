@@ -22,10 +22,10 @@ export interface PdfitResumableUploadSession {
 /** Storage port used by the shared PDFit folder/file HTTP implementation. */
 export interface PdfitRemoteLibraryAdapter {
   listFolders(request: Request, refresh: boolean): Promise<FolderInfo[]>;
-  createFolder(request: Request, name: string): Promise<void>;
+  createFolder(request: Request, name: string): Promise<FolderInfo>;
   updateFolderColor(request: Request, name: string, color: string): Promise<void>;
-  renameFolder(request: Request, name: string, newName: string): Promise<void>;
-  deleteFolder(request: Request, name: string): Promise<void>;
+  renameFolder(request: Request, name: string, newName: string, color?: string, createdAt?: string): Promise<FolderInfo>;
+  deleteFolder(request: Request, name: string): Promise<{ driveFolderId: string }>;
   listFiles(request: Request, folder: string): Promise<PdfInfo[]>;
   uploadFile(request: Request, folder: string, filename: string, body: NodeJS.ReadableStream): Promise<PdfInfo>;
   createResumableUploadSession?(request: Request, folder: string, filename: string, size: number): Promise<PdfitResumableUploadSession>;
@@ -35,8 +35,8 @@ export interface PdfitRemoteLibraryAdapter {
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
   getFileById?(request: Request, driveFileId: string): Promise<PdfInfo>;
   openFileById?(request: Request, driveFileId: string, range?: string): Promise<PdfitRemoteFile>;
-  deleteFile(request: Request, folder: string, filename: string): Promise<void>;
-  moveFile(request: Request, fromFolder: string, toFolder: string, filename: string): Promise<void>;
+  deleteFile(request: Request, folder: string, filename: string): Promise<PdfInfo>;
+  moveFile(request: Request, fromFolder: string, toFolder: string, filename: string): Promise<PdfInfo>;
 }
 
 /** Runtime controls for the shared remote-library router. */
@@ -113,7 +113,7 @@ export function createPdfitRemoteFoldersRouter(
   router.post('/', async (req, res) => {
     const name = sanitizeName(String(req.body?.name ?? '').trim());
     if (!name) { res.status(400).json({ error: 'Folder name is required.' }); return; }
-    try { await adapter.createFolder(req, name); res.json({ name }); }
+    try { res.json(await adapter.createFolder(req, name)); }
     catch (error) { sendError(res, 400, 'Folder could not be created.', error); }
   });
   router.get('/by-id/:driveFileId', async (req, res) => {
@@ -153,11 +153,11 @@ export function createPdfitRemoteFoldersRouter(
   router.patch('/:name', async (req, res) => {
     const newName = sanitizeName(String(req.body?.newName ?? '').trim());
     if (!newName) { res.status(400).json({ error: 'New folder name is required.' }); return; }
-    try { await adapter.renameFolder(req, sanitizeName(req.params.name), newName); res.json({ name: newName }); }
+    try { res.json(await adapter.renameFolder(req, sanitizeName(req.params.name), newName, String(req.body?.color ?? ''), String(req.body?.createdAt ?? ''))); }
     catch (error) { sendError(res, 400, 'Folder could not be renamed.', error); }
   });
   router.delete('/:name', async (req, res) => {
-    try { await adapter.deleteFolder(req, sanitizeName(req.params.name)); res.json({ ok: true }); }
+    try { res.json({ ok: true, ...(await adapter.deleteFolder(req, sanitizeName(req.params.name))) }); }
     catch (error) { sendError(res, 400, 'Folder could not be deleted.', error); }
   });
   router.get('/:name/files', async (req, res) => {
@@ -202,7 +202,7 @@ export function createPdfitRemoteFoldersRouter(
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
   });
   router.delete('/:name/files/:filename', async (req, res) => {
-    try { await adapter.deleteFile(req, sanitizeName(req.params.name), sanitizeName(req.params.filename)); res.json({ ok: true }); }
+    try { res.json({ ok: true, ...(await adapter.deleteFile(req, sanitizeName(req.params.name), sanitizeName(req.params.filename))) }); }
     catch (error) { sendError(res, 400, 'File could not be deleted.', error); }
   });
   router.post('/move', async (req, res) => {
@@ -210,7 +210,7 @@ export function createPdfitRemoteFoldersRouter(
     const toFolder = sanitizeName(String(req.body?.toFolder ?? ''));
     const filename = sanitizeName(String(req.body?.filename ?? ''));
     if (!fromFolder || !toFolder || !filename) { res.status(400).json({ error: 'Required parameters are missing.' }); return; }
-    try { await adapter.moveFile(req, fromFolder, toFolder, filename); res.json({ ok: true }); }
+    try { res.json({ ok: true, ...(await adapter.moveFile(req, fromFolder, toFolder, filename)) }); }
     catch (error) { sendError(res, 400, 'File could not be moved.', error); }
   });
   return router;

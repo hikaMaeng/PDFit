@@ -4,6 +4,8 @@ export interface FolderInfo {
   createdAt: string;
   isRoot: boolean;
   color: string;
+  driveFolderId?: string;
+  parentFolderId?: string;
 }
 
 export interface PdfInfo {
