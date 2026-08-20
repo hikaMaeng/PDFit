@@ -72,3 +72,7 @@ and captures top/middle browser screenshots under `test/YYYYMMDD/<run>/`.
 The performance scenario must load a real PDF, assert page shells and canvas
 output, exercise zoom/fit/view-mode controls, and record whether the backend is
 `webgpu` or the supported 2D fallback.
+
+Hosted IndexedDB changes require a real browser engine. The service browser fixture uses
+mock authentication and a mock Spreadsheet snapshot to verify first hydration, reload
+without another request, and reconstruction after database deletion without Google API calls.

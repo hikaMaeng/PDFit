@@ -78,3 +78,10 @@ controller owns and replaces the viewport's child DOM.
 Bookmark assets are served from the current sibling `books/bookmarks` directory
 with the historical `data/bookmarks` directory as a read-only fallback. New
 captures are stored only at the current location.
+
+## Hosted IndexedDB cache
+
+The optional browser cache owns `meta`, `folders`, `pdfs`, `tags`, `pdfTags`,
+`bookmarks`, `progress`, `viewerStates`, and `syncState`. A schema-versioned hydration
+marker makes subsequent service loads read locally. Cache replacement uses one read-write
+transaction so the UI never observes a partially hydrated snapshot.

@@ -62,6 +62,13 @@ Cross-window bookmark change path:
 `BroadcastChannel`/`localStorage` transport -> topic subscribers -> service gallery/LNB and matching
 viewer authoritative bookmark API reload.
 
+Hosted metadata read path:
+
+`apps/service` cache configuration -> `front/cache/metadataCache.ts` -> account-scoped
+IndexedDB -> folder/PDF UI. A missing cache calls the configured bootstrap endpoint once,
+atomically replaces all cache stores, and then serves normal folder navigation locally.
+The integrated local app does not configure this adapter and retains its HTTP behavior.
+
 Bookmark library path:
 
 `front/layout/LNB.tsx` -> `front/pages/BookmarkPage.tsx` ->

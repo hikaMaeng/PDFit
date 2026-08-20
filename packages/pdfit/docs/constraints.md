@@ -12,6 +12,9 @@
   API response contracts must not be copied into an app module.
 * Consumer: `apps/pdfit` service entrypoint. Invariants: `pdfit.language` wins over browser detection, unsupported or absent browser language resolves to English, and the selector updates the same external model before and after authentication.
 * Treat `front/*` as compatibility-only during migration; new app code must not target it.
+* IndexedDB is an optional cache, never metadata authority. Its database name is scoped by
+  authenticated account, and deleting it triggers remote hydration.
+* Local PDFit composition must not enable the hosted IndexedDB metadata adapter.
 * `PdfGpuViewer` owns the PDFium controller/resource lifecycle; React reads its
   stable external snapshot through `useSyncExternalStore` and must not mirror
   viewer state into `useState`.

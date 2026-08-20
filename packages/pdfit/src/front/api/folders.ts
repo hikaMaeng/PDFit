@@ -12,6 +12,8 @@ export interface PdfInfo {
   modifiedAt: string;
 }
 
+import { invalidatePdfitMetadataCache, listCachedFiles, listCachedFolders } from '../cache/metadataCache.js';
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch('/api' + url, options);
   const data = await res.json();
@@ -20,34 +22,49 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const foldersApi = {
-  list: () => request<FolderInfo[]>('/folders'),
+  list: async () => (await listCachedFolders()) ?? request<FolderInfo[]>('/folders'),
 
-  refresh: () => request<FolderInfo[]>('/folders/refresh', { method: 'POST' }),
+  refresh: async () => {
+    await request<FolderInfo[]>('/folders/refresh', { method: 'POST' });
+    await invalidatePdfitMetadataCache();
+    return (await listCachedFolders()) ?? request<FolderInfo[]>('/folders');
+  },
 
-  create: (name: string) =>
-    request<{ name: string }>('/folders', {
+  create: async (name: string) => {
+    const result = await request<{ name: string }>('/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
-    }),
+    });
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
-  rename: (name: string, newName: string) =>
-    request<{ name: string }>(`/folders/${encodeURIComponent(name)}`, {
+  rename: async (name: string, newName: string) => {
+    const result = await request<{ name: string }>(`/folders/${encodeURIComponent(name)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ newName }),
-    }),
+    });
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
-  delete: (name: string) =>
-    request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  delete: async (name: string) => {
+    const result = await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
-  updateColor: (name: string, color: string) =>
-    request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}/color`, {
+  updateColor: async (name: string, color: string) => {
+    const result = await request<{ ok: boolean }>(`/folders/${encodeURIComponent(name)}/color`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color }),
-    }),
+    });
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
-  listFiles: (folder: string) =>
-    request<PdfInfo[]>(`/folders/${encodeURIComponent(folder)}/files`),
+  listFiles: async (folder: string) => (await listCachedFiles(folder)) ?? request<PdfInfo[]>(`/folders/${encodeURIComponent(folder)}/files`),
 
   upload: (folder: string, files: File[], onProgress?: (pct: number) => void, onPhase?: (phase: 'uploading' | 'indexing' | 'refreshing') => void) =>
     new Promise<{ name: string; size: number }[]>((resolve, reject) => {
@@ -58,7 +75,7 @@ export const foldersApi = {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 70));
       };
-      xhr.onload = () => {
+      xhr.onload = async () => {
         let data: { error?: string } & { name: string; size: number }[];
         try {
           data = JSON.parse(xhr.responseText) as typeof data;
@@ -67,24 +84,30 @@ export const foldersApi = {
           return;
         }
         if (xhr.status >= 400) reject(new Error(data.error ?? '업로드 실패'));
-        else { onPhase?.('indexing'); onProgress?.(85); resolve(data as { name: string; size: number }[]); }
+        else { onPhase?.('indexing'); onProgress?.(85); await invalidatePdfitMetadataCache(); resolve(data as { name: string; size: number }[]); }
       };
       xhr.onerror = () => reject(new Error('네트워크 오류'));
       xhr.send(form);
     }),
 
-  deleteFile: (folder: string, filename: string) =>
-    request<{ ok: boolean }>(
+  deleteFile: async (folder: string, filename: string) => {
+    const result = await request<{ ok: boolean }>(
       `/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
       { method: 'DELETE' },
-    ),
+    );
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
-  moveFile: (fromFolder: string, toFolder: string, filename: string) =>
-    request<{ ok: boolean }>('/folders/move', {
+  moveFile: async (fromFolder: string, toFolder: string, filename: string) => {
+    const result = await request<{ ok: boolean }>('/folders/move', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fromFolder, toFolder, filename }),
-    }),
+    });
+    await invalidatePdfitMetadataCache();
+    return result;
+  },
 
   fileUrl: (folder: string, filename: string) =>
     `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,

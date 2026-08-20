@@ -11,6 +11,8 @@ Extension fields:
 * `extraRoutes`
 * `extraSidebarItems`
 * `themeOptions`
+* `metadataCache`: optional `{ scope, bootstrapUrl }` adapter for account-scoped
+  IndexedDB hydration and folder/PDF list reads
 
 ## Client Viewer
 
