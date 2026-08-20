@@ -196,7 +196,9 @@ export const B02 = {
   run: async ({ page }) => {
     await openFolder(page, 'delete-me');
     await waitText(page, 'PDF 0');
-    await page.locator('main svg[data-testid="DeleteIcon"]').first().locator('xpath=ancestor::button[1]').click();
+    await page.locator('main button:not([disabled])').filter({
+      has: page.locator('svg[data-testid="DeleteIcon"]'),
+    }).click();
     await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click();
     await page.waitForURL(/\/$/);
     await waitText(page, 'PDFit');
