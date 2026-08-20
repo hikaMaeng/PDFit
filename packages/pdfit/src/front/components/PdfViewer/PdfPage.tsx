@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Box, CircularProgress } from '@mui/material';
+import IconButton from '@mui/material/IconButton';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
 
 interface Props {
   page: PDFPageProxy;
@@ -10,11 +13,14 @@ interface Props {
   onVisible?: (pageNumber: number) => void;
   noMargin?: boolean;
   inverted?: boolean;
+  bookmarks?: BookmarkRecord[];
+  onBookmarkDeleted?: (id: string) => Promise<void>;
 }
 
 export default function PdfPage({
   page, scale, pageNumber,
   eager = false, onVisible, noMargin = false, inverted = false,
+  bookmarks = [], onBookmarkDeleted,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +81,8 @@ export default function PdfPage({
   return (
     <Box
       ref={containerRef}
+      data-pdf-page
+      data-page-number={pageNumber}
       sx={{
         position: 'relative',
         width,
@@ -102,6 +110,19 @@ export default function PdfPage({
           <CircularProgress size={24} />
         </Box>
       )}
+      {bookmarks.map((bookmark) => (
+        <Box
+          key={bookmark.id}
+          data-testid="legacy-bookmark-overlay"
+          sx={{ position: 'absolute', left: bookmark.rect.x * scale, top: bookmark.rect.y * scale, width: bookmark.rect.width * scale, height: bookmark.rect.height * scale, boxSizing: 'border-box', border: `2px solid ${bookmark.borderColor}`, bgcolor: bookmark.fillColor ?? 'transparent', opacity: bookmark.fillColor ? bookmark.fillOpacity : 1, pointerEvents: 'none' }}
+        >
+          {onBookmarkDeleted && (
+            <IconButton data-testid="legacy-bookmark-delete" aria-label="북마크 삭제" size="small" color="error" onClick={(event) => { event.stopPropagation(); void onBookmarkDeleted(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.2, bgcolor: 'rgba(10,10,12,.65)', pointerEvents: 'auto', opacity: 0.75 }}>
+              <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
+        </Box>
+      ))}
     </Box>
   );
 }

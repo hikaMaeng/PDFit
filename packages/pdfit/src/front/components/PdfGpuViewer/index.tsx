@@ -429,20 +429,8 @@ export default function PdfGpuViewer({
           <Tooltip title="가로 너비 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitWidth()} color={state.fitMode === 'width' ? 'primary' : 'default'}><FitScreenIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title="세로 높이 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitHeight()} color={state.fitMode === 'height' ? 'primary' : 'default'}><HeightIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title="색상 반전" arrow><IconButton size="small" onClick={onToggleInverted} color={inverted ? 'primary' : 'default'}><InvertColorsIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} arrow>
-            <Button
-              data-testid="bookmark-sidebar-toggle"
-              aria-label={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'}
-              size="small"
-              variant={bookmarkPanelOpen ? 'contained' : 'outlined'}
-              startIcon={<BookmarksIcon fontSize="small" />}
-              onClick={() => setBookmarkPanelOpen((value) => !value)}
-              sx={{ minWidth: 'auto', flexShrink: 0, px: 0.9, py: 0.2, fontSize: '0.68rem', whiteSpace: 'nowrap', '& .MuiButton-startIcon': { mr: 0.4 } }}
-            >
-              북마크
-            </Button>
-          </Tooltip>
-          <Typography variant="caption" color="text.disabled" sx={{ display: { xs: 'none', md: 'block' }, flexShrink: 0, fontSize: '0.65rem', whiteSpace: 'nowrap' }}>페이지를 드래그해 북마크</Typography>
+          <Tooltip title={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} arrow><IconButton data-testid="bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}><BookmarksIcon fontSize="small" /></IconButton></Tooltip>
+          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>페이지 드래그: 북마크</Typography>
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           <ToggleButtonGroup size="small" value={state.scrollMode === 'continuous' ? 'scroll' : state.viewMode === 'spread' ? 'double' : 'single'} exclusive onChange={toggleViewMode} sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}>
             <ToggleButton value="scroll"><Tooltip title="연속 스크롤" arrow><ViewStreamIcon fontSize="small" /></Tooltip></ToggleButton>

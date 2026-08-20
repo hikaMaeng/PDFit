@@ -80,6 +80,10 @@ capture waits for detail readiness and retries once instead of dropping the
 gesture before the metadata request. The adapter passes PDF-point absolute rectangles to
 `PdfGpuViewerController.projectOverlays()`. PDFGPU normalizes them using each
 manifest page's point size and returns projections for visible pages only.
+If PDFGPU initialization fails, the shared PDF.js fallback keeps the same icon-only
+bookmark sidebar control, always-on region capture, overlays, deletion, and API
+callbacks. `?engine=legacy` selects that path explicitly for deterministic browser
+verification.
 The React overlay is a sibling of the PDFGPU-owned viewport because the core
 controller owns and replaces the viewport's child DOM.
 

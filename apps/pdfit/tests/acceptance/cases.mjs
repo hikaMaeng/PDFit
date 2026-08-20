@@ -754,7 +754,6 @@ export const F03 = {
     await page.mouse.click(mainBox.x + mainBox.width / 6, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    assert.match((await page.getByTestId('bookmark-sidebar-toggle').textContent()) ?? '', /북마크/);
     await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
     assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 1);
     await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
@@ -834,11 +833,47 @@ export const F04 = {
   },
 };
 
+export const F05 = {
+  id: 'F05',
+  group: 'F',
+  title: 'Legacy fallback bookmark capture and sidebar control',
+  seed: seed({
+    folders: [{ name: 'viewer-bookmark-legacy', files: [{ name: 'bookmark-legacy.pdf', pages: 2 }] }],
+  }),
+  run: async ({ page }) => {
+    await page.goto('/viewer/viewer-bookmark-legacy/bookmark-legacy.pdf?engine=legacy', { waitUntil: 'domcontentloaded' });
+    await waitText(page, 'bookmark-legacy.pdf');
+    const canvas = page.locator('[data-pdf-page] canvas').first();
+    await canvas.waitFor({ state: 'visible' });
+    await page.getByTestId('legacy-bookmark-sidebar-toggle').waitFor({ state: 'visible' });
+
+    const canvasBox = await canvas.boundingBox();
+    assert.notEqual(canvasBox, null);
+    const start = { x: canvasBox.x + 30, y: canvasBox.y + 30 };
+    const end = { x: start.x + 20, y: start.y + 20 };
+    const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 4 });
+    await page.getByTestId('legacy-bookmark-drag-preview').waitFor({ state: 'visible' });
+    await page.mouse.up();
+    assert.equal((await createdResponse).ok(), true);
+    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'visible' });
+
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByTestId('legacy-bookmark-card').count(), 1);
+    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
+    await page.getByTestId('legacy-bookmark-delete').click();
+    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'detached' });
+  },
+};
+
 export const CASES = [
   A01, A02, A03,
   B01, B02, B03, B04, B05, B06, B07, B08,
   C01, C02, C03, C04,
   D01, D02, D03, D04, D05,
   E01, E02, E03, E04, E05, E06,
-  F01, F02, F03, F04,
+  F01, F02, F03, F04, F05,
 ];

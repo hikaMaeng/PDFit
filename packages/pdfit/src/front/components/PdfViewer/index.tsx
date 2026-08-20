@@ -14,6 +14,8 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
+import BookmarksIcon from '@mui/icons-material/Bookmarks';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PdfPage from './PdfPage';
 import type { ViewerStatePayload } from '../../api/viewerState';
 import {
@@ -22,6 +24,8 @@ import {
   reduceViewerInteraction,
 } from '@pdfgpu/core';
 import type { PdfJsModule } from '../../pdfjs.js';
+import type { PdfGpuCaptureResult } from '@pdfgpu/core';
+import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
 
 const loadPdfJs = () => import('../../pdfjs.js').then(({ loadPdfJs: load }) => load());
 
@@ -59,6 +63,9 @@ interface Props {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
+  bookmarks?: BookmarkRecord[];
+  onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
+  onBookmarkDeleted?: (id: string) => Promise<void>;
 }
 
 export default function PdfViewer({
@@ -74,6 +81,9 @@ export default function PdfViewer({
   onPageChange,
   onStateChange,
   uiHidden = false,
+  bookmarks = [],
+  onBookmarkCaptured,
+  onBookmarkDeleted,
 }: Props) {
   // pages: 희소 배열 (null = 아직 미로드)
   const [pages, setPages] = useState<(PDFPageProxy | null)[]>([]);
@@ -89,6 +99,11 @@ export default function PdfViewer({
   const [error, setError] = useState<string | null>(null);
   // doc이 로드되고 첫 페이지가 준비된 상태 (스프레드 트리거용)
   const [docReady, setDocReady] = useState(false);
+  const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
+  const captureStartRef = useRef<{ pageIndex: number; canvas: HTMLCanvasElement; x: number; y: number; clientX: number; clientY: number } | null>(null);
+  const [captureDrag, setCaptureDrag] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const [captureNotice, setCaptureNotice] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -435,6 +450,67 @@ export default function PdfViewer({
     });
   };
 
+  const capturePoint = useCallback((clientX: number, clientY: number) => {
+    const pageElement = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-pdf-page]');
+    const canvas = pageElement?.querySelector('canvas');
+    if (!(canvas instanceof HTMLCanvasElement)) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    const pageNumber = Number(pageElement?.dataset.pageNumber);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) return null;
+    return { pageIndex: pageNumber - 1, canvas, x: clientX - rect.left, y: clientY - rect.top, clientX, clientY };
+  }, []);
+
+  const handleCapturePointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (!onBookmarkCaptured || captureBusy || event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, input, textarea, select, [role="button"]')) return;
+    const point = capturePoint(event.clientX, event.clientY);
+    if (!point) return;
+    captureStartRef.current = point;
+    setCaptureDrag({ startX: event.clientX, startY: event.clientY, endX: event.clientX, endY: event.clientY });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [captureBusy, capturePoint, onBookmarkCaptured]);
+
+  const handleCapturePointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (!captureStartRef.current) return;
+    setCaptureDrag((current) => current ? { ...current, endX: event.clientX, endY: event.clientY } : current);
+  }, []);
+
+  const handleCapturePointerUp = useCallback(async (event: React.PointerEvent<HTMLElement>) => {
+    const start = captureStartRef.current;
+    captureStartRef.current = null;
+    setCaptureDrag(null);
+    if (!start || !onBookmarkCaptured) return;
+    const end = capturePoint(event.clientX, event.clientY);
+    if (!end || end.canvas !== start.canvas || end.pageIndex !== start.pageIndex || Math.abs(end.x - start.x) < 8 || Math.abs(end.y - start.y) < 8) return;
+    const canvasRect = start.canvas.getBoundingClientRect();
+    const sourceScaleX = start.canvas.width / Math.max(1, canvasRect.width);
+    const sourceScaleY = start.canvas.height / Math.max(1, canvasRect.height);
+    const x = Math.min(start.x, end.x);
+    const y = Math.min(start.y, end.y);
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y);
+    const crop = document.createElement('canvas');
+    crop.width = Math.max(1, Math.round(width * sourceScaleX));
+    crop.height = Math.max(1, Math.round(height * sourceScaleY));
+    crop.getContext('2d')?.drawImage(start.canvas, x * sourceScaleX, y * sourceScaleY, width * sourceScaleX, height * sourceScaleY, 0, 0, crop.width, crop.height);
+    const page = pages[start.pageIndex];
+    if (!page) return;
+    const baseViewport = page.getViewport({ scale: 1 });
+    setCaptureBusy(true);
+    setCaptureNotice(null);
+    try {
+      await onBookmarkCaptured({ pageIndex: start.pageIndex, rect: { x: x / canvasRect.width * baseViewport.width, y: y / canvasRect.height * baseViewport.height, width: width / canvasRect.width * baseViewport.width, height: height / canvasRect.height * baseViewport.height }, imageBase64: crop.toDataURL('image/png').split(',')[1] ?? '', mimeType: 'image/png', quality: 'high-resolution', dpi: Math.round(96 * sourceScaleX) });
+      setCaptureNotice('북마크가 저장되었습니다.');
+    } catch (error) {
+      setCaptureNotice(error instanceof Error ? error.message : '북마크를 저장하지 못했습니다.');
+    } finally {
+      setCaptureBusy(false);
+      window.setTimeout(() => setCaptureNotice(null), 3000);
+    }
+  }, [capturePoint, onBookmarkCaptured, pages]);
+
   // ── 키보드 (화살표, PageUp/Down) ─────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -508,7 +584,14 @@ export default function PdfViewer({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+    <Box
+      data-testid="legacy-bookmark-capture-surface"
+      onPointerDown={handleCapturePointerDown}
+      onPointerMove={handleCapturePointerMove}
+      onPointerUp={(event) => void handleCapturePointerUp(event)}
+      onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }}
+      sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }}
+    >
 
       {/* ── 툴바 (UI 숨김 시 사라짐) ── */}
       {!uiHidden && (
@@ -593,6 +676,13 @@ export default function PdfViewer({
             </IconButton>
           </Tooltip>
 
+          <Tooltip title={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} arrow enterDelay={0} enterNextDelay={0}>
+            <IconButton data-testid="legacy-bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}>
+              <BookmarksIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>페이지 드래그: 북마크</Typography>
+
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
           {/* 뷰 모드 */}
@@ -618,6 +708,24 @@ export default function PdfViewer({
         </Box>
       )}
 
+      {bookmarkPanelOpen && (
+        <Box component="aside" aria-label="Book bookmarks" sx={{ position: 'absolute', zIndex: 8, top: 41, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: '#242426', borderRight: '1px solid rgba(255,255,255,.08)', p: 1 }}>
+          <Typography variant="caption" sx={{ display: 'block', color: 'grey.400', px: 0.5, pb: 0.75 }}>Book bookmarks</Typography>
+          {bookmarks.length === 0 ? <Typography variant="caption" color="grey.600" sx={{ px: 0.5 }}>Drag on a page to capture.</Typography> : bookmarks.map((bookmark) => (
+            <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: '#303034' }}>
+              <Box sx={{ height: 92, position: 'relative', bgcolor: '#161618' }}>
+                <Box component="img" src={bookmark.imageUrl} alt="" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                {onBookmarkDeleted && <IconButton aria-label="북마크 삭제" size="small" color="error" onClick={() => void onBookmarkDeleted(bookmark.id)} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(10,10,12,.72)' }}><DeleteOutlineIcon sx={{ fontSize: 18 }} /></IconButton>}
+              </Box>
+              <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: 'grey.200' }}>p. {bookmark.pageIndex + 1}</Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {captureDrag && <Box data-testid="legacy-bookmark-drag-preview" sx={{ position: 'fixed', zIndex: 15, pointerEvents: 'none', left: Math.min(captureDrag.startX, captureDrag.endX), top: Math.min(captureDrag.startY, captureDrag.endY), width: Math.abs(captureDrag.endX - captureDrag.startX), height: Math.abs(captureDrag.endY - captureDrag.startY), border: '2px dashed #f59e0b', bgcolor: 'rgba(245,158,11,.18)' }} />}
+      {(captureBusy || captureNotice) && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: captureNotice?.includes('저장되었습니다') ? 'rgba(20,83,45,.95)' : captureNotice ? 'rgba(127,29,29,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{captureNotice ?? '북마크를 저장하는 중입니다…'}</Box>}
+
       {/* ── 스크롤 모드 ── */}
       {viewMode === 'scroll' && (
         <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ flex: 1, overflow: 'auto', bgcolor: '#3a3a3a', py: 3, px: 2 }}>
@@ -628,6 +736,7 @@ export default function PdfViewer({
                 {page ? (
                   <PdfPage
                     page={page} scale={scale} pageNumber={pn} inverted={inverted}
+                    bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted}
                   />
                 ) : (
                   /* 아직 로드되지 않은 페이지 플레이스홀더 — 스크롤 위치 유지 */
@@ -659,6 +768,7 @@ export default function PdfViewer({
           {pages[currentPage - 1] ? (
             <PdfPage
               page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
+              bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
             />
           ) : (
             <Box
@@ -684,6 +794,7 @@ export default function PdfViewer({
           {pages[currentPage - 1] ? (
             <PdfPage
               page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
+              bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
             />
           ) : (
             <Box
@@ -701,6 +812,7 @@ export default function PdfViewer({
             pages[currentPage] ? (
               <PdfPage
                 page={pages[currentPage]!} pageNumber={currentPage + 1} {...basePageProps}
+                bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage)} onBookmarkDeleted={onBookmarkDeleted}
               />
             ) : (
               <Box

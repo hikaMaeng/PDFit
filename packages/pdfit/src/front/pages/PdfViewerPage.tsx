@@ -80,7 +80,7 @@ export default function PdfViewerPage() {
   // restoring the saved scroll position afterwards would move away from it.
   const initialScrollTop = initialPage == null ? savedState?.scrollTop : undefined;
 
-  const [viewerEngine, setViewerEngine] = useState<'gpu' | 'legacy'>('gpu');
+  const [viewerEngine, setViewerEngine] = useState<'gpu' | 'legacy'>(searchParams.get('engine') === 'legacy' ? 'legacy' : 'gpu');
   const sessionModelRef = useRef<ViewerSessionModel | null>(null);
   if (!sessionModelRef.current) sessionModelRef.current = new ViewerSessionModel();
   const sessionModel = sessionModelRef.current;
@@ -253,6 +253,9 @@ export default function PdfViewerPage() {
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
           uiHidden={sessionState.uiHidden}
+          bookmarks={bookmarks}
+          onBookmarkCaptured={handleBookmarkCaptured}
+          onBookmarkDeleted={handleBookmarkDeleted}
         />
       ) : (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
