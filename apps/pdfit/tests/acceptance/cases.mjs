@@ -754,6 +754,7 @@ export const F03 = {
     await page.mouse.click(mainBox.x + mainBox.width / 6, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
+    assert.match((await page.getByTestId('bookmark-sidebar-toggle').textContent()) ?? '', /북마크/);
     await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
     assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 1);
     await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();

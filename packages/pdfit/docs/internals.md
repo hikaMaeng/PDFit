@@ -70,7 +70,8 @@ API remains the shared source of truth.
 `front/components/PdfGpuViewer/index.tsx` keeps the persistent bookmark list in
 `front/model/bookmarkModel.ts`; a drag rectangle and edit draft are transient UI
 state only. Region capture is always available on the page surface; the toolbar
-bookmark control changes only the visibility of the bookmark sidebar. A newly
+bookmark control is always rendered as a labeled `북마크` button and changes
+only the visibility of the bookmark sidebar. A newly
 created bookmark temporarily emphasizes its delete affordance before fading to
 the normal resting opacity. The UI and PDFGPU capture engine share an 8-pixel
 minimum drag threshold, and capture success or failure is always surfaced in the
