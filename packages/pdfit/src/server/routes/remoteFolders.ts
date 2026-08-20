@@ -35,8 +35,8 @@ export interface PdfitRemoteLibraryAdapter {
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
   getFileById?(request: Request, driveFileId: string): Promise<PdfInfo>;
   openFileById?(request: Request, driveFileId: string, range?: string): Promise<PdfitRemoteFile>;
-  deleteFile(request: Request, folder: string, filename: string): Promise<PdfInfo>;
-  moveFile(request: Request, fromFolder: string, toFolder: string, filename: string): Promise<PdfInfo>;
+  deleteFile(request: Request, folder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
+  moveFile(request: Request, fromFolder: string, toFolder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
 }
 
 /** Runtime controls for the shared remote-library router. */
@@ -202,15 +202,17 @@ export function createPdfitRemoteFoldersRouter(
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
   });
   router.delete('/:name/files/:filename', async (req, res) => {
-    try { res.json({ ok: true, ...(await adapter.deleteFile(req, sanitizeName(req.params.name), sanitizeName(req.params.filename))) }); }
+    const driveFileId = DRIVE_FILE_ID.test(String(req.body?.driveFileId ?? '')) ? String(req.body.driveFileId) : undefined;
+    try { res.json({ ok: true, ...(await adapter.deleteFile(req, sanitizeName(req.params.name), sanitizeName(req.params.filename), driveFileId)) }); }
     catch (error) { sendError(res, 400, 'File could not be deleted.', error); }
   });
   router.post('/move', async (req, res) => {
     const fromFolder = sanitizeName(String(req.body?.fromFolder ?? ''));
     const toFolder = sanitizeName(String(req.body?.toFolder ?? ''));
     const filename = sanitizeName(String(req.body?.filename ?? ''));
+    const driveFileId = DRIVE_FILE_ID.test(String(req.body?.driveFileId ?? '')) ? String(req.body.driveFileId) : undefined;
     if (!fromFolder || !toFolder || !filename) { res.status(400).json({ error: 'Required parameters are missing.' }); return; }
-    try { res.json({ ok: true, ...(await adapter.moveFile(req, fromFolder, toFolder, filename)) }); }
+    try { res.json({ ok: true, ...(await adapter.moveFile(req, fromFolder, toFolder, filename, driveFileId)) }); }
     catch (error) { sendError(res, 400, 'File could not be moved.', error); }
   });
   return router;
