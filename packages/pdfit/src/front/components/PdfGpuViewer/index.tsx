@@ -30,7 +30,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
-import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
+import BookmarksIcon from '@mui/icons-material/Bookmarks';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
@@ -66,7 +66,7 @@ type Props = {
   onUnavailable?: () => void;
   uiHidden?: boolean;
   bookmarks?: BookmarkRecord[];
-  onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<void>;
+  onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
 };
@@ -126,8 +126,11 @@ export default function PdfGpuViewer({
   const [pageInput, setPageInput] = useState('1');
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
   const captureStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressCaptureClickRef = useRef(false);
+  const recentBookmarkTimerRef = useRef<number | null>(null);
   const [captureDrag, setCaptureDrag] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [recentBookmarkId, setRecentBookmarkId] = useState<string | null>(null);
   const [editingBookmark, setEditingBookmark] = useState<BookmarkRecord | null>(null);
   const [bookmarkDraft, setBookmarkDraft] = useState<UpdateBookmarkRequest>({});
   const [deletingBookmarkId, setDeletingBookmarkId] = useState<string | null>(null);
@@ -230,6 +233,10 @@ export default function PdfGpuViewer({
     onStateChange?.(legacyState);
   }, [inverted, onStateChange, state]);
 
+  useEffect(() => () => {
+    if (recentBookmarkTimerRef.current !== null) window.clearTimeout(recentBookmarkTimerRef.current);
+  }, []);
+
   useEffect(() => {
     const canvas = viewportRef.current?.querySelector('canvas');
     if (canvas) canvas.style.filter = inverted ? 'invert(1)' : 'none';
@@ -274,13 +281,15 @@ export default function PdfGpuViewer({
   }, [currentPage, goToPage]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!bookmarkPanelOpen || event.button !== 0) return;
+    if (!onBookmarkCaptured || captureBusy || event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, input, textarea, select, [role="button"], [role="dialog"]')) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const start = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     captureStartRef.current = start;
     setCaptureDrag({ start, end: start });
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [bookmarkPanelOpen]);
+  }, [captureBusy, onBookmarkCaptured]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const start = captureStartRef.current;
@@ -295,10 +304,21 @@ export default function PdfGpuViewer({
     setCaptureDrag(null);
     if (!start || !controller) return;
     const rect = event.currentTarget.getBoundingClientRect();
+    const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    if (Math.abs(end.x - start.x) < 8 || Math.abs(end.y - start.y) < 8) return;
+    suppressCaptureClickRef.current = true;
     setCaptureBusy(true);
     try {
-      const capture = await controller.captureRegion(start, { x: event.clientX - rect.left, y: event.clientY - rect.top });
-      await onBookmarkCaptured?.(capture);
+      const capture = await controller.captureRegion(start, end);
+      const created = await onBookmarkCaptured?.(capture);
+      if (created) {
+        if (recentBookmarkTimerRef.current !== null) window.clearTimeout(recentBookmarkTimerRef.current);
+        setRecentBookmarkId(created.id);
+        recentBookmarkTimerRef.current = window.setTimeout(() => {
+          recentBookmarkTimerRef.current = null;
+          setRecentBookmarkId((current) => current === created.id ? null : current);
+        }, 3200);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bookmark capture failed';
       if (message.includes('high-resolution')) window.dispatchEvent(new CustomEvent('pdfit-snackbar', { detail: 'High-resolution capture is loading…' }));
@@ -363,7 +383,8 @@ export default function PdfGpuViewer({
           <Tooltip title="가로 너비 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitWidth()} color={state.fitMode === 'width' ? 'primary' : 'default'}><FitScreenIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title="세로 높이 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitHeight()} color={state.fitMode === 'height' ? 'primary' : 'default'}><HeightIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title="색상 반전" arrow><IconButton size="small" onClick={onToggleInverted} color={inverted ? 'primary' : 'default'}><InvertColorsIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="북마크 캡처" arrow><IconButton aria-label="북마크 캡처" title="북마크 캡처" size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}><BookmarkAddIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} arrow><IconButton data-testid="bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}><BookmarksIcon fontSize="small" /></IconButton></Tooltip>
+          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>페이지 드래그: 북마크</Typography>
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           <ToggleButtonGroup size="small" value={state.scrollMode === 'continuous' ? 'scroll' : state.viewMode === 'spread' ? 'double' : 'single'} exclusive onChange={toggleViewMode} sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}>
             <ToggleButton value="scroll"><Tooltip title="연속 스크롤" arrow><ViewStreamIcon fontSize="small" /></Tooltip></ToggleButton>
@@ -394,7 +415,7 @@ export default function PdfGpuViewer({
                 <Box sx={{ height: 92, bgcolor: bookmark.fillColor ?? '#161618', position: 'relative' }}>
                   <Box component="img" src={bookmark.imageUrl} alt="" sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#161618' }} />
                   {bookmark.fillColor && <Box sx={{ position: 'absolute', inset: 0, bgcolor: bookmark.fillColor, opacity: bookmark.fillOpacity, pointerEvents: 'none' }} />}
-                  <IconButton data-testid="viewer-bookmark-card-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, opacity: 0.4, bgcolor: 'rgba(10,10,12,.72)', '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.92)' } }}>
+                  <IconButton data-testid="viewer-bookmark-card-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, opacity: recentBookmarkId === bookmark.id ? 1 : 0.4, transform: recentBookmarkId === bookmark.id ? 'scale(1.08)' : 'scale(1)', transition: recentBookmarkId === bookmark.id ? 'none' : 'opacity 2.4s ease, transform 2.4s ease', bgcolor: 'rgba(10,10,12,.72)', '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.92)' } }}>
                     {deletingBookmarkId === bookmark.id ? <CircularProgress size={16} /> : <DeleteOutlineIcon sx={{ fontSize: 18 }} />}
                   </IconButton>
                 </Box>
@@ -412,7 +433,7 @@ export default function PdfGpuViewer({
             ))}
           </Box>
         )}
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+        <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} onClickCapture={(event) => { if (!suppressCaptureClickRef.current) return; suppressCaptureClickRef.current = false; event.preventDefault(); event.stopPropagation(); }}>
           <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, px: 2, filter: inverted ? 'invert(1)' : 'none' }} />
           <Box data-testid="bookmark-overlay-layer" sx={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
             {overlayProjections.map((overlay, index) => {
@@ -421,16 +442,14 @@ export default function PdfGpuViewer({
               <Tooltip key={`${overlay.pageIndex}-${index}`} title={overlay.comment ?? ''} disableHoverListener={!overlay.comment}>
                 <Box data-testid="bookmark-page-overlay" sx={{ position: 'absolute', left: overlay.left, top: overlay.top, width: overlay.width, height: overlay.height, boxSizing: 'border-box', border: `2px solid ${overlay.borderColor}`, pointerEvents: bookmark ? 'auto' : overlay.comment ? 'auto' : 'none', zIndex: 2 }}>
                   {overlay.fillColor && <Box sx={{ position: 'absolute', inset: 0, bgcolor: overlay.fillColor, opacity: overlay.fillOpacity ?? 0.2, pointerEvents: 'none' }} />}
-                  {bookmark && <IconButton data-testid="bookmark-overlay-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.2, opacity: 0.4, bgcolor: 'rgba(10,10,12,.55)', zIndex: 3, '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.82)' } }}>
+                  {bookmark && <IconButton data-testid="bookmark-overlay-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.2, opacity: recentBookmarkId === bookmark.id ? 1 : 0.4, transform: recentBookmarkId === bookmark.id ? 'scale(1.12)' : 'scale(1)', transformOrigin: 'top right', transition: recentBookmarkId === bookmark.id ? 'none' : 'opacity 2.4s ease, transform 2.4s ease', bgcolor: 'rgba(10,10,12,.55)', zIndex: 3, '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.82)' } }}>
                     {deletingBookmarkId === bookmark.id ? <CircularProgress size={16} /> : <DeleteOutlineIcon sx={{ fontSize: 18 }} />}
                   </IconButton>}
                 </Box>
               </Tooltip>
             );
             })}
-            {bookmarkPanelOpen && <Box data-testid="bookmark-capture-surface" data-viewer-center-toggle-ignore="true" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} sx={{ position: 'absolute', inset: 0, zIndex: 1, cursor: 'crosshair', pointerEvents: 'auto' }}>
-              {captureDrag && <Box data-testid="bookmark-drag-preview" sx={{ position: 'absolute', left: Math.min(captureDrag.start.x, captureDrag.end.x), top: Math.min(captureDrag.start.y, captureDrag.end.y), width: Math.abs(captureDrag.end.x - captureDrag.start.x), height: Math.abs(captureDrag.end.y - captureDrag.start.y), boxSizing: 'border-box', border: '2px dashed #f59e0b', bgcolor: 'rgba(245, 158, 11, 0.18)' }} />}
-            </Box>}
+            {captureDrag && <Box data-testid="bookmark-drag-preview" sx={{ position: 'absolute', left: Math.min(captureDrag.start.x, captureDrag.end.x), top: Math.min(captureDrag.start.y, captureDrag.end.y), width: Math.abs(captureDrag.end.x - captureDrag.start.x), height: Math.abs(captureDrag.end.y - captureDrag.start.y), boxSizing: 'border-box', border: '2px dashed #f59e0b', bgcolor: 'rgba(245, 158, 11, 0.18)' }} />}
           </Box>
         </Box>
       </Box>

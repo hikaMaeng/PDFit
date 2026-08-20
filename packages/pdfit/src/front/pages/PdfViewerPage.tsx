@@ -93,6 +93,7 @@ export default function PdfViewerPage() {
     const saved = await createBookmark(folderName, fileName, { pageIndex: capture.pageIndex, rect: capture.rect, borderColor: '#f59e0b', fillColor: null, fillOpacity: 0.2, comment: null, imageMimeType: capture.mimeType, imageBase64: capture.imageBase64 });
     bookmarkModel.upsert(saved);
     publishBookmarkChange({ folder: folderName, filename: fileName, kind: 'created' });
+    return saved;
   }, [bookmarkModel, fileName, folderName]);
   const handleBookmarkUpdated = useCallback(async (id: string, request: UpdateBookmarkRequest) => {
     bookmarkModel.upsert(await updateBookmark(id, request));

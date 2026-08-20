@@ -754,11 +754,10 @@ export const F03 = {
     await page.mouse.click(mainBox.x + mainBox.width / 6, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 캡처' }).click();
-    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
-    await page.waitForTimeout(120);
-    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 캡처' }).click();
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 1);
+    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
     await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);
@@ -796,11 +795,48 @@ export const F03 = {
   },
 };
 
+export const F04 = {
+  id: 'F04',
+  group: 'F',
+  title: 'Always-available bookmark capture and fresh delete affordance',
+  seed: seed({
+    folders: [{ name: 'viewer-bookmark-always', files: [{ name: 'bookmark-always.pdf', pages: 2 }] }],
+  }),
+  run: async ({ page }) => {
+    await openViewer(page, 'viewer-bookmark-always', 'bookmark-always.pdf');
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
+
+    const canvas = page.locator('canvas').first();
+    const canvasBox = await canvas.boundingBox();
+    assert.notEqual(canvasBox, null);
+    const start = { x: canvasBox.x + canvasBox.width * 0.2, y: canvasBox.y + canvasBox.height * 0.2 };
+    const end = { x: canvasBox.x + canvasBox.width * 0.55, y: canvasBox.y + canvasBox.height * 0.42 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 5 });
+    await page.getByTestId('bookmark-drag-preview').waitFor({ state: 'visible' });
+    const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
+    await page.mouse.up();
+    assert.equal((await createdResponse).ok(), true);
+
+    const overlay = page.getByTestId('bookmark-page-overlay').first();
+    await overlay.waitFor({ state: 'visible' });
+    const deleteButton = overlay.getByTestId('bookmark-overlay-delete');
+    assert.ok(Number(await deleteButton.evaluate((element) => getComputedStyle(element).opacity)) > 0.9);
+    await page.waitForFunction((element) => Number(getComputedStyle(element).opacity) < 0.6, await deleteButton.elementHandle(), { timeout: 7000 });
+
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByTestId('bookmark-card').count(), 1);
+    await deleteButton.click();
+    await overlay.waitFor({ state: 'detached' });
+  },
+};
+
 export const CASES = [
   A01, A02, A03,
   B01, B02, B03, B04, B05, B06, B07, B08,
   C01, C02, C03, C04,
   D01, D02, D03, D04, D05,
   E01, E02, E03, E04, E05, E06,
-  F01, F02, F03,
+  F01, F02, F03, F04,
 ];
