@@ -100,3 +100,10 @@ causes an empty status PUT; the next offset always comes from the remote `Range`
 One expired session may be recreated. Multiple selected files share aggregate progress and
 the IndexedDB snapshot is invalidated only after every completed file has been verified by
 the service. Local adapters continue using the multipart endpoint.
+
+## Hosted incremental refresh
+
+The common browser refresh contract remains `POST /api/folders/refresh`; hosted storage
+implements it with a Spreadsheet `changePageToken`. After the server applies all Drive
+change pages, the browser invalidates and atomically rehydrates IndexedDB. Local filesystem
+refresh behavior is unchanged.
