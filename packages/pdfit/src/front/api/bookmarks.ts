@@ -21,7 +21,10 @@ export async function listBookmarks(folder: string, filename: string): Promise<B
 export async function createBookmark(folder: string, filename: string, request: CreateBookmarkRequest): Promise<BookmarkRecord> {
   const operationId = request.operationId ?? crypto.randomUUID();
   const response = await requestWithMetadataOutbox({ operationId, url: path(folder, filename), method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, operationId }) });
-  if (!response.ok) throw new Error('북마크를 저장하지 못했습니다.');
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ? `북마크를 저장하지 못했습니다: ${payload.error}` : `북마크를 저장하지 못했습니다 (${response.status}).`);
+  }
   const record = await response.json() as BookmarkRecord; await cacheBookmarkRecord(record); return record;
 }
 

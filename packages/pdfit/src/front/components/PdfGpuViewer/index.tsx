@@ -102,6 +102,25 @@ function toLegacyViewMode(state: PdfGpuViewerState): ViewerStatePayload['viewMod
   return state.viewMode === 'spread' ? 'double' : 'single';
 }
 
+function waitForCaptureDetail(controller: PdfGpuViewerController, timeoutMs = 12000): Promise<boolean> {
+  if (controller.getState().renderQuality !== 'preview') return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe: () => void = () => undefined;
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      window.queueMicrotask(() => unsubscribe());
+      resolve(ready);
+    };
+    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    unsubscribe = controller.subscribe((nextState) => {
+      if (nextState.renderQuality !== 'preview') finish(true);
+    });
+  });
+}
+
 export default function PdfGpuViewer({
   url,
   initialPage,
@@ -321,7 +340,13 @@ export default function PdfGpuViewer({
     suppressCaptureClickRef.current = true;
     setCaptureBusy(true);
     try {
-      const capture = await controller.captureRegion(start, end, { minSize: 8 });
+      let capture: PdfGpuCaptureResult;
+      try {
+        capture = await controller.captureRegion(start, end, { minSize: 8 });
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'high-resolution-not-ready' || !await waitForCaptureDetail(controller)) throw error;
+        capture = await controller.captureRegion(start, end, { minSize: 8 });
+      }
       const created = await onBookmarkCaptured?.(capture);
       if (created) {
         if (recentBookmarkTimerRef.current !== null) window.clearTimeout(recentBookmarkTimerRef.current);

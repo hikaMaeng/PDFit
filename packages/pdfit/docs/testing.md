@@ -42,6 +42,8 @@ It must also assert that the toolbar bookmark control only toggles the sidebar
 and that a newly created bookmark's delete affordance fades from emphasized to
 resting opacity. Successful capture must show its confirmation message; rejected
 capture must never fail silently.
+Remote-backed viewer verification must cover capture while the page is still in
+preview quality and confirm that detail readiness resumes the pending capture.
 It must also assert that the card's page-jump icon navigates to that bookmark's
 page without opening the editor.
 The bookmark-library new-window flow must first persist a different viewer page,
