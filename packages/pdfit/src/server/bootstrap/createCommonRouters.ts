@@ -41,13 +41,14 @@ export function createPdfitMetadataRouterMounts(
 export function createPdfitCommonRouterAssembly(options: {
   metadataStore: MetadataStore;
   booksRoot: string;
+  bookmarkAssetRoot?: string;
   booksRootName?: string;
   watcherEnabled?: boolean;
   maxUploadBytes?: number;
 }): PdfitCommonRouterAssembly {
   const filesystem = createFilesystemService(options.booksRoot, options.booksRootName);
   filesystem.ensureBooksRoot();
-  const bookmarkAssetRoot = path.resolve(options.booksRoot, '..', 'bookmarks');
+  const bookmarkAssetRoot = path.resolve(options.bookmarkAssetRoot ?? path.resolve(options.booksRoot, '..', 'bookmarks'));
   const legacyBookmarkAssetRoot = path.resolve(options.booksRoot, '..', '..', 'bookmarks');
 
   const watcher = createWatcher({

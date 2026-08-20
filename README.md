@@ -89,7 +89,11 @@ npm run deploy
 
 Open [http://127.0.0.1:15201](http://127.0.0.1:15201).
 
-The repository Compose contract mounts the configured library into `/app/data/books`. Set the host library/volume values in the repository's local environment before deploying; do not commit credentials or host-specific paths.
+The repository Compose contract mounts the configured library into `/app/data/books`.
+Set `PDFIT_BOOKMARKS_PATH` in the repository's local `.env` to a writable local
+directory; Compose mounts it separately at `/app/data/bookmarks`, so bookmark
+captures never depend on the PDF library's NAS/CIFS permissions. Do not commit
+credentials or host-specific paths.
 
 Bookmark images are not stored in PostgreSQL as Base64. Base64 is the capture
 transport between the viewer and server; the server converts it to a quality-90

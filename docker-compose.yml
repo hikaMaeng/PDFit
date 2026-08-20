@@ -8,12 +8,14 @@ services:
     environment:
       BOOKS_ROOT: /app/data/books/${PDFIT_BOOKS_SUBPATH:-}
       BOOKS_ROOT_NAME: ${PDFIT_BOOKS_ROOT_NAME:-PDF library}
+      BOOKMARKS_ROOT: /app/data/bookmarks
       MAX_UPLOAD_MB: ${PDFIT_MAX_UPLOAD_MB:-2048}
     ports:
       - "15201:15201"
     volumes:
       - ./apps/pdfit/docker/volumes/data:/app/data
       - books:/app/data/books
+      - ${PDFIT_BOOKMARKS_PATH:-./apps/pdfit/docker/volumes/data/bookmarks}:/app/data/bookmarks
     restart: unless-stopped
     networks:
       - pdfit

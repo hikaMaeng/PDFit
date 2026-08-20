@@ -11,6 +11,7 @@ import {
 export interface PdfitServerOptions {
   metadataStore?: MetadataStore;
   booksRoot?: string;
+  bookmarkAssetRoot?: string;
   booksRootName?: string;
   staticDir: string;
   logLabel: string;
@@ -54,6 +55,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
     return createPdfitCommonRouterAssembly({
       metadataStore,
       booksRoot,
+      bookmarkAssetRoot: options.bookmarkAssetRoot,
       booksRootName,
       watcherEnabled,
       maxUploadBytes: options.maxUploadBytes,

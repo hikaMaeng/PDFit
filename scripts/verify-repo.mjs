@@ -69,6 +69,8 @@ assert(compose.stdout.includes('pdfit:'), 'compose config missing integrated pdf
 assert(compose.stdout.includes('published: "15201"') && compose.stdout.includes('target: 15201'), 'compose config missing integrated port');
 assert(!compose.stdout.includes('pdfit-free') && !compose.stdout.includes('pdfit-pro'), 'compose config still exposes split services');
 assert(compose.stdout.includes('service:') && compose.stdout.includes('target: 15202'), 'compose config missing hosted service');
+assert(compose.stdout.includes('BOOKMARKS_ROOT: /app/data/bookmarks'), 'compose config missing local bookmark root');
+assert(compose.stdout.includes('target: /app/data/bookmarks'), 'compose config missing local bookmark bind mount');
 
 const parity = spawnSync(process.execPath, ['scripts/verify-service-parity.mjs'], { cwd: root, encoding: 'utf-8' });
 assert(parity.status === 0, parity.stderr || parity.stdout || 'service parity check failed');

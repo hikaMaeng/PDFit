@@ -45,6 +45,7 @@ RUN chmod +x /entrypoint.sh
 ENV SERVER_PORT=15201
 ENV BOOKS_ROOT=/app/data/books
 ENV BOOKS_ROOT_NAME=이북
+ENV BOOKMARKS_ROOT=/app/data/bookmarks
 ENV PGDATA=/app/data/pgvector
 ENV PGDATABASE=books
 ENV PGHOST=127.0.0.1
