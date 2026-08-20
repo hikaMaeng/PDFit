@@ -11,7 +11,8 @@ function validRequest(value: unknown): value is CreateBookmarkRequest {
     Number.isFinite(body.rect.x + body.rect.width) && Number.isFinite(body.rect.y + body.rect.height) &&
     validColor(body.borderColor) && (body.fillColor == null || validColor(body.fillColor)) &&
     (body.fillOpacity == null || (body.fillOpacity >= 0 && body.fillOpacity <= 1)) &&
-    (body.imageMimeType === 'image/png' || body.imageMimeType === 'image/webp') && typeof body.imageBase64 === 'string' && body.imageBase64.length > 0;
+    (body.imageMimeType === 'image/png' || body.imageMimeType === 'image/webp') && typeof body.imageBase64 === 'string' && body.imageBase64.length > 0 &&
+    (body.operationId == null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.operationId));
 }
 
 export function createBookmarksRouter(storeResolver: MetadataStoreResolver): ExpressRouter {

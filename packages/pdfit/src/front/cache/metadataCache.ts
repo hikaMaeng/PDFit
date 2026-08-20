@@ -262,3 +262,9 @@ export async function invalidatePdfitMetadataCache(): Promise<void> {
     request.onblocked = () => reject(new Error('IndexedDB delete was blocked.'));
   });
 }
+
+/** Replaces optimistic metadata with the current remote snapshot after outbox settlement. */
+export async function refreshPdfitMetadataCache(): Promise<void> {
+  await invalidatePdfitMetadataCache();
+  await ensureHydrated();
+}

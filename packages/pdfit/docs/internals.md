@@ -107,3 +107,16 @@ The common browser refresh contract remains `POST /api/folders/refresh`; hosted 
 implements it with a Spreadsheet `changePageToken`. After the server applies all Drive
 change pages, the browser invalidates and atomically rehydrates IndexedDB. Local filesystem
 refresh behavior is unchanged.
+
+## Hosted metadata outbox
+
+Hosted tag, bookmark, progress, and viewer-state mutations are written to the separate
+`pdfit-metadata-outbox-{account}` IndexedDB before their HTTP request begins. A successful
+response removes the exact operation; a terminal 4xx response also removes it and restores
+the authoritative cache. Network and 5xx failures remain durable for startup/online retry.
+Coalescing keys retain only the latest progress, viewer state, tag relation, color, or edit
+intent. Bookmark creation instead retains its UUID operation ID so a repeated request maps
+to the same service-side bookmark and Drive image identities.
+
+The outbox is a narrow partial-failure bridge, not a general reconciliation engine. It does
+not scan Drive for orphan images or delete remotely unreferenced data.

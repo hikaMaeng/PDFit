@@ -8,6 +8,7 @@ export interface ViewerStatePayload {
   scrollTop: number;
 }
 import { getCachedViewerState, saveCachedViewerState } from '../cache/metadataCache.js';
+import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 const pendingViewerState = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const viewerStateApi = {
@@ -23,13 +24,6 @@ export const viewerStateApi = {
   save: (folder: string, filename: string, state: ViewerStatePayload): void => {
     void saveCachedViewerState(folder, filename, state);
     const key = `${folder}\0${filename}`; const previous = pendingViewerState.get(key); if (previous) clearTimeout(previous);
-    pendingViewerState.set(key, setTimeout(() => { pendingViewerState.delete(key); fetch(
-      `/api/viewer-state/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state),
-      },
-    ).catch(() => {}); }, 750));
+    pendingViewerState.set(key, setTimeout(() => { pendingViewerState.delete(key); void requestWithMetadataOutbox({ coalesceKey: `viewer:${key}`, url: `/api/viewer-state/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }).catch(() => {}); }, 750));
   },
 };

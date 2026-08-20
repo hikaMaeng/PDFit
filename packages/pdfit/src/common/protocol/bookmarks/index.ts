@@ -17,6 +17,7 @@ export interface BookmarkRecord {
 }
 
 export interface CreateBookmarkRequest {
+  operationId?: string;
   pageIndex: number;
   rect: BookmarkRect;
   borderColor: string;

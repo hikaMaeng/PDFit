@@ -15,8 +15,9 @@
 * IndexedDB is an optional cache, never metadata authority. Its database name is scoped by
   authenticated account, and deleting it triggers remote hydration.
 * Local PDFit composition must not enable the hosted IndexedDB metadata adapter.
-* Hosted progress/viewer-state debounce is not an outbox: failed requests are not queued
-  or retried beyond the browser's normal next state update.
+* Hosted metadata writes use an account-scoped IndexedDB outbox. Progress and viewer-state
+  rows coalesce to the latest state; network/5xx failures remain queued, while terminal 4xx
+  responses are removed and trigger authoritative cache hydration.
 * `PdfGpuViewer` owns the PDFium controller/resource lifecycle; React reads its
   stable external snapshot through `useSyncExternalStore` and must not mirror
   viewer state into `useState`.

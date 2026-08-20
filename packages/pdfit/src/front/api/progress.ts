@@ -1,4 +1,5 @@
 import { getCachedProgress, saveCachedProgress } from '../cache/metadataCache.js';
+import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 
 const pendingProgress = new Map<string, ReturnType<typeof setTimeout>>();
 export const progressApi = {
@@ -14,13 +15,6 @@ export const progressApi = {
   save: (folder: string, filename: string, page: number): void => {
     void saveCachedProgress(folder, filename, page);
     const key = `${folder}\0${filename}`; const previous = pendingProgress.get(key); if (previous) clearTimeout(previous);
-    pendingProgress.set(key, setTimeout(() => { pendingProgress.delete(key); fetch(
-      `/api/progress/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page }),
-      },
-    ).catch(() => {}); }, 750));
+    pendingProgress.set(key, setTimeout(() => { pendingProgress.delete(key); void requestWithMetadataOutbox({ coalesceKey: `progress:${key}`, url: `/api/progress/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page }) }).catch(() => {}); }, 750));
   },
 };
