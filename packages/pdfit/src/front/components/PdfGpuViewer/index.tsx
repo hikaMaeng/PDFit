@@ -191,6 +191,11 @@ export default function PdfGpuViewer({
     setAnnotationStyle(next);
     if (selectedAnnotationId) setAnnotations((current) => current.map((annotation) => annotation.id === selectedAnnotationId ? { ...annotation, style: next, updatedAt: new Date().toISOString() } : annotation));
   };
+  const selectAnnotationTool = (tool: AnnotationTool) => {
+    setAnnotationTool(tool);
+    setSelectedAnnotationId(null);
+    if (tool === 'highlight') setAnnotationStyle({ color: '#facc15', opacity: 0.35, strokeWidth: 1, fillColor: null });
+  };
   const goToPage = useCallback((page: number) => {
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
     const target = normalizeViewerPage(page, state.pageCount, mode);
@@ -452,7 +457,7 @@ export default function PdfGpuViewer({
             <ToggleButton value="double"><Tooltip title="두 페이지 보기" arrow><MenuBookIcon fontSize="small" /></Tooltip></ToggleButton>
           </ToggleButtonGroup>
           <Box sx={{ flex: 1 }} />
-          <ToggleButtonGroup size="small" exclusive value={annotationTool} onChange={(_, value: AnnotationTool | null) => { if (value) setAnnotationTool(value); }} aria-label="annotation tools">
+          <ToggleButtonGroup size="small" exclusive value={annotationTool} onChange={(_, value: AnnotationTool | null) => { if (value) selectAnnotationTool(value); }} aria-label="annotation tools">
             {(['bookmark', 'select', 'highlight', 'text', 'pen', 'rectangle', 'circle', 'line', 'arrow'] as const).map((tool) => <ToggleButton key={tool} value={tool} aria-label={tool}>{tool}</ToggleButton>)}
           </ToggleButtonGroup>
           <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
