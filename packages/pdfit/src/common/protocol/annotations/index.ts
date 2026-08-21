@@ -1,4 +1,5 @@
 export type AnnotationType = 'highlight' | 'text' | 'ink' | 'rectangle' | 'circle' | 'line' | 'arrow';
+export type AnnotationTool = 'bookmark' | 'select' | 'highlight' | 'text' | 'pen' | 'rectangle' | 'circle' | 'line' | 'arrow';
 
 export type AnnotationPoint = {
   x: number;

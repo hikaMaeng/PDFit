@@ -51,7 +51,7 @@ import {
 } from '@pdfgpu/core';
 import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
-import type { Annotation } from '../../../common/protocol/annotations/index.js';
+import type { Annotation, AnnotationTool } from '../../../common/protocol/annotations/index.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -74,17 +74,6 @@ type Props = {
 };
 
 const BOOKMARK_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#a855f7'];
-
-const PHASE_ONE_RECTANGLE: Annotation = {
-  id: 'phase-one-rectangle',
-  documentId: 'phase-one',
-  pageIndex: 0,
-  type: 'rectangle',
-  geometry: { x: 72, y: 72, width: 144, height: 72 },
-  style: { color: '#ef4444', opacity: 0.18, strokeWidth: 3, fillColor: '#ef4444' },
-  createdAt: '2026-08-21T00:00:00.000Z',
-  updatedAt: '2026-08-21T00:00:00.000Z',
-};
 
 const EMPTY_STATE: PdfGpuViewerState = {
   backend: 'unsupported',
@@ -154,6 +143,8 @@ export default function PdfGpuViewer({
   const viewportRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('bookmark');
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
@@ -451,6 +442,9 @@ export default function PdfGpuViewer({
             <ToggleButton value="double"><Tooltip title="두 페이지 보기" arrow><MenuBookIcon fontSize="small" /></Tooltip></ToggleButton>
           </ToggleButtonGroup>
           <Box sx={{ flex: 1 }} />
+          <ToggleButtonGroup size="small" exclusive value={annotationTool} onChange={(_, value: AnnotationTool | null) => { if (value) setAnnotationTool(value); }} aria-label="annotation tools">
+            {(['bookmark', 'select', 'highlight', 'text', 'pen', 'rectangle', 'circle', 'line', 'arrow'] as const).map((tool) => <ToggleButton key={tool} value={tool} aria-label={tool}>{tool}</ToggleButton>)}
+          </ToggleButtonGroup>
           <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
         </Box>
       )}
@@ -494,7 +488,7 @@ export default function PdfGpuViewer({
         )}
         <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} onClickCapture={(event) => { if (!suppressCaptureClickRef.current) return; suppressCaptureClickRef.current = false; event.preventDefault(); event.stopPropagation(); }}>
           <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, px: 2, filter: inverted ? 'invert(1)' : 'none' }} />
-          <AnnotationLayer controller={controller} annotations={[PHASE_ONE_RECTANGLE]} visiblePages={state.visiblePages} />
+          <AnnotationLayer controller={controller} annotations={annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotationTool} onChange={setAnnotations} />
           <Box data-testid="bookmark-overlay-layer" sx={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
             {overlayProjections.map((overlay, index) => {
               const bookmark = visibleOverlayBookmarks[index];

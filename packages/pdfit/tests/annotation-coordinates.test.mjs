@@ -6,6 +6,7 @@ import {
   pageRectToLayerRect,
   projectAnnotationPages,
 } from '../dist/front/annotation/coordinates.js';
+import { annotationFromGesture, simplifyInkPoints } from '../dist/front/annotation/model.js';
 
 test('annotation projection uses PDFGPU overlay coordinates as the canonical transform', () => {
   const controller = {
@@ -36,4 +37,13 @@ test('annotation projection de-duplicates visible pages', () => {
   };
   projectAnnotationPages(controller, [0, 0, 1]);
   assert.equal(count, 2);
+});
+
+test('drawing gestures create supported vector annotations', () => {
+  const common = { id: 'a', documentId: 'doc', pageIndex: 0, start: { x: 10, y: 20 }, end: { x: 40, y: 60 }, points: [{ x: 10, y: 20 }, { x: 20, y: 30 }, { x: 40, y: 60 }], timestamp: 'now' };
+  for (const tool of ['rectangle', 'circle', 'highlight', 'line', 'arrow', 'pen']) assert.ok(annotationFromGesture({ ...common, tool }), tool);
+});
+
+test('ink simplification removes dense intermediate samples but preserves endpoints', () => {
+  assert.deepEqual(simplifyInkPoints([{ x: 0, y: 0 }, { x: 0.1, y: 0.1 }, { x: 4, y: 4 }]), [{ x: 0, y: 0 }, { x: 4, y: 4 }]);
 });
