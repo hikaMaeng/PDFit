@@ -77,7 +77,7 @@ export default function PdfViewerPage() {
     };
   }, [fileName, folderName, navigationModel]);
 
-  const { savedState, stateLoaded, reportState } = useViewerState(folderName, fileName);
+  const { savedState, stateLoaded, reportState } = useViewerState(folderName, fileName, driveFileId);
   // A received same-window page command has the same precedence as `?page=`:
   // restoring the saved scroll position afterwards would move away from it.
   const initialScrollTop = initialPage == null ? savedState?.scrollTop : undefined;

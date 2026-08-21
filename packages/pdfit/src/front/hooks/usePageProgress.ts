@@ -9,7 +9,7 @@ const DEBOUNCE_MS = 2000;
  * - reportPage() 호출 시 디바운스 후 서버에 저장
  *   (DEBOUNCE_MS 내 마지막 값만 전송, 이전 전송값과 같으면 스킵)
  */
-export function usePageProgress(folder: string, filename: string) {
+export function usePageProgress(folder: string, filename: string, driveFileId?: string | null) {
   const [savedPage, setSavedPage] = useState<number | null>(null);
 
   const lastSentRef = useRef<number | null>(null);
@@ -18,10 +18,10 @@ export function usePageProgress(folder: string, filename: string) {
   // 마지막 읽은 페이지 로드
   useEffect(() => {
     if (!folder || !filename) return;
-    progressApi.get(folder, filename).then((page) => {
+    progressApi.get(folder, filename, driveFileId).then((page) => {
       setSavedPage(page);
     });
-  }, [folder, filename]);
+  }, [driveFileId, folder, filename]);
 
   // 언마운트 시 타이머 정리 및 즉시 플러시
   useEffect(() => {
@@ -36,10 +36,10 @@ export function usePageProgress(folder: string, filename: string) {
       timerRef.current = setTimeout(() => {
         if (lastSentRef.current === page) return; // 이전 전송값과 동일하면 스킵
         lastSentRef.current = page;
-        progressApi.save(folder, filename, page);
+        progressApi.save(folder, filename, page, driveFileId);
       }, DEBOUNCE_MS);
     },
-    [folder, filename],
+    [driveFileId, folder, filename],
   );
 
   return { savedPage, reportPage };

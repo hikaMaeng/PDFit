@@ -9,7 +9,7 @@ const DEBOUNCE_MS = 800;
  * - reportState() 호출 시 디바운스 후 서버에 저장
  *   (DEBOUNCE_MS 내 마지막 값만 전송, 이전 전송값과 동일하면 스킵)
  */
-export function useViewerState(folder: string, filename: string) {
+export function useViewerState(folder: string, filename: string, driveFileId?: string | null) {
   const [savedState, setSavedState] = useState<ViewerStatePayload | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
 
@@ -20,11 +20,11 @@ export function useViewerState(folder: string, filename: string) {
   useEffect(() => {
     if (!folder || !filename) return;
     setStateLoaded(false);
-    viewerStateApi.get(folder, filename).then((state) => {
+    viewerStateApi.get(folder, filename, driveFileId).then((state) => {
       setSavedState(state);
       setStateLoaded(true);
     });
-  }, [folder, filename]);
+  }, [driveFileId, folder, filename]);
 
   // 언마운트 시 타이머 정리
   useEffect(() => {
@@ -40,10 +40,10 @@ export function useViewerState(folder: string, filename: string) {
         const key = JSON.stringify(state);
         if (lastSentRef.current === key) return; // 이전 전송값과 동일하면 스킵
         lastSentRef.current = key;
-        viewerStateApi.save(folder, filename, state);
+        viewerStateApi.save(folder, filename, state, driveFileId);
       }, DEBOUNCE_MS);
     },
-    [folder, filename],
+    [driveFileId, folder, filename],
   );
 
   return { savedState, stateLoaded, reportState };

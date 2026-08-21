@@ -153,8 +153,13 @@ async function mutateStores(scope: string, stores: string[], action: (transactio
   finally { database.close(); }
 }
 
-async function cachedFile(scope: string, folderName: string, filename: string): Promise<CachedPdfRow | null> {
+async function cachedFile(scope: string, folderName: string, filename: string, driveFileId?: string | null): Promise<CachedPdfRow | null> {
   const [folders, pdfs] = await Promise.all([readAll<CachedFolderRow>(scope, 'folders'), readAll<CachedPdfRow>(scope, 'pdfs')]);
+  if (driveFileId) {
+    const pdf = pdfs.find((row) => !row.trashed && row.driveFileId === driveFileId);
+    const parent = folders.find((row) => !row.trashed && row.driveFolderId === pdf?.parentFolderId);
+    return pdf && parent?.name === folderName && pdf.name === filename ? pdf : null;
+  }
   const folder = folders.find((row) => !row.trashed && row.name === folderName);
   return pdfs.find((row) => !row.trashed && row.parentFolderId === folder?.driveFolderId && row.name === filename) ?? null;
 }
@@ -207,10 +212,10 @@ export async function updateCachedTagColor(name: string, color: string): Promise
   await mutateStores(scope, ['tags'], async (transaction) => { const store = transaction.objectStore('tags'); const tags = await requestResult<CachedTag[]>(store.getAll()); const tag = tags.find((row) => row.name === name); if (tag) store.put({ ...tag, color, updatedAt: new Date().toISOString(), deletedAt: '' }); });
 }
 
-export async function getCachedProgress(folder: string, filename: string): Promise<number | null> { const scope = await cachedScope(); if (!scope) return null; const file = await cachedFile(scope, folder, filename); if (!file) return 1; const rows = await readAll<{ driveFileId: string; lastPage: number }>(scope, 'progress'); return rows.find((row) => row.driveFileId === file.driveFileId)?.lastPage ?? 1; }
-export async function saveCachedProgress(folder: string, filename: string, page: number): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename); if (!file) return; await mutateStores(scope, ['progress'], async (transaction) => { transaction.objectStore('progress').put({ driveFileId: file.driveFileId, lastPage: page, updatedAt: new Date().toISOString() }); }); }
-export async function getCachedViewerState(folder: string, filename: string): Promise<ViewerStatePayload | null | undefined> { const scope = await cachedScope(); if (!scope) return undefined; const file = await cachedFile(scope, folder, filename); if (!file) return null; const rows = await readAll<ViewerStatePayload & { driveFileId: string }>(scope, 'viewerStates'); const row = rows.find((value) => value.driveFileId === file.driveFileId); if (!row) return null; const { driveFileId: _, ...state } = row; return state; }
-export async function saveCachedViewerState(folder: string, filename: string, state: ViewerStatePayload): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename); if (!file) return; await mutateStores(scope, ['viewerStates'], async (transaction) => { transaction.objectStore('viewerStates').put({ driveFileId: file.driveFileId, ...state, updatedAt: new Date().toISOString() }); }); }
+export async function getCachedProgress(folder: string, filename: string, driveFileId?: string | null): Promise<number | null> { const scope = await cachedScope(); if (!scope) return null; const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return 1; const rows = await readAll<{ driveFileId: string; lastPage: number }>(scope, 'progress'); return rows.find((row) => row.driveFileId === file.driveFileId)?.lastPage ?? 1; }
+export async function saveCachedProgress(folder: string, filename: string, page: number, driveFileId?: string | null): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return; await mutateStores(scope, ['progress'], async (transaction) => { transaction.objectStore('progress').put({ driveFileId: file.driveFileId, lastPage: page, updatedAt: new Date().toISOString() }); }); }
+export async function getCachedViewerState(folder: string, filename: string, driveFileId?: string | null): Promise<ViewerStatePayload | null | undefined> { const scope = await cachedScope(); if (!scope) return undefined; const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return null; const rows = await readAll<ViewerStatePayload & { driveFileId: string }>(scope, 'viewerStates'); const row = rows.find((value) => value.driveFileId === file.driveFileId); if (!row) return null; const { driveFileId: _, ...state } = row; return state; }
+export async function saveCachedViewerState(folder: string, filename: string, state: ViewerStatePayload, driveFileId?: string | null): Promise<void> { const scope = await cachedScope(); if (!scope) return; const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return; await mutateStores(scope, ['viewerStates'], async (transaction) => { transaction.objectStore('viewerStates').put({ driveFileId: file.driveFileId, ...state, updatedAt: new Date().toISOString() }); }); }
 
 type CachedBookmark = Record<string, unknown> & { bookmarkId: string; driveFileId: string; deletedAt: string };
 export async function listCachedBookmarks(folder?: string, filename?: string): Promise<BookmarkRecord[] | null> {

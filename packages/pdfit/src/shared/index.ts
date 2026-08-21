@@ -29,8 +29,8 @@ export interface TaggedBookRecord extends BookRecord {
 
 export interface MetadataStore {
   listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>>;
-  getProgress(folder: string, filename: string): Promise<number | null>;
-  setProgress(folder: string, filename: string, page: number): Promise<void>;
+  getProgress(folder: string, filename: string, driveFileId?: string): Promise<number | null>;
+  setProgress(folder: string, filename: string, page: number, driveFileId?: string): Promise<void>;
   listTags(): Promise<string[]>;
   listTagSummaries(): Promise<TagSummary[]>;
   listBooksByTag(tag: string): Promise<TaggedBookRecord[]>;
@@ -45,8 +45,8 @@ export interface MetadataStore {
   removeTag(folder: string, filename: string, tag: string): Promise<void>;
   deleteTag(tag: string): Promise<void>;
   updateTagColor(tag: string, color: string): Promise<void>;
-  getViewerState(folder: string, filename: string): Promise<ViewerStateRecord | null>;
-  setViewerState(folder: string, filename: string, state: ViewerStateRecord): Promise<void>;
+  getViewerState(folder: string, filename: string, driveFileId?: string): Promise<ViewerStateRecord | null>;
+  setViewerState(folder: string, filename: string, state: ViewerStateRecord, driveFileId?: string): Promise<void>;
   purgeFile(folder: string, filename: string): Promise<void>;
   purgeFolder(folder: string): Promise<void>;
   purgeOrphanTags(): Promise<void>;
