@@ -11,6 +11,7 @@ import type {
   ViewerStateRecord,
 } from '../../shared/index.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';
 
 export class PostgresMetadataStore implements MetadataStore {
   constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {}
@@ -304,6 +305,41 @@ export class PostgresMetadataStore implements MetadataStore {
     return { id: String(row.id), folder: String(row.folder), filename: String(row.filename), pageIndex: Number(row.page_index), rect: { x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height) }, borderColor: String(row.border_color), fillColor: row.fill_color == null ? null : String(row.fill_color), fillOpacity: Number(row.fill_opacity), comment: row.comment == null ? null : String(row.comment), imageMimeType: 'image/jpeg', imageUrl: `/api/bookmark-assets/${String(row.image_path)}`, createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
   }
 
+  async listAnnotations(documentId: string): Promise<Annotation[]> {
+    const result = await this.db.query('SELECT id, document_id, page_index, type, geometry, style, created_at, updated_at FROM annotations WHERE document_id = $1 ORDER BY page_index, created_at', [documentId]);
+    return result.rows.map((row) => this.annotationFromRow(row));
+  }
+
+  async createAnnotation(annotation: CreateAnnotationRequest): Promise<Annotation> {
+    const result = await this.db.query(`
+      INSERT INTO annotations (id, document_id, page_index, type, geometry, style)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      ON CONFLICT (id) DO UPDATE SET geometry = EXCLUDED.geometry, style = EXCLUDED.style, updated_at = NOW()
+      RETURNING id, document_id, page_index, type, geometry, style, created_at, updated_at
+    `, [annotation.id, annotation.documentId, annotation.pageIndex, annotation.type, JSON.stringify(annotation.geometry), JSON.stringify(annotation.style)]);
+    return this.annotationFromRow(result.rows[0]);
+  }
+
+  async updateAnnotation(id: string, update: UpdateAnnotationRequest): Promise<Annotation | null> {
+    const result = await this.db.query(`
+      UPDATE annotations SET geometry = $2::jsonb, style = $3::jsonb, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, document_id, page_index, type, geometry, style, created_at, updated_at
+    `, [id, JSON.stringify(update.geometry), JSON.stringify(update.style)]);
+    return result.rows[0] ? this.annotationFromRow(result.rows[0]) : null;
+  }
+
+  async deleteAnnotation(id: string): Promise<void> {
+    await this.db.query('DELETE FROM annotations WHERE id = $1', [id]);
+  }
+
+  private annotationFromRow(row: Record<string, unknown>): Annotation {
+    return {
+      id: String(row.id), documentId: String(row.document_id), pageIndex: Number(row.page_index), type: String(row.type),
+      geometry: row.geometry, style: row.style, createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString(),
+    } as Annotation;
+  }
+
   async ensureSchema(): Promise<void> {
     await this.db.query(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -402,6 +438,17 @@ export class PostgresMetadataStore implements MetadataStore {
       END $$;
       ALTER TABLE bookmarks ADD CONSTRAINT bookmarks_absolute_rect_check CHECK (x >= 0 AND y >= 0 AND width > 0 AND height > 0);
       CREATE INDEX IF NOT EXISTS idx_bookmarks_book_page ON bookmarks (folder, filename, page_index);
+      CREATE TABLE IF NOT EXISTS annotations (
+        id UUID PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        page_index INTEGER NOT NULL CHECK (page_index >= 0),
+        type TEXT NOT NULL CHECK (type IN ('highlight', 'text', 'ink', 'rectangle', 'circle', 'line', 'arrow')),
+        geometry JSONB NOT NULL,
+        style JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_annotations_document_page ON annotations (document_id, page_index, created_at);
     `);
   }
 }

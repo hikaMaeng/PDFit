@@ -9,6 +9,7 @@ export interface ViewerStateRecord {
 }
 
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
+export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
 
 export interface TagSummary {
   name: string;
@@ -55,4 +56,8 @@ export interface MetadataStore {
   createBookmark(folder: string, filename: string, bookmark: import('../common/protocol/bookmarks/index.js').CreateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord>;
   updateBookmark(id: string, update: import('../common/protocol/bookmarks/index.js').UpdateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
   deleteBookmark(id: string): Promise<void>;
+  listAnnotations(documentId: string): Promise<import('../common/protocol/annotations/index.js').Annotation[]>;
+  createAnnotation(annotation: import('../common/protocol/annotations/index.js').CreateAnnotationRequest): Promise<import('../common/protocol/annotations/index.js').Annotation>;
+  updateAnnotation(id: string, update: import('../common/protocol/annotations/index.js').UpdateAnnotationRequest): Promise<import('../common/protocol/annotations/index.js').Annotation | null>;
+  deleteAnnotation(id: string): Promise<void>;
 }

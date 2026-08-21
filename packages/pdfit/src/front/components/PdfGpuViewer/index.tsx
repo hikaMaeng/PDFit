@@ -56,6 +56,7 @@ import { AnnotationLayer } from './AnnotationLayer.js';
 import type { Annotation, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
 import { DEFAULT_ANNOTATION_STYLE } from '../../annotation/model.js';
 import { useAnnotationHistory } from '../../annotation/history.js';
+import { createAnnotation as saveNewAnnotation, deleteAnnotation as saveDeletedAnnotation, listAnnotations, updateAnnotation as saveUpdatedAnnotation } from '../../api/annotations.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -148,9 +149,11 @@ export default function PdfGpuViewer({
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('bookmark');
-  const { annotations, canUndo, canRedo, preview: previewAnnotations, commit: commitAnnotations, commitPreview, undo, redo } = useAnnotationHistory();
+  const { annotations, canUndo, canRedo, preview: previewAnnotations, commit: commitAnnotations, commitPreview, reset: resetAnnotations, undo, redo } = useAnnotationHistory();
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>(DEFAULT_ANNOTATION_STYLE);
+  const [annotationSaveState, setAnnotationSaveState] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
+  const annotationRetryRef = useRef<{ previous: Annotation[]; next: Annotation[] } | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
@@ -192,14 +195,47 @@ export default function PdfGpuViewer({
   const updateAnnotationStyle = (patch: Partial<AnnotationStyle>) => {
     const next = { ...displayedAnnotationStyle, ...patch };
     setAnnotationStyle(next);
-    if (selectedAnnotationId) commitAnnotations(annotations.map((annotation) => annotation.id === selectedAnnotationId ? { ...annotation, style: next, updatedAt: new Date().toISOString() } : annotation));
+    if (selectedAnnotationId) commitAnnotationChange(annotations.map((annotation) => annotation.id === selectedAnnotationId ? { ...annotation, style: next, updatedAt: new Date().toISOString() } : annotation));
   };
   const selectAnnotationTool = (tool: AnnotationTool) => {
     setAnnotationTool(tool);
     setSelectedAnnotationId(null);
     if (tool === 'highlight') setAnnotationStyle({ color: '#facc15', opacity: 0.35, strokeWidth: 1, fillColor: null });
   };
-  const commitAnnotationChange = (next: Annotation[], previous?: Annotation[]) => previous ? commitPreview(previous) : commitAnnotations(next);
+  const persistAnnotationChange = useCallback(async (previous: Annotation[], next: Annotation[]) => {
+    annotationRetryRef.current = { previous, next };
+    setAnnotationSaveState('saving');
+    const previousById = new Map(previous.map((annotation) => [annotation.id, annotation]));
+    const nextById = new Map(next.map((annotation) => [annotation.id, annotation]));
+    try {
+      await Promise.all([
+        ...next.filter((annotation) => !previousById.has(annotation.id)).map(saveNewAnnotation),
+        ...next.filter((annotation) => previousById.has(annotation.id) && JSON.stringify(previousById.get(annotation.id)) !== JSON.stringify(annotation)).map(saveUpdatedAnnotation),
+        ...previous.filter((annotation) => !nextById.has(annotation.id)).map((annotation) => saveDeletedAnnotation(annotation.id)),
+      ]);
+      annotationRetryRef.current = null;
+      setAnnotationSaveState('saved');
+    } catch {
+      setAnnotationSaveState('error');
+    }
+  }, []);
+  const commitAnnotationChange = (next: Annotation[], previous?: Annotation[]) => {
+    const before = previous ?? annotations;
+    if (previous) commitPreview(previous); else commitAnnotations(next);
+    void persistAnnotationChange(before, next);
+  };
+
+  useEffect(() => {
+    let active = true;
+    setAnnotationSaveState('loading');
+    setSelectedAnnotationId(null);
+    void listAnnotations(url).then((loaded) => {
+      if (!active) return;
+      resetAnnotations(loaded);
+      setAnnotationSaveState('saved');
+    }).catch(() => { if (active) setAnnotationSaveState('error'); });
+    return () => { active = false; };
+  }, [resetAnnotations, url]);
 
   useEffect(() => {
     const handleAnnotationHistoryKey = (event: KeyboardEvent) => {
@@ -479,6 +515,8 @@ export default function PdfGpuViewer({
           <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
           <IconButton size="small" aria-label="annotation undo" disabled={!canUndo} onClick={undo}><UndoIcon fontSize="small" /></IconButton>
           <IconButton size="small" aria-label="annotation redo" disabled={!canRedo} onClick={redo}><RedoIcon fontSize="small" /></IconButton>
+          <Typography variant="caption" aria-label="annotation save status" color={annotationSaveState === 'error' ? 'error' : 'text.secondary'}>{annotationSaveState === 'loading' ? '불러오는 중' : annotationSaveState === 'saving' ? '저장 중' : annotationSaveState === 'saved' ? '저장됨' : '저장 실패'}</Typography>
+          {annotationSaveState === 'error' && annotationRetryRef.current ? <Button size="small" aria-label="retry annotation save" onClick={() => { const retry = annotationRetryRef.current; if (retry) void persistAnnotationChange(retry.previous, retry.next); }}>재시도</Button> : null}
           <Box component="label" aria-label="annotation color" title="선 색상" sx={{ display: 'inline-flex', alignItems: 'center' }}><Box component="input" type="color" value={displayedAnnotationStyle.color} onInput={(event) => updateAnnotationStyle({ color: (event.target as HTMLInputElement).value })} sx={{ width: 28, height: 24, p: 0, border: 0, bgcolor: 'transparent' }} /></Box>
           <Slider aria-label="annotation stroke width" title="선 두께" min={1} max={12} step={1} value={displayedAnnotationStyle.strokeWidth} onChange={(_, value) => updateAnnotationStyle({ strokeWidth: value as number })} sx={{ flex: '0 0 64px' }} />
           <Slider aria-label="annotation opacity" title="투명도" min={0.1} max={1} step={0.1} value={displayedAnnotationStyle.opacity} onChange={(_, value) => updateAnnotationStyle({ opacity: value as number })} sx={{ flex: '0 0 64px' }} />

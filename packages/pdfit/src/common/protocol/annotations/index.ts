@@ -47,7 +47,7 @@ export type Annotation =
   | InkAnnotation
   | TextAnnotation;
 
-export type CreateAnnotationRequest = Omit<Annotation, 'id' | 'createdAt' | 'updatedAt'> & {
+export type CreateAnnotationRequest = Omit<Annotation, 'createdAt' | 'updatedAt'> & {
   operationId?: string;
 };
 
