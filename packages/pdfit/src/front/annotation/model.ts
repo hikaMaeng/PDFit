@@ -41,3 +41,31 @@ export function annotationFromGesture(input: { id: string; documentId: string; p
   }
   return null;
 }
+
+/** Returns the editable PDF-coordinate bounds for any annotation kind. */
+export function annotationBounds(annotation: Annotation): AnnotationRect {
+  if (annotation.type === 'rectangle' || annotation.type === 'circle' || annotation.type === 'highlight' || annotation.type === 'text') return annotation.geometry;
+  if (annotation.type === 'line' || annotation.type === 'arrow') return rectFromPoints(annotation.geometry.start, annotation.geometry.end);
+  const xs = annotation.geometry.points.map((point) => point.x); const ys = annotation.geometry.points.map((point) => point.y);
+  return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+}
+
+/** Moves an annotation without changing its PDF-coordinate size. */
+export function translateAnnotation(annotation: Annotation, delta: AnnotationPoint, timestamp = new Date().toISOString()): Annotation {
+  const move = (point: AnnotationPoint) => ({ x: point.x + delta.x, y: point.y + delta.y });
+  if (annotation.type === 'rectangle' || annotation.type === 'circle' || annotation.type === 'highlight' || annotation.type === 'text') return { ...annotation, geometry: { ...annotation.geometry, ...move(annotation.geometry) }, updatedAt: timestamp } as Annotation;
+  if (annotation.type === 'line' || annotation.type === 'arrow') return { ...annotation, geometry: { start: move(annotation.geometry.start), end: move(annotation.geometry.end) }, updatedAt: timestamp } as Annotation;
+  return { ...annotation, geometry: { points: annotation.geometry.points.map(move) }, updatedAt: timestamp };
+}
+
+/** Resizes an annotation from one corner while preserving its type-specific geometry. */
+export function resizeAnnotation(annotation: Annotation, handle: 'nw' | 'ne' | 'sw' | 'se', point: AnnotationPoint, timestamp = new Date().toISOString()): Annotation {
+  const old = annotationBounds(annotation);
+  const opposite = { x: handle.includes('w') ? old.x + old.width : old.x, y: handle.includes('n') ? old.y + old.height : old.y };
+  const next = rectFromPoints(opposite, point);
+  const scale = (value: AnnotationPoint) => ({ x: next.x + ((value.x - old.x) / Math.max(old.width, 0.001)) * next.width, y: next.y + ((value.y - old.y) / Math.max(old.height, 0.001)) * next.height });
+  if (annotation.type === 'rectangle' || annotation.type === 'circle' || annotation.type === 'highlight') return { ...annotation, geometry: next, updatedAt: timestamp };
+  if (annotation.type === 'text') return { ...annotation, geometry: { ...annotation.geometry, ...next }, updatedAt: timestamp };
+  if (annotation.type === 'line' || annotation.type === 'arrow') return { ...annotation, geometry: { start: scale(annotation.geometry.start), end: scale(annotation.geometry.end) }, updatedAt: timestamp } as Annotation;
+  return { ...annotation, geometry: { points: annotation.geometry.points.map(scale) }, updatedAt: timestamp };
+}

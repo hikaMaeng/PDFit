@@ -145,6 +145,7 @@ export default function PdfGpuViewer({
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('bookmark');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
@@ -488,7 +489,7 @@ export default function PdfGpuViewer({
         )}
         <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} onClickCapture={(event) => { if (!suppressCaptureClickRef.current) return; suppressCaptureClickRef.current = false; event.preventDefault(); event.stopPropagation(); }}>
           <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, px: 2, filter: inverted ? 'invert(1)' : 'none' }} />
-          <AnnotationLayer controller={controller} annotations={annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotationTool} onChange={setAnnotations} />
+          <AnnotationLayer controller={controller} annotations={annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotationTool} selectedId={selectedAnnotationId} onSelect={setSelectedAnnotationId} onChange={setAnnotations} />
           <Box data-testid="bookmark-overlay-layer" sx={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
             {overlayProjections.map((overlay, index) => {
               const bookmark = visibleOverlayBookmarks[index];

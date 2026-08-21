@@ -6,7 +6,7 @@ import {
   pageRectToLayerRect,
   projectAnnotationPages,
 } from '../dist/front/annotation/coordinates.js';
-import { annotationFromGesture, simplifyInkPoints } from '../dist/front/annotation/model.js';
+import { annotationBounds, annotationFromGesture, resizeAnnotation, simplifyInkPoints, translateAnnotation } from '../dist/front/annotation/model.js';
 
 test('annotation projection uses PDFGPU overlay coordinates as the canonical transform', () => {
   const controller = {
@@ -46,4 +46,11 @@ test('drawing gestures create supported vector annotations', () => {
 
 test('ink simplification removes dense intermediate samples but preserves endpoints', () => {
   assert.deepEqual(simplifyInkPoints([{ x: 0, y: 0 }, { x: 0.1, y: 0.1 }, { x: 4, y: 4 }]), [{ x: 0, y: 0 }, { x: 4, y: 4 }]);
+});
+
+test('selection transforms move and resize geometry in PDF coordinates', () => {
+  const annotation = annotationFromGesture({ id: 'r', documentId: 'doc', pageIndex: 0, tool: 'rectangle', start: { x: 10, y: 20 }, end: { x: 30, y: 50 }, points: [], timestamp: 'now' });
+  assert.deepEqual(annotationBounds(annotation), { x: 10, y: 20, width: 20, height: 30 });
+  assert.deepEqual(annotationBounds(translateAnnotation(annotation, { x: 5, y: -5 }, 'later')), { x: 15, y: 15, width: 20, height: 30 });
+  assert.deepEqual(annotationBounds(resizeAnnotation(annotation, 'se', { x: 50, y: 70 }, 'later')), { x: 10, y: 20, width: 40, height: 50 });
 });
