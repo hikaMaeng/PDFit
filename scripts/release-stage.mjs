@@ -63,6 +63,16 @@ services:
         source: ./data
         target: /app/data
     restart: unless-stopped
+    networks:
+      default: {}
+      proxy:
+        aliases:
+          - pdfit-service
+
+networks:
+  proxy:
+    external: true
+    name: \${PDFIT_PROXY_NETWORK:-m42-proxy}
 `);
 
 write('.env', `
@@ -72,6 +82,7 @@ SERVICE_GOOGLE_REDIRECT_URI=http://localhost:15202/api/auth/callback
 SERVICE_BIND_ADDRESS=127.0.0.1
 SERVICE_PORT=15202
 SERVICE_MAX_UPLOAD_MB=2048
+PDFIT_PROXY_NETWORK=m42-proxy
 BILLING_MOCK_ENABLED=false
 PADDLE_ENVIRONMENT=production
 PADDLE_CLIENT_TOKEN=
@@ -99,7 +110,7 @@ $settings = @{}
 Get-Content -LiteralPath $envPath | ForEach-Object {
   if ($_ -match '^([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() }
 }
-foreach ($requiredKey in @('SERVICE_GOOGLE_CLIENT_ID', 'SERVICE_GOOGLE_CLIENT_SECRET', 'SERVICE_GOOGLE_REDIRECT_URI')) {
+foreach ($requiredKey in @('SERVICE_GOOGLE_CLIENT_ID', 'SERVICE_GOOGLE_CLIENT_SECRET', 'SERVICE_GOOGLE_REDIRECT_URI', 'PDFIT_PROXY_NETWORK')) {
   if (-not $settings[$requiredKey] -or $settings[$requiredKey] -eq 'CHANGE_ME') {
     throw ".env의 $requiredKey 값을 먼저 입력해 주세요."
   }
@@ -111,6 +122,13 @@ $actualHash = (Get-FileHash -LiteralPath $imagePath -Algorithm SHA256).Hash
 if ($actualHash -ne $expectedHash) { throw 'Docker 이미지 체크섬이 일치하지 않습니다.' }
 
 New-Item -ItemType Directory -Path (Join-Path $bundleRoot 'data') -Force | Out-Null
+docker network inspect $settings['PDFIT_PROXY_NETWORK'] *> $null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "프록시 네트워크 '$($settings['PDFIT_PROXY_NETWORK'])'를 생성하는 중..."
+  docker network create $settings['PDFIT_PROXY_NETWORK'] *> $null
+  if ($LASTEXITCODE -ne 0) { throw '프록시 Docker 네트워크 생성에 실패했습니다.' }
+}
+
 Write-Host '[1/4] 서비스 이미지를 불러오는 중...'
 docker load --input $imagePath
 if ($LASTEXITCODE -ne 0) { throw 'Docker 이미지 불러오기에 실패했습니다.' }
@@ -177,6 +195,10 @@ Cloudflare Tunnel 또는 HTTPS 역방향 프록시를 사용한다면 \`.env\`�
 터널이 호스트에서 실행되면 기본 \`127.0.0.1:15202\`를 그대로 사용할 수 있습니다.
 다른 컴퓨터에서 직접 접속해야 할 때만 \`SERVICE_BIND_ADDRESS=0.0.0.0\`으로 바꾸고
 방화벽과 HTTPS 프록시를 별도로 구성하세요.
+
+\`PDFIT_PROXY_NETWORK=m42-proxy\`는 Nginx Proxy Manager 같은 Docker 프록시와 연결할
+외부 네트워크 이름입니다. 설치 시 네트워크가 없으면 자동 생성하며, 프록시 컨테이너도
+같은 네트워크에 연결한 뒤 \`pdfit-service:15202\`로 전달하면 됩니다.
 
 ## 데이터와 운영
 
