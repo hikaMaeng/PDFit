@@ -37,6 +37,8 @@ export function useAnnotationHistory(initial: Annotation[] = []) {
     annotations: history.present,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
+    undoTarget: history.past.at(-1) ?? null,
+    redoTarget: history.future[0] ?? null,
     preview: useCallback((annotations: Annotation[]) => dispatch({ type: 'preview', annotations }), [dispatch]),
     commit: useCallback((annotations: Annotation[]) => dispatch({ type: 'commit', annotations }), [dispatch]),
     commitPreview: useCallback((previous: Annotation[]) => dispatch({ type: 'commit-preview', previous }), [dispatch]),

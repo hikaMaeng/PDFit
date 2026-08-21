@@ -149,7 +149,7 @@ export default function PdfGpuViewer({
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('bookmark');
-  const { annotations, canUndo, canRedo, preview: previewAnnotations, commit: commitAnnotations, commitPreview, reset: resetAnnotations, undo, redo } = useAnnotationHistory();
+  const { annotations, canUndo, canRedo, undoTarget, redoTarget, preview: previewAnnotations, commit: commitAnnotations, commitPreview, reset: resetAnnotations, undo: undoHistory, redo: redoHistory } = useAnnotationHistory();
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>(DEFAULT_ANNOTATION_STYLE);
   const [annotationSaveState, setAnnotationSaveState] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
@@ -224,6 +224,20 @@ export default function PdfGpuViewer({
     if (previous) commitPreview(previous); else commitAnnotations(next);
     void persistAnnotationChange(before, next);
   };
+  const undoAnnotation = useCallback(() => {
+    if (!undoTarget) return;
+    const before = annotations;
+    undoHistory();
+    setSelectedAnnotationId(null);
+    void persistAnnotationChange(before, undoTarget);
+  }, [annotations, persistAnnotationChange, undoHistory, undoTarget]);
+  const redoAnnotation = useCallback(() => {
+    if (!redoTarget) return;
+    const before = annotations;
+    redoHistory();
+    setSelectedAnnotationId(null);
+    void persistAnnotationChange(before, redoTarget);
+  }, [annotations, persistAnnotationChange, redoHistory, redoTarget]);
 
   useEffect(() => {
     let active = true;
@@ -243,11 +257,11 @@ export default function PdfGpuViewer({
       const tag = (event.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       event.preventDefault();
-      if (event.shiftKey) redo(); else undo();
+      if (event.shiftKey) redoAnnotation(); else undoAnnotation();
     };
     window.addEventListener('keydown', handleAnnotationHistoryKey);
     return () => window.removeEventListener('keydown', handleAnnotationHistoryKey);
-  }, [redo, undo]);
+  }, [redoAnnotation, undoAnnotation]);
   const goToPage = useCallback((page: number) => {
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
     const target = normalizeViewerPage(page, state.pageCount, mode);
@@ -513,8 +527,8 @@ export default function PdfGpuViewer({
             {(['bookmark', 'select', 'highlight', 'text', 'pen', 'rectangle', 'circle', 'line', 'arrow'] as const).map((tool) => <ToggleButton key={tool} value={tool} aria-label={tool}>{tool}</ToggleButton>)}
           </ToggleButtonGroup>
           <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
-          <IconButton size="small" aria-label="annotation undo" disabled={!canUndo} onClick={undo}><UndoIcon fontSize="small" /></IconButton>
-          <IconButton size="small" aria-label="annotation redo" disabled={!canRedo} onClick={redo}><RedoIcon fontSize="small" /></IconButton>
+          <IconButton size="small" aria-label="annotation undo" disabled={!canUndo} onClick={undoAnnotation}><UndoIcon fontSize="small" /></IconButton>
+          <IconButton size="small" aria-label="annotation redo" disabled={!canRedo} onClick={redoAnnotation}><RedoIcon fontSize="small" /></IconButton>
           <Typography variant="caption" aria-label="annotation save status" color={annotationSaveState === 'error' ? 'error' : 'text.secondary'}>{annotationSaveState === 'loading' ? '불러오는 중' : annotationSaveState === 'saving' ? '저장 중' : annotationSaveState === 'saved' ? '저장됨' : '저장 실패'}</Typography>
           {annotationSaveState === 'error' && annotationRetryRef.current ? <Button size="small" aria-label="retry annotation save" onClick={() => { const retry = annotationRetryRef.current; if (retry) void persistAnnotationChange(retry.previous, retry.next); }}>재시도</Button> : null}
           <Box component="label" aria-label="annotation color" title="선 색상" sx={{ display: 'inline-flex', alignItems: 'center' }}><Box component="input" type="color" value={displayedAnnotationStyle.color} onInput={(event) => updateAnnotationStyle({ color: (event.target as HTMLInputElement).value })} sx={{ width: 28, height: 24, p: 0, border: 0, bgcolor: 'transparent' }} /></Box>
