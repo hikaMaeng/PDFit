@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PdfGpuViewerController } from '@pdfgpu/core';
-import type { Annotation, AnnotationPoint, AnnotationTool } from '../../../common/protocol/annotations/index.js';
-import { annotationBounds, annotationFromGesture, DEFAULT_ANNOTATION_STYLE, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
+import type { Annotation, AnnotationPoint, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
+import { annotationBounds, annotationFromGesture, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
 import { layerPointToPagePoint, pagePointToLayerPoint, pageRectToLayerRect, projectAnnotationPages } from '../../annotation/coordinates.js';
 
-type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void };
+type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void };
 type Gesture = { pageIndex: number; start: AnnotationPoint; end: AnnotationPoint; points: AnnotationPoint[] };
 type EditGesture = { annotation: Annotation; start: AnnotationPoint; handle: 'move' | 'nw' | 'ne' | 'sw' | 'se' };
 
 /** Viewer-sized SVG surface for non-destructive PDF annotations. */
-export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, selectedId, onSelect, onChange }: Props) {
+export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [editGesture, setEditGesture] = useState<EditGesture | null>(null);
@@ -67,7 +67,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     if (editGesture) { setEditGesture(null); return; }
     if (!gesture) return;
     const resolved = eventPoint(event);
-    const completed = resolved?.pageIndex === gesture.pageIndex ? annotationFromGesture({ id: crypto.randomUUID(), documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: resolved.point, points: [...gesture.points, resolved.point] }) : null;
+    const completed = resolved?.pageIndex === gesture.pageIndex ? annotationFromGesture({ id: crypto.randomUUID(), documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: resolved.point, points: [...gesture.points, resolved.point], style }) : null;
     setGesture(null);
     if (completed) onChange([...annotations, completed]);
   };
@@ -112,6 +112,6 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     return <g data-testid="annotation-selection"><rect x={rect.x} y={rect.y} width={Math.max(rect.width, 1)} height={Math.max(rect.height, 1)} fill="none" stroke="#3b82f6" strokeDasharray="5 3" vectorEffect="non-scaling-stroke" />{handles.map((handle) => <rect key={handle.key} data-testid={`annotation-resize-${handle.key}`} data-annotation-id={annotation.id} data-resize-handle={handle.key} x={handle.x - 5} y={handle.y - 5} width="10" height="10" fill="#fff" stroke="#2563eb" style={{ pointerEvents: 'all', cursor: `${handle.key}-resize` }} />)}</g>;
   };
 
-  const draft = gesture ? annotationFromGesture({ id: 'annotation-draft', documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: gesture.end, points: gesture.points, style: { ...DEFAULT_ANNOTATION_STYLE, opacity: 0.65 }, timestamp: '' }) : null;
+  const draft = gesture ? annotationFromGesture({ id: 'annotation-draft', documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: gesture.end, points: gesture.points, style: { ...style, opacity: Math.max(style.opacity, 0.65) }, timestamp: '' }) : null;
   return <svg ref={svgRef} data-testid="annotation-layer" aria-label="PDF annotations" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={() => { setGesture(null); setEditGesture(null); }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: tool === 'bookmark' ? 'none' : 'auto', touchAction: 'none', zIndex: 4 }}><defs><marker id="annotation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 z" fill="context-stroke" /></marker></defs>{annotations.map(renderAnnotation)}{draft ? renderAnnotation(draft) : null}{renderSelection()}</svg>;
 }

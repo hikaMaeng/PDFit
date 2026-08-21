@@ -51,7 +51,8 @@ import {
 } from '@pdfgpu/core';
 import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
-import type { Annotation, AnnotationTool } from '../../../common/protocol/annotations/index.js';
+import type { Annotation, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
+import { DEFAULT_ANNOTATION_STYLE } from '../../annotation/model.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -146,6 +147,7 @@ export default function PdfGpuViewer({
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('bookmark');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>(DEFAULT_ANNOTATION_STYLE);
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
@@ -182,6 +184,13 @@ export default function PdfGpuViewer({
     comment: bookmark.comment ?? undefined,
   }))) ?? [];
   const visibleOverlayBookmarks = bookmarks.filter((bookmark) => state.visiblePages.includes(bookmark.pageIndex));
+  const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
+  const displayedAnnotationStyle = selectedAnnotation?.style ?? annotationStyle;
+  const updateAnnotationStyle = (patch: Partial<AnnotationStyle>) => {
+    const next = { ...displayedAnnotationStyle, ...patch };
+    setAnnotationStyle(next);
+    if (selectedAnnotationId) setAnnotations((current) => current.map((annotation) => annotation.id === selectedAnnotationId ? { ...annotation, style: next, updatedAt: new Date().toISOString() } : annotation));
+  };
   const goToPage = useCallback((page: number) => {
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
     const target = normalizeViewerPage(page, state.pageCount, mode);
@@ -447,6 +456,11 @@ export default function PdfGpuViewer({
             {(['bookmark', 'select', 'highlight', 'text', 'pen', 'rectangle', 'circle', 'line', 'arrow'] as const).map((tool) => <ToggleButton key={tool} value={tool} aria-label={tool}>{tool}</ToggleButton>)}
           </ToggleButtonGroup>
           <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
+          <Box component="label" aria-label="annotation color" title="선 색상" sx={{ display: 'inline-flex', alignItems: 'center' }}><Box component="input" type="color" value={displayedAnnotationStyle.color} onInput={(event) => updateAnnotationStyle({ color: (event.target as HTMLInputElement).value })} sx={{ width: 28, height: 24, p: 0, border: 0, bgcolor: 'transparent' }} /></Box>
+          <Slider aria-label="annotation stroke width" title="선 두께" min={1} max={12} step={1} value={displayedAnnotationStyle.strokeWidth} onChange={(_, value) => updateAnnotationStyle({ strokeWidth: value as number })} sx={{ flex: '0 0 64px' }} />
+          <Slider aria-label="annotation opacity" title="투명도" min={0.1} max={1} step={0.1} value={displayedAnnotationStyle.opacity} onChange={(_, value) => updateAnnotationStyle({ opacity: value as number })} sx={{ flex: '0 0 64px' }} />
+          <FormControlLabel control={<Switch size="small" checked={displayedAnnotationStyle.fillColor !== null} onChange={(_, checked) => updateAnnotationStyle({ fillColor: checked ? displayedAnnotationStyle.color : null })} />} label="채움" sx={{ m: 0, '& .MuiFormControlLabel-label': { fontSize: '0.7rem' } }} />
+          {displayedAnnotationStyle.fillColor !== null ? <Box component="label" aria-label="annotation fill color" title="채움 색상" sx={{ display: 'inline-flex', alignItems: 'center' }}><Box component="input" type="color" value={displayedAnnotationStyle.fillColor} onInput={(event) => updateAnnotationStyle({ fillColor: (event.target as HTMLInputElement).value })} sx={{ width: 28, height: 24, p: 0, border: 0, bgcolor: 'transparent' }} /></Box> : null}
         </Box>
       )}
 
@@ -489,7 +503,7 @@ export default function PdfGpuViewer({
         )}
         <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} onClickCapture={(event) => { if (!suppressCaptureClickRef.current) return; suppressCaptureClickRef.current = false; event.preventDefault(); event.stopPropagation(); }}>
           <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, px: 2, filter: inverted ? 'invert(1)' : 'none' }} />
-          <AnnotationLayer controller={controller} annotations={annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotationTool} selectedId={selectedAnnotationId} onSelect={setSelectedAnnotationId} onChange={setAnnotations} />
+          <AnnotationLayer controller={controller} annotations={annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotationTool} style={annotationStyle} selectedId={selectedAnnotationId} onSelect={setSelectedAnnotationId} onChange={setAnnotations} />
           <Box data-testid="bookmark-overlay-layer" sx={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
             {overlayProjections.map((overlay, index) => {
               const bookmark = visibleOverlayBookmarks[index];
