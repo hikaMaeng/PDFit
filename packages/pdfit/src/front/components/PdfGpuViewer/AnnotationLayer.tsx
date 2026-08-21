@@ -4,13 +4,13 @@ import type { Annotation, AnnotationPoint, AnnotationStyle, AnnotationTool } fro
 import { annotationBounds, annotationFromGesture, createTextAnnotation, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
 import { layerPointToPagePoint, pagePointToLayerPoint, pageRectToLayerRect, projectAnnotationPages } from '../../annotation/coordinates.js';
 
-type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void };
+type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void; onCommit: (annotations: Annotation[], previous?: Annotation[]) => void };
 type Gesture = { pageIndex: number; start: AnnotationPoint; end: AnnotationPoint; points: AnnotationPoint[] };
-type EditGesture = { annotation: Annotation; start: AnnotationPoint; handle: 'move' | 'nw' | 'ne' | 'sw' | 'se' };
+type EditGesture = { annotation: Annotation; start: AnnotationPoint; before: Annotation[]; handle: 'move' | 'nw' | 'ne' | 'sw' | 'se' };
 type TextDraft = { id: string | null; pageIndex: number; point: AnnotationPoint; width: number; height: number; fontSize: number; text: string };
 
 /** Viewer-sized SVG surface for non-destructive PDF annotations. */
-export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange }: Props) {
+export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange, onCommit }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [editGesture, setEditGesture] = useState<EditGesture | null>(null);
@@ -39,7 +39,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
       const resolved = eventPoint(event);
       if (!annotation || !resolved || resolved.pageIndex !== annotation.pageIndex) return;
       onSelect(annotation.id); event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
-      setEditGesture({ annotation, start: resolved.point, handle: (target.dataset.resizeHandle as EditGesture['handle']) ?? 'move' });
+      setEditGesture({ annotation, start: resolved.point, before: [...annotations], handle: (target.dataset.resizeHandle as EditGesture['handle']) ?? 'move' });
       return;
     }
     if (tool === 'text') {
@@ -74,12 +74,12 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
   };
 
   const handlePointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (editGesture) { setEditGesture(null); return; }
+    if (editGesture) { onCommit([...annotations], editGesture.before); setEditGesture(null); return; }
     if (!gesture) return;
     const resolved = eventPoint(event);
     const completed = resolved?.pageIndex === gesture.pageIndex ? annotationFromGesture({ id: crypto.randomUUID(), documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: resolved.point, points: [...gesture.points, resolved.point], style }) : null;
     setGesture(null);
-    if (completed) onChange([...annotations, completed]);
+    if (completed) onCommit([...annotations, completed]);
   };
 
   useEffect(() => {
@@ -87,11 +87,11 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
       const tag = (event.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (event.key === 'Escape') onSelect(null);
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); onChange(annotations.filter((annotation) => annotation.id !== selectedId)); onSelect(null); }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); onCommit(annotations.filter((annotation) => annotation.id !== selectedId)); onSelect(null); }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [annotations, onChange, onSelect, selectedId]);
+  }, [annotations, onCommit, onSelect, selectedId]);
 
   const renderAnnotation = (annotation: Annotation) => {
     const projection = projections.get(annotation.pageIndex);
@@ -132,7 +132,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     const completed = createTextAnnotation({ id: textDraft.id ?? crypto.randomUUID(), documentId, pageIndex: textDraft.pageIndex, point: textDraft.point, width: textDraft.width, height: textDraft.height, fontSize: textDraft.fontSize, text: textDraft.text, style: current?.style ?? style, timestamp: current?.createdAt });
     if (completed) {
       const next = current ? { ...completed, createdAt: current.createdAt, updatedAt: new Date().toISOString() } : completed;
-      onChange(current ? annotations.map((annotation) => annotation.id === current.id ? next : annotation) : [...annotations, next]);
+      onCommit(current ? annotations.map((annotation) => annotation.id === current.id ? next : annotation) : [...annotations, next]);
       onSelect(next.id);
     }
     setTextDraft(null);

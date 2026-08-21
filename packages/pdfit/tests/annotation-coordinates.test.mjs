@@ -7,6 +7,7 @@ import {
   projectAnnotationPages,
 } from '../dist/front/annotation/coordinates.js';
 import { annotationBounds, annotationFromGesture, createTextAnnotation, resizeAnnotation, simplifyInkPoints, translateAnnotation } from '../dist/front/annotation/model.js';
+import { reduceAnnotationHistory } from '../dist/front/annotation/history.js';
 
 test('annotation projection uses PDFGPU overlay coordinates as the canonical transform', () => {
   const controller = {
@@ -60,4 +61,16 @@ test('free text preserves multiline content and PDF bounds', () => {
   assert.equal(annotation.type, 'text');
   assert.equal(annotation.geometry.text, '첫 줄\n둘째 줄');
   assert.deepEqual(annotationBounds(annotation), { x: 15, y: 25, width: 140, height: 60 });
+});
+
+test('annotation history treats a previewed drag as one undoable operation', () => {
+  const first = [annotationFromGesture({ id: 'r', documentId: 'doc', pageIndex: 0, tool: 'rectangle', start: { x: 0, y: 0 }, end: { x: 10, y: 10 }, points: [], timestamp: 'now' })];
+  const moved = [translateAnnotation(first[0], { x: 20, y: 30 }, 'later')];
+  let history = { past: [], present: first, future: [] };
+  history = reduceAnnotationHistory(history, { type: 'preview', annotations: moved });
+  history = reduceAnnotationHistory(history, { type: 'commit-preview', previous: first });
+  history = reduceAnnotationHistory(history, { type: 'undo' });
+  assert.deepEqual(annotationBounds(history.present[0]), { x: 0, y: 0, width: 10, height: 10 });
+  history = reduceAnnotationHistory(history, { type: 'redo' });
+  assert.deepEqual(annotationBounds(history.present[0]), { x: 20, y: 30, width: 10, height: 10 });
 });
