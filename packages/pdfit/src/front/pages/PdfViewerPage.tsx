@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { Alert, Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { foldersApi } from '../api/folders';
@@ -90,33 +90,26 @@ export default function PdfViewerPage() {
   const bookmarkModel = bookmarkModelRef.current;
   useSyncExternalStore(bookmarkModel.subscribe, bookmarkModel.getSnapshot, bookmarkModel.getSnapshot);
   const bookmarks = bookmarkModel.getAll();
-  const [bookmarkError, setBookmarkError] = useState<string | null>(null);
   const handleBookmarkCaptured = useCallback(async (capture: PdfGpuCaptureResult) => {
-    setBookmarkError(null);
     return createBookmarkOptimistically(folderName, fileName, { pageIndex: capture.pageIndex, rect: capture.rect, borderColor: '#f59e0b', fillColor: null, fillOpacity: 0.2, comment: null, imageMimeType: capture.mimeType, imageBase64: capture.imageBase64 }, {
       upsert: (record) => bookmarkModel.upsert(record),
       remove: (id) => bookmarkModel.remove(id),
-      failed: (message) => setBookmarkError(message),
     }).optimistic;
   }, [bookmarkModel, fileName, folderName]);
   const handleBookmarkUpdated = useCallback(async (id: string, request: UpdateBookmarkRequest) => {
     const current = bookmarkModel.getAll().find((bookmark) => bookmark.id === id);
     if (!current) return;
-    setBookmarkError(null);
     updateBookmarkOptimistically(current, request, {
       upsert: (record) => bookmarkModel.upsert(record),
       remove: (bookmarkId) => bookmarkModel.remove(bookmarkId),
-      failed: (message) => setBookmarkError(message),
     });
   }, [bookmarkModel]);
   const handleBookmarkDeleted = useCallback(async (id: string) => {
     const current = bookmarkModel.getAll().find((bookmark) => bookmark.id === id);
     if (!current) return;
-    setBookmarkError(null);
     deleteBookmarkOptimistically(current, {
       upsert: (record) => bookmarkModel.upsert(record),
       remove: (bookmarkId) => bookmarkModel.remove(bookmarkId),
-      failed: (message) => setBookmarkError(message),
     });
   }, [bookmarkModel]);
   const sessionState = useSyncExternalStore(
@@ -239,8 +232,6 @@ export default function PdfViewerPage() {
           </Typography>
         </Box>
       )}
-
-      {bookmarkError && <Alert severity="error" onClose={() => setBookmarkError(null)} sx={{ position: 'absolute', zIndex: 20, top: 8, right: 12, maxWidth: 440 }}>{bookmarkError}</Alert>}
 
       {stateLoaded ? viewerEngine === 'gpu' ? (
         <PdfGpuViewer

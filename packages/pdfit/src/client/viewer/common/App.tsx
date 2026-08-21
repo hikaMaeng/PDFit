@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { Alert, Box, CircularProgress, Typography } from '@mui/material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { Route, Routes } from 'react-router-dom';
+import BackgroundSyncIndicator from '../../../front/components/BackgroundSyncIndicator.js';
 
 const PdfViewerPage = lazy(() => import('../../../front/pages/PdfViewerPage.js'));
 
@@ -48,13 +49,16 @@ function ViewerLanding() {
 
 export default function PdfitViewerAppRoutes() {
   return (
-    <ViewerErrorBoundary>
-      <Suspense fallback={<Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>}>
-        <Routes>
-          <Route path="/" element={<ViewerLanding />} />
-          <Route path="/:folder/:filename" element={<PdfViewerPage />} />
-        </Routes>
-      </Suspense>
-    </ViewerErrorBoundary>
+    <>
+      <BackgroundSyncIndicator />
+      <ViewerErrorBoundary>
+        <Suspense fallback={<Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>}>
+          <Routes>
+            <Route path="/" element={<ViewerLanding />} />
+            <Route path="/:folder/:filename" element={<PdfViewerPage />} />
+          </Routes>
+        </Suspense>
+      </ViewerErrorBoundary>
+    </>
   );
 }

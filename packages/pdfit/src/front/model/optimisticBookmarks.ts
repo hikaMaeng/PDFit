@@ -17,6 +17,9 @@ export interface BookmarkMutationResult {
 }
 
 function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof TypeError && error.message === 'Failed to fetch') {
+    return '서버에 연결할 수 없습니다. 잠시 후 재시도하세요.';
+  }
   return error instanceof Error ? error.message : fallback;
 }
 
