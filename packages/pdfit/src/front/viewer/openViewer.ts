@@ -20,6 +20,11 @@ interface ViewerCommand extends OpenViewerRequest {
 const REGISTRY_KEY = 'pdfit.open-viewers.v1';
 const TARGET_PREFIX = 'pdfit-viewer-';
 const REUSE_ACK_TIMEOUT_MS = 180;
+const PENDING_UPLOAD_PREFIX = 'pending-upload-';
+
+export function isPendingUploadDriveFileId(driveFileId: string | null | undefined): boolean {
+  return driveFileId?.startsWith(PENDING_UPLOAD_PREFIX) ?? false;
+}
 
 function bookKey(folder: string, filename: string) {
   return `${folder}\u0000${filename}`;
@@ -92,6 +97,7 @@ export function isViewerCommand(value: unknown): value is ViewerCommand {
  * immediately navigated as a new viewer instead.
  */
 export function openViewer(request: OpenViewerRequest) {
+  if (isPendingUploadDriveFileId(request.driveFileId)) return;
   const target = viewerWindowName(request.folder, request.filename);
   const url = viewerUrl(request);
   const record = readRegistry()[bookKey(request.folder, request.filename)];

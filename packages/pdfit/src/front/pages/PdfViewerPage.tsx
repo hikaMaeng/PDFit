@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { foldersApi } from '../api/folders';
@@ -16,7 +16,7 @@ import type { UpdateBookmarkRequest } from '../../common/protocol/bookmarks/inde
 import { getViewerNavigationModel } from '../model/viewerNavigationModel.js';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import { createBookmarkOptimistically, deleteBookmarkOptimistically, updateBookmarkOptimistically } from '../model/optimisticBookmarks.js';
-import { isViewerCommand, registerViewerWindow } from '../viewer/openViewer.js';
+import { isPendingUploadDriveFileId, isViewerCommand, registerViewerWindow } from '../viewer/openViewer.js';
 
 function decodeRouteParam(value: string | undefined): string {
   let decoded = value ?? '';
@@ -41,8 +41,9 @@ export default function PdfViewerPage() {
   const searchParams = new URLSearchParams(search);
   const requestedPage = Number.parseInt(searchParams.get('page') ?? '', 10);
   const driveFileId = searchParams.get('driveFileId');
+  const pendingUpload = isPendingUploadDriveFileId(driveFileId);
   const initialPageFromUrl = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : null;
-  const pdfUrl = foldersApi.fileUrl(folderName, fileName, driveFileId);
+  const pdfUrl = pendingUpload ? '' : foldersApi.fileUrl(folderName, fileName, driveFileId);
   const returnToFolder = useCallback(() => {
     // The dedicated viewer is mounted under BrowserRouter basename="/viewer".
     // Leaving through navigate() would keep that basename and reinterpret the
@@ -233,7 +234,11 @@ export default function PdfViewerPage() {
         </Box>
       )}
 
-      {stateLoaded ? viewerEngine === 'gpu' ? (
+      {pendingUpload ? (
+        <Box sx={{ flex: 1, display: 'grid', placeItems: 'center', p: 3 }}>
+          <Alert severity="info">이 PDF는 아직 Google Drive에 업로드 중입니다. 업로드가 완료된 후 다시 열어주세요.</Alert>
+        </Box>
+      ) : stateLoaded ? viewerEngine === 'gpu' ? (
         <PdfGpuViewer
           url={pdfUrl}
           initialPage={initialPage ?? savedState?.page ?? null}
