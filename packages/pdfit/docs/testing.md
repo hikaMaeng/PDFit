@@ -14,6 +14,21 @@ Shared package changes are verified through:
 * PostgreSQL/pgvector extension, shared metadata CRUD, and Settings CRUD checks
   against the deployed integrated container
 
+Folder multi-delete browser coverage selects two uniquely named PDF rows,
+checks the selected-count confirmation, deletes them, and verifies both the UI
+and file API no longer expose either PDF. It also verifies select-all and
+selection clearing without deleting the library's existing files.
+
+Home navigation coverage must compare the **라이브러리 열기** href with the
+folder API row marked `isRoot`, then activate it and verify the matching folder
+page. Root folder names are runtime data and must never be hard-coded.
+
+Folder selection layout coverage verifies that each row checkbox is horizontally
+after the row delete button and that toggling it still updates the selected-delete
+count without overlapping the filename or action controls.
+The row action group must also center the tag, move, delete, and selection
+controls on one vertical axis across multiple visible rows.
+
 `npm run sync:pdfgpu` builds the sibling `@pdfgpu/core`, packs it, verifies its
 source commit and SHA-256 manifest, and relinks the local PDFit dependency.
 The independent core suite runs in `F:\dev\pdfgpu`; PDFit integration tests then

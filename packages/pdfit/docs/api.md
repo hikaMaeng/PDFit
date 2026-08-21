@@ -9,7 +9,9 @@ Extension fields:
 * `appName`
 * `appVersion`
 * `extraRoutes`
-* `extraSidebarItems`
+* `extraSidebarItems`: `{ label, icon, path, placement? }` items. `placement:
+  'primary'` renders a full-width navigation row above Bookmarks; omitted or
+  `header` renders the existing compact header icon.
 * `themeOptions`
 * `metadataCache`: optional `{ scope, bootstrapUrl }` adapter for account-scoped
   IndexedDB hydration and folder/PDF list reads

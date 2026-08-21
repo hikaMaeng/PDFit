@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Typography, Box, Paper, Button, Chip, Divider, Stack } from '@mui/material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
@@ -11,9 +11,32 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import LabelIcon from '@mui/icons-material/Label';
 import { Link } from 'react-router-dom';
 import { usePdfitFrontConfig } from '../context';
+import { foldersApi } from '../api/folders';
 
 export default function HomePage() {
-  const { appName, appVersion } = usePdfitFrontConfig();
+  const { appName, appVersion, navigationGuard } = usePdfitFrontConfig();
+  const [rootFolderName, setRootFolderName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadRootFolder = async () => {
+      try {
+        const folders = await foldersApi.list();
+        if (active) setRootFolderName(folders.find((folder) => folder.isRoot)?.name ?? folders[0]?.name ?? null);
+      } catch {
+        if (active) setRootFolderName(null);
+      }
+    };
+    void loadRootFolder();
+    window.addEventListener('folders-changed', loadRootFolder);
+    return () => {
+      active = false;
+      window.removeEventListener('folders-changed', loadRootFolder);
+    };
+  }, []);
+
+  const rootFolderPath = rootFolderName ? `/folder/${encodeURIComponent(rootFolderName)}` : '/';
+  const libraryPath = navigationGuard?.(rootFolderPath) ?? rootFolderPath;
 
   const features = [
     { icon: <BookmarkIcon />, title: '시각적 북마크', copy: '페이지 영역을 고해상도로 캡처하고 좌표, 색상, 투명도, 코멘트를 함께 저장합니다.' },
@@ -44,7 +67,7 @@ export default function HomePage() {
           <Typography variant="h3" sx={{ fontWeight: 800, letterSpacing: '-.04em', fontSize: { xs: '2rem', md: '3rem' } }}>수천 개의 PDF도<br /><Box component="span" sx={{ color: 'primary.light' }}>빠르게 읽고, 쉽게 찾는 서재</Box></Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 600, lineHeight: 1.8 }}>PDFit은 설치형 PDF 뷰어를 뛰어넘는 WebGPU·PDFium WebAssembly 기반의 속도와, 태그 중심의 직관적인 문서 관리 경험을 하나로 제공합니다.</Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <Button component={Link} to="/folder/Library" variant="contained" endIcon={<ArrowForwardIcon />}>라이브러리 열기</Button>
+            <Button component={Link} to={libraryPath} disabled={!rootFolderName} variant="contained" endIcon={<ArrowForwardIcon />}>라이브러리 열기</Button>
             <Button component={Link} to="/bookmarks" variant="outlined" startIcon={<BookmarkIcon />}>북마크 보기</Button>
           </Stack>
         </Stack>

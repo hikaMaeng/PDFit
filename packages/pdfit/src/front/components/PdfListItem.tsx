@@ -68,6 +68,7 @@ const ACTIONS_STYLE: React.CSSProperties = {
   top: '50%',
   right: 20,
   display: 'flex',
+  alignItems: 'center',
   gap: 4,
   transform: 'translateY(-50%)',
 };
@@ -109,6 +110,8 @@ export interface PdfListItemProps {
   manageTagsLabel?: string;
   moveLabel?: string;
   deleteLabel?: string;
+  selected?: boolean;
+  onSelectionChange?: (folder: string, filename: string, selected: boolean) => void;
 }
 
 function PdfListItem({
@@ -129,6 +132,8 @@ function PdfListItem({
   manageTagsLabel,
   moveLabel,
   deleteLabel,
+  selected = false,
+  onSelectionChange,
 }: PdfListItemProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -150,7 +155,9 @@ function PdfListItem({
         style={{
           ...LINK_STYLE,
           gap: isMobile ? 10 : LINK_STYLE.gap,
-          padding: isMobile ? '10px 58px 10px 16px' : LINK_STYLE.padding,
+          padding: isMobile
+            ? (onSelectionChange ? '10px 100px 10px 16px' : '10px 58px 10px 16px')
+            : (onSelectionChange ? '12px 164px 12px 24px' : LINK_STYLE.padding),
         }}
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = 'copyMove';
@@ -193,7 +200,7 @@ function PdfListItem({
           </div>
         </div>
       </a>
-      {(onManageTags || onMove || onDelete) && (
+      {(onManageTags || onMove || onDelete || onSelectionChange) && (
         <div style={{ ...ACTIONS_STYLE, ...(isMobile ? { right: 6, gap: 0 } : {}) }}>
           {onManageTags && (
             <button type="button" title={manageTagsLabel} aria-label={manageTagsLabel} style={{ ...ICON_BUTTON_STYLE, color: '#86efac' }} onClick={(event) => { stopLink(event); onManageTags(folder, filename); }}>
@@ -209,6 +216,23 @@ function PdfListItem({
             <button type="button" title={deleteLabel} aria-label={deleteLabel} style={{ ...ICON_BUTTON_STYLE, color: '#f87171' }} onClick={(event) => { stopLink(event); onDelete(folder, filename); }}>
               <DeleteIcon fontSize="small" />
             </button>
+          )}
+          {onSelectionChange && (
+            <input
+              type="checkbox"
+              data-testid="pdf-selection-checkbox"
+              aria-label={`${filename} 선택`}
+              checked={selected}
+              onChange={(event) => onSelectionChange(folder, filename, event.target.checked)}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: 16,
+                height: 16,
+                margin: '0 2px 0 4px',
+                accentColor: '#3b82f6',
+                cursor: 'pointer',
+              }}
+            />
           )}
         </div>
       )}

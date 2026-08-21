@@ -8,6 +8,7 @@ export interface PdfitSidebarItem {
   label: string;
   icon: ReactNode;
   path: string;
+  placement?: 'header' | 'primary';
 }
 
 export interface PdfitFrontExtension {

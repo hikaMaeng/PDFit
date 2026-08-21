@@ -4,7 +4,7 @@ import {
   Box, Typography, List,
   IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select,
-  FormControl, InputLabel, Chip,
+  FormControl, InputLabel, Chip, Checkbox,
   Autocomplete, TextField,
 } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -69,7 +69,25 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   const [refreshing, setRefreshing] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [folderColor, setFolderColor] = useState('#3b82f6');
-  const [confirmDelete, setConfirmDelete] = useState<{ kind: 'file' | 'folder'; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { kind: 'file' | 'folder'; name: string }
+    | { kind: 'selection'; names: string[] }
+    | null
+  >(null);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
+  const [deletingSelection, setDeletingSelection] = useState(false);
+
+  useEffect(() => {
+    setSelectedFiles(new Set());
+  }, [folderName]);
+
+  useEffect(() => {
+    const available = new Set(files.map((file) => file.name));
+    setSelectedFiles((current) => {
+      const next = new Set([...current].filter((filename) => available.has(filename)));
+      return next.size === current.size ? current : next;
+    });
+  }, [files]);
 
   useEffect(() => {
     void foldersApi.list().then((items) => setFolderColor(items.find((item) => item.name === folderName)?.color ?? '#3b82f6'));
@@ -182,9 +200,29 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
     const target = confirmDelete;
     setConfirmDelete(null);
     try {
-      if (target.kind === 'file') {
+      if (target.kind === 'selection') {
+        setDeletingSelection(true);
+        const failed: string[] = [];
+        for (const filename of target.names) {
+          try {
+            await foldersApi.deleteFile(folderName, filename);
+            folderModel.removeFile(filename);
+          } catch {
+            failed.push(filename);
+          }
+        }
+        setSelectedFiles(new Set(failed));
+        if (failed.length > 0) {
+          throw new Error(`${target.names.length - failed.length}개를 삭제했고, ${failed.length}개는 삭제하지 못했습니다.`);
+        }
+      } else if (target.kind === 'file') {
         await foldersApi.deleteFile(folderName, target.name);
         folderModel.removeFile(target.name);
+        setSelectedFiles((current) => {
+          const next = new Set(current);
+          next.delete(target.name);
+          return next;
+        });
       } else {
         await foldersApi.delete(target.name);
         window.dispatchEvent(new Event('folders-changed'));
@@ -193,7 +231,29 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
       window.dispatchEvent(new Event('folders-changed'));
     } catch (e) {
       setError(e instanceof Error ? e.message : '삭제 실패');
+    } finally {
+      setDeletingSelection(false);
     }
+  };
+
+  const handleSelectionChange = useCallback((_rowFolder: string, filename: string, selected: boolean) => {
+    setSelectedFiles((current) => {
+      const next = new Set(current);
+      if (selected) next.add(filename);
+      else next.delete(filename);
+      return next;
+    });
+  }, []);
+
+  const allFilesSelected = files.length > 0 && selectedFiles.size === files.length;
+
+  const handleSelectAll = (_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    setSelectedFiles(checked ? new Set(files.map((file) => file.name)) : new Set());
+  };
+
+  const handleDeleteSelection = () => {
+    if (selectedFiles.size === 0) return;
+    setConfirmDelete({ kind: 'selection', names: [...selectedFiles] });
   };
 
   const openMoveDialog = useCallback(async (_rowFolder: string, filename: string) => {
@@ -338,6 +398,31 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
             </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
+            {files.length > 0 && (
+              <Tooltip title={allFilesSelected ? '전체 선택 해제' : '전체 선택'} arrow>
+                <Checkbox
+                  data-testid="pdf-select-all"
+                  inputProps={{ 'aria-label': 'PDF 전체 선택' }}
+                  checked={allFilesSelected}
+                  indeterminate={selectedFiles.size > 0 && !allFilesSelected}
+                  onChange={handleSelectAll}
+                  disabled={deletingSelection}
+                  size="small"
+                />
+              </Tooltip>
+            )}
+            <Button
+              data-testid="delete-selected-pdfs"
+              color="error"
+              variant={selectedFiles.size > 0 ? 'contained' : 'outlined'}
+              size="small"
+              startIcon={<DeleteIcon />}
+              disabled={selectedFiles.size === 0 || deletingSelection}
+              onClick={handleDeleteSelection}
+              sx={{ minWidth: 104 }}
+            >
+              {deletingSelection ? '삭제 중...' : `선택 삭제${selectedFiles.size > 0 ? ` (${selectedFiles.size})` : ''}`}
+            </Button>
             <Tooltip title="폴더 새로고침" arrow>
               <span>
                 <IconButton color="primary" onClick={() => void handleRefresh()} disabled={refreshing || loading}>
@@ -411,6 +496,8 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
                 manageTagsLabel="태그 관리"
                 moveLabel="다른 폴더로 이동"
                 deleteLabel="삭제"
+                selected={selectedFiles.has(file.name)}
+                onSelectionChange={handleSelectionChange}
               />
             ))}
           </List>
@@ -458,7 +545,13 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
         <DialogTitle>삭제 확인</DialogTitle>
         <DialogContent>
-          <Typography>{confirmDelete?.kind === 'folder' ? `"${confirmDelete.name}" 폴더와 모든 PDF를 삭제하시겠습니까?` : `"${confirmDelete?.name}"을 삭제하시겠습니까?`}</Typography>
+          <Typography>
+            {confirmDelete?.kind === 'folder'
+              ? `"${confirmDelete.name}" 폴더와 모든 PDF를 삭제하시겠습니까?`
+              : confirmDelete?.kind === 'selection'
+                ? `선택한 PDF ${confirmDelete.names.length}개를 삭제하시겠습니까?`
+                : `"${confirmDelete?.name}"을 삭제하시겠습니까?`}
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmDelete(null)}>취소</Button>
