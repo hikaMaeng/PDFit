@@ -42,9 +42,27 @@ export function annotationFromGesture(input: { id: string; documentId: string; p
   return null;
 }
 
+/** Creates a multiline free-text annotation anchored in PDF page coordinates. */
+export function createTextAnnotation(input: { id: string; documentId: string; pageIndex: number; point: AnnotationPoint; text: string; style?: AnnotationStyle; fontSize?: number; width?: number; height?: number; timestamp?: string }): Annotation | null {
+  const text = input.text.trim();
+  if (!text) return null;
+  const timestamp = input.timestamp ?? new Date().toISOString();
+  return {
+    id: input.id,
+    documentId: input.documentId,
+    pageIndex: input.pageIndex,
+    type: 'text',
+    geometry: { x: input.point.x, y: input.point.y, width: input.width ?? 180, height: input.height ?? 72, text, fontSize: input.fontSize ?? 16 },
+    style: input.style ?? DEFAULT_ANNOTATION_STYLE,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 /** Returns the editable PDF-coordinate bounds for any annotation kind. */
 export function annotationBounds(annotation: Annotation): AnnotationRect {
-  if (annotation.type === 'rectangle' || annotation.type === 'circle' || annotation.type === 'highlight' || annotation.type === 'text') return annotation.geometry;
+  if (annotation.type === 'rectangle' || annotation.type === 'circle' || annotation.type === 'highlight') return annotation.geometry;
+  if (annotation.type === 'text') return { x: annotation.geometry.x, y: annotation.geometry.y, width: annotation.geometry.width, height: annotation.geometry.height };
   if (annotation.type === 'line' || annotation.type === 'arrow') return rectFromPoints(annotation.geometry.start, annotation.geometry.end);
   const xs = annotation.geometry.points.map((point) => point.x); const ys = annotation.geometry.points.map((point) => point.y);
   return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };

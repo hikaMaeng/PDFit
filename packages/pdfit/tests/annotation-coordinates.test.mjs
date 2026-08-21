@@ -6,7 +6,7 @@ import {
   pageRectToLayerRect,
   projectAnnotationPages,
 } from '../dist/front/annotation/coordinates.js';
-import { annotationBounds, annotationFromGesture, resizeAnnotation, simplifyInkPoints, translateAnnotation } from '../dist/front/annotation/model.js';
+import { annotationBounds, annotationFromGesture, createTextAnnotation, resizeAnnotation, simplifyInkPoints, translateAnnotation } from '../dist/front/annotation/model.js';
 
 test('annotation projection uses PDFGPU overlay coordinates as the canonical transform', () => {
   const controller = {
@@ -53,4 +53,11 @@ test('selection transforms move and resize geometry in PDF coordinates', () => {
   assert.deepEqual(annotationBounds(annotation), { x: 10, y: 20, width: 20, height: 30 });
   assert.deepEqual(annotationBounds(translateAnnotation(annotation, { x: 5, y: -5 }, 'later')), { x: 15, y: 15, width: 20, height: 30 });
   assert.deepEqual(annotationBounds(resizeAnnotation(annotation, 'se', { x: 50, y: 70 }, 'later')), { x: 10, y: 20, width: 40, height: 50 });
+});
+
+test('free text preserves multiline content and PDF bounds', () => {
+  const annotation = createTextAnnotation({ id: 't', documentId: 'doc', pageIndex: 1, point: { x: 15, y: 25 }, text: '첫 줄\n둘째 줄', width: 140, height: 60, fontSize: 18, timestamp: 'now' });
+  assert.equal(annotation.type, 'text');
+  assert.equal(annotation.geometry.text, '첫 줄\n둘째 줄');
+  assert.deepEqual(annotationBounds(annotation), { x: 15, y: 25, width: 140, height: 60 });
 });
