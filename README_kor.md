@@ -38,7 +38,7 @@ PDFit의 가장 큰 가치는 두 가지입니다.
 GitHub 저장소에서 최신 릴리스의 런처를 설치합니다.
 
 ```bash
-npm install https://github.com/hikaMaeng/PDFit.git#v0.4.3
+npm install https://github.com/hikaMaeng/PDFit.git#v0.4.4
 ```
 
 설치가 끝나면 `npx`로 런처를 실행합니다.
@@ -68,14 +68,14 @@ Windows에서는 `D:\\Books`, `S:\\pdf-library`와 같은 경로를 사용하고
 npx pdfit --help
 ```
 
-다른 릴리스를 사용하려면 설치 명령의 `v0.4.3`을 원하는 Git tag로 바꾸면 됩니다.
+다른 릴리스를 사용하려면 설치 명령의 `v0.4.4`를 원하는 Git tag로 바꾸면 됩니다.
 
 ### 소스에서 실행
 
 개발 또는 로컬 소스 변경이 필요하면 다음과 같이 실행합니다.
 
 ```bash
-git clone --branch v0.4.3 https://github.com/hikaMaeng/PDFit.git
+git clone --branch v0.4.4 https://github.com/hikaMaeng/PDFit.git
 cd PDFit
 npm install
 npm run deploy

@@ -26,6 +26,10 @@ import {
 import type { PdfJsModule } from '../../pdfjs.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
+import { AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
+import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
+import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
+import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
 
 const loadPdfJs = () => import('../../pdfjs.js').then(({ loadPdfJs: load }) => load());
 
@@ -91,7 +95,7 @@ export default function PdfViewer({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
   const [scale, setScale] = useState(initialScale ?? 1.2);
-  const [fitMode, setFitMode] = useState<FitMode>(initialFitMode ?? 'width');
+  const [fitMode, setFitMode] = useState<FitMode>(initialFitMode ?? 'none');
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'scroll');
   const [localInverted, setLocalInverted] = useState(initialInverted ?? false);
   const inverted = controlledInverted ?? localInverted;
@@ -106,8 +110,11 @@ export default function PdfViewer({
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const initialPageAppliedRef = useRef(false);
+  const annotation = usePdfAnnotations(url);
+  const pan = usePdfPan(containerRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
 
   // 최신 상태를 이벤트 핸들러 내부에서 참조하기 위한 refs
   const currentPageRef = useRef(currentPage);
@@ -136,7 +143,7 @@ export default function PdfViewer({
   const stateSnapshotRef = useRef<Omit<ViewerStatePayload, 'uiHidden'>>({
     page: 1,
     scale: initialScale ?? 1.2,
-    fitMode: initialFitMode ?? 'width',
+    fitMode: initialFitMode ?? 'none',
     viewMode: initialViewMode ?? 'scroll',
     inverted: initialInverted ?? false,
     scrollTop: 0,
@@ -584,14 +591,7 @@ export default function PdfViewer({
   }
 
   return (
-    <Box
-      data-testid="legacy-bookmark-capture-surface"
-      onPointerDown={handleCapturePointerDown}
-      onPointerMove={handleCapturePointerMove}
-      onPointerUp={(event) => void handleCapturePointerUp(event)}
-      onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }}
-      sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', position: 'relative', cursor: onBookmarkCaptured ? 'crosshair' : 'default' }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', position: 'relative' }}>
 
       {/* ── 툴바 (UI 숨김 시 사라짐) ── */}
       {!uiHidden && (
@@ -681,8 +681,6 @@ export default function PdfViewer({
               <BookmarksIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>페이지 드래그: 북마크</Typography>
-
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
           {/* 뷰 모드 */}
@@ -702,14 +700,24 @@ export default function PdfViewer({
           </ToggleButtonGroup>
 
           <Box sx={{ flex: 1 }} />
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>
-            Space: UI 숨기기
-          </Typography>
         </Box>
       )}
 
+      <Box
+        ref={surfaceRef}
+        data-testid="legacy-bookmark-capture-surface"
+        onPointerDown={annotation.tool === 'bookmark' ? handleCapturePointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined}
+        onPointerMove={annotation.tool === 'bookmark' ? handleCapturePointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined}
+        onPointerUp={annotation.tool === 'bookmark' ? (event) => void handleCapturePointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined}
+        onPointerCancel={annotation.tool === 'bookmark' ? () => { captureStartRef.current = null; setCaptureDrag(null); } : annotation.tool === 'select' ? pan.pointerCancel : undefined}
+        onWheel={annotation.tool === 'select' ? pan.wheel : undefined}
+        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }}
+      >
+      {!uiHidden && <AnnotationControls tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+      <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
+
       {bookmarkPanelOpen && (
-        <Box component="aside" aria-label="Book bookmarks" sx={{ position: 'absolute', zIndex: 8, top: 41, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: '#242426', borderRight: '1px solid rgba(255,255,255,.08)', p: 1 }}>
+        <Box component="aside" aria-label="Book bookmarks" sx={{ position: 'absolute', zIndex: 8, top: 0, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: '#242426', borderRight: '1px solid rgba(255,255,255,.08)', p: 1 }}>
           <Typography variant="caption" sx={{ display: 'block', color: 'grey.400', px: 0.5, pb: 0.75 }}>Book bookmarks</Typography>
           {bookmarks.length === 0 ? <Typography variant="caption" color="grey.600" sx={{ px: 0.5 }}>Drag on a page to capture.</Typography> : bookmarks.map((bookmark) => (
             <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: '#303034' }}>
@@ -728,11 +736,11 @@ export default function PdfViewer({
 
       {/* ── 스크롤 모드 ── */}
       {viewMode === 'scroll' && (
-        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ flex: 1, overflow: 'auto', bgcolor: '#3a3a3a', py: 3, px: 2 }}>
+        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ height: '100%', overflow: 'auto', bgcolor: '#3a3a3a', py: 3 }}>
           {pages.map((page, idx) => {
             const pn = idx + 1;
             return (
-              <Box key={idx} ref={(el) => { pageRefs.current[idx] = el as HTMLDivElement | null; }}>
+              <Box key={idx} ref={(el) => { pageRefs.current[idx] = el as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
                 {page ? (
                   <PdfPage
                     page={page} scale={scale} pageNumber={pn} inverted={inverted}
@@ -763,13 +771,15 @@ export default function PdfViewer({
       {viewMode === 'single' && (
         <Box
           ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ flex: 1, overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}
+          sx={{ height: '100%', overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}
         >
           {pages[currentPage - 1] ? (
-            <PdfPage
-              page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
-              bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
-            />
+            <Box ref={(element) => { pageRefs.current[currentPage - 1] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={currentPage - 1}>
+              <PdfPage
+                page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
+                bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
+              />
+            </Box>
           ) : (
             <Box
               sx={{
@@ -788,14 +798,16 @@ export default function PdfViewer({
       {viewMode === 'double' && (
         <Box
           ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ flex: 1, overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}
+          sx={{ height: '100%', overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}
         >
           {/* 좌측 페이지 */}
           {pages[currentPage - 1] ? (
-            <PdfPage
-              page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
-              bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
-            />
+            <Box ref={(element) => { pageRefs.current[currentPage - 1] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={currentPage - 1}>
+              <PdfPage
+                page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
+                bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
+              />
+            </Box>
           ) : (
             <Box
               sx={{
@@ -810,10 +822,12 @@ export default function PdfViewer({
           {/* 우측 페이지 */}
           {currentPage < totalPages && (
             pages[currentPage] ? (
-              <PdfPage
-                page={pages[currentPage]!} pageNumber={currentPage + 1} {...basePageProps}
-                bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage)} onBookmarkDeleted={onBookmarkDeleted}
-              />
+              <Box ref={(element) => { pageRefs.current[currentPage] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={currentPage}>
+                <PdfPage
+                  page={pages[currentPage]!} pageNumber={currentPage + 1} {...basePageProps}
+                  bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage)} onBookmarkDeleted={onBookmarkDeleted}
+                />
+              </Box>
             ) : (
               <Box
                 sx={{
@@ -829,6 +843,7 @@ export default function PdfViewer({
         </Box>
       )}
 
+      </Box>
     </Box>
   );
 }

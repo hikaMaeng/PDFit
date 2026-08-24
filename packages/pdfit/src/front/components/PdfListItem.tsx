@@ -19,25 +19,34 @@ const ROW_STYLE: React.CSSProperties = {
   borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
   contentVisibility: 'auto',
   containIntrinsicSize: '0 72px',
+  cursor: 'default',
 };
 
-const LINK_STYLE: React.CSSProperties = {
+const CONTENT_STYLE: React.CSSProperties = {
   display: 'flex',
   flex: 1,
   minWidth: 0,
   alignItems: 'flex-start',
   gap: 16,
   padding: '12px 128px 12px 24px',
-  color: 'inherit',
-  cursor: 'grab',
-  textDecoration: 'none',
+  cursor: 'default',
 };
 
 const FILE_NAME_STYLE: React.CSSProperties = {
+  display: 'inline-block',
+  maxWidth: '100%',
   overflow: 'hidden',
   fontWeight: 500,
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+};
+
+const FILE_NAME_LINK_STYLE: React.CSSProperties = {
+  ...FILE_NAME_STYLE,
+  color: 'inherit',
+  cursor: 'pointer',
+  textDecoration: 'none',
+  verticalAlign: 'top',
 };
 
 const META_STYLE: React.CSSProperties = {
@@ -47,6 +56,7 @@ const META_STYLE: React.CSSProperties = {
   gap: 6,
   marginTop: 4,
   color: 'rgba(255, 255, 255, 0.62)',
+  cursor: 'default',
   fontSize: '0.75rem',
 };
 
@@ -149,30 +159,35 @@ function PdfListItem({
 
   return (
     <li style={ROW_STYLE}>
-      <a
-        href={href}
-        draggable
+      <div
         style={{
-          ...LINK_STYLE,
-          gap: isMobile ? 10 : LINK_STYLE.gap,
+          ...CONTENT_STYLE,
+          gap: isMobile ? 10 : CONTENT_STYLE.gap,
           padding: isMobile
             ? (onSelectionChange ? '10px 100px 10px 16px' : '10px 58px 10px 16px')
-            : (onSelectionChange ? '12px 164px 12px 24px' : LINK_STYLE.padding),
-        }}
-        onDragStart={(event) => {
-          event.dataTransfer.effectAllowed = 'copyMove';
-          event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder, filename }));
-        }}
-        onClick={(event) => {
-          if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          openViewer({ folder, filename, driveFileId });
+            : (onSelectionChange ? '12px 164px 12px 24px' : CONTENT_STYLE.padding),
         }}
       >
         <PictureAsPdfIcon color="error" sx={{ mt: 0.25, flexShrink: 0 }} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ ...FILE_NAME_STYLE, ...(isMobile ? { whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.35 } : {}) }}>{filename}</div>
-          <div style={META_STYLE} onClick={(event) => event.preventDefault()}>
+          <a
+            href={href}
+            title={`상세보기: ${filename}`}
+            draggable
+            style={{ ...FILE_NAME_LINK_STYLE, ...(isMobile ? { whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.35 } : {}) }}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = 'copyMove';
+              event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder, filename }));
+            }}
+            onClick={(event) => {
+              if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              openViewer({ folder, filename, driveFileId });
+            }}
+          >
+            {filename}
+          </a>
+          <div style={META_STYLE}>
             {metaParts && <span>{metaParts}</span>}
             {secondaryLinkLabel && onSecondaryLink && (
               <button
@@ -199,7 +214,7 @@ function PdfListItem({
             ))}
           </div>
         </div>
-      </a>
+      </div>
       {(onManageTags || onMove || onDelete || onSelectionChange) && (
         <div style={{ ...ACTIONS_STYLE, ...(isMobile ? { right: 6, gap: 0 } : {}) }}>
           {onManageTags && (

@@ -5,7 +5,7 @@ import {
   IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select,
   FormControl, InputLabel, Chip, Checkbox,
-  Autocomplete, TextField,
+  Autocomplete, TextField, Snackbar,
 } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -34,7 +34,13 @@ function isPdfFile(file: File): boolean {
 
 interface TagDialogState {
   file: string;
+  driveFileId?: string;
   currentTags: string[];
+}
+
+interface TagNotice {
+  message: string;
+  severity: 'info' | 'success' | 'error';
 }
 
 function FolderPage({ folderName: requestedFolderName }: { folderName?: string }) {
@@ -66,6 +72,8 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tagLoading, setTagLoading] = useState(false);
+  const [tagMutation, setTagMutation] = useState<string | null>(null);
+  const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [folderColor, setFolderColor] = useState('#3b82f6');
@@ -279,62 +287,100 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
   };
 
   // ─── 태그 다이얼로그 ──────────────────────────────────────
-  const openTagDialog = useCallback(async (_rowFolder: string, filename: string) => {
+  const openTagDialog = useCallback(async (_rowFolder: string, filename: string, driveFileId?: string) => {
+    setTagDialog({ file: filename, driveFileId, currentTags: fileTags[filename] ?? [] });
     setTagLoading(true);
     setTagInput('');
     try {
       const [currentTags, globalTags] = await Promise.all([
-        tagsApi.listForBook(folderName, filename),
+        tagsApi.listForBook(folderName, filename, driveFileId),
         tagsApi.list(),
       ]);
-      setTagDialog({ file: filename, currentTags });
+      setTagDialog({ file: filename, driveFileId, currentTags });
       setAllTags(globalTags);
     } catch {
       setError('태그 로드 실패');
     } finally {
       setTagLoading(false);
     }
-  }, [folderName]);
+  }, [fileTags, folderName]);
 
   const handleAddTag = async (tag: string) => {
-    if (!tagDialog || !tag.trim()) return;
+    if (!tagDialog || !tag.trim() || tagMutation) return;
     const trimmed = tag.trim();
-    if (tagDialog.currentTags.includes(trimmed)) return;
-    try {
-      await tagsApi.addTag(folderName, tagDialog.file, trimmed);
-      const filename = tagDialog.file;
-      setTagDialog((prev) => prev ? { ...prev, currentTags: [...prev.currentTags, trimmed] } : prev);
-      folderModel.addTag(filename, trimmed);
-      setAllTags((prev) => prev.includes(trimmed) ? prev : [...prev, trimmed].sort());
+    if (tagDialog.currentTags.includes(trimmed)) {
       setTagInput('');
+      setTagNotice({ message: `"${trimmed}"은(는) 이미 추가된 태그입니다.`, severity: 'info' });
+      return;
+    }
+    const filename = tagDialog.file;
+    const driveFileId = tagDialog.driveFileId;
+    setTagMutation(trimmed);
+    setTagNotice({ message: `"${trimmed}" 태그를 추가하는 중입니다…`, severity: 'info' });
+    setTagDialog((prev) => prev ? { ...prev, currentTags: [...prev.currentTags, trimmed] } : prev);
+    folderModel.addTag(filename, trimmed);
+    setAllTags((prev) => prev.includes(trimmed) ? prev : [...prev, trimmed].sort());
+    setTagInput('');
+    try {
+      await tagsApi.addTag(folderName, filename, trimmed, driveFileId);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${trimmed}" 태그가 추가되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 추가 실패');
+      await tagsApi.restoreCachedRelation(folderName, filename, trimmed, false, driveFileId);
+      setAllTags(await tagsApi.list());
+      setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((item) => item !== trimmed) } : prev);
+      folderModel.removeTag(filename, trimmed);
+      const message = e instanceof Error ? e.message : '태그 추가 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 추가하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
   };
 
   const handleRemoveTag = async (tag: string) => {
-    if (!tagDialog) return;
+    if (!tagDialog || tagMutation) return;
     const filename = tagDialog.file;
+    const driveFileId = tagDialog.driveFileId;
+    setTagMutation(tag);
+    setTagNotice({ message: `"${tag}" 태그를 삭제하는 중입니다…`, severity: 'info' });
+    setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((item) => item !== tag) } : prev);
+    folderModel.removeTag(filename, tag);
     try {
-      await tagsApi.removeTag(folderName, filename, tag);
-      setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((t) => t !== tag) } : prev);
-      folderModel.removeTag(filename, tag);
+      await tagsApi.removeTag(folderName, filename, tag, driveFileId);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${tag}" 태그가 삭제되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 삭제 실패');
+      await tagsApi.restoreCachedRelation(folderName, filename, tag, true, driveFileId);
+      setTagDialog((prev) => prev && !prev.currentTags.includes(tag) ? { ...prev, currentTags: [...prev.currentTags, tag] } : prev);
+      folderModel.addTag(filename, tag);
+      const message = e instanceof Error ? e.message : '태그 삭제 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 삭제하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
   };
 
-  const handleInlineRemoveTag = useCallback(async (_rowFolder: string, filename: string, tag: string) => {
+  const handleInlineRemoveTag = useCallback(async (_rowFolder: string, filename: string, tag: string, driveFileId?: string) => {
+    if (tagMutation) return;
+    setTagMutation(tag);
+    setTagNotice({ message: `"${tag}" 태그를 삭제하는 중입니다…`, severity: 'info' });
+    folderModel.removeTag(filename, tag);
     try {
-      await tagsApi.removeTag(folderName, filename, tag);
-      folderModel.removeTag(filename, tag);
+      await tagsApi.removeTag(folderName, filename, tag, driveFileId);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${tag}" 태그가 삭제되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 삭제 실패');
+      await tagsApi.restoreCachedRelation(folderName, filename, tag, true, driveFileId);
+      folderModel.addTag(filename, tag);
+      const message = e instanceof Error ? e.message : '태그 삭제 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 삭제하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
-  }, [folderModel, folderName]);
+  }, [folderModel, folderName, tagMutation]);
 
   const handleDeleteFolder = async () => {
     if (isRootFolder) return;
@@ -489,8 +535,8 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
                 modifiedAt={file.modifiedAt}
                 tags={fileTags[file.name] ?? []}
                 tagColors={tagColors}
-                onTagDelete={handleInlineRemoveTag}
-                onManageTags={openTagDialog}
+                onTagDelete={(rowFolder, filename, tag) => handleInlineRemoveTag(rowFolder, filename, tag, file.driveFileId)}
+                onManageTags={(rowFolder, filename) => openTagDialog(rowFolder, filename, file.driveFileId)}
                 onMove={openMoveDialog}
                 onDelete={handleDelete}
                 manageTagsLabel="태그 관리"
@@ -562,7 +608,7 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
       {/* 태그 관리 다이얼로그 */}
       <Dialog
         open={!!tagDialog}
-        onClose={() => { setTagDialog(null); setTagInput(''); }}
+        onClose={() => { if (!tagMutation) { setTagDialog(null); setTagInput(''); } }}
         maxWidth="xs"
         fullWidth
       >
@@ -593,9 +639,14 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
                       key={tag}
                       label={tag}
                       size="small"
-                      color="secondary"
                       variant="outlined"
-                      onDelete={() => handleRemoveTag(tag)}
+                      sx={{
+                        borderColor: tagColors[tag] ?? '#22c55e',
+                        color: tagColors[tag] ?? '#22c55e',
+                        '& .MuiChip-deleteIcon': { color: tagColors[tag] ?? '#22c55e' },
+                      }}
+                      disabled={tagMutation !== null}
+                      onDelete={() => void handleRemoveTag(tag)}
                     />
                   ))
                 )}
@@ -604,11 +655,12 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
               {/* 태그 추가 (자동완성 + 자유입력) */}
               <Autocomplete
                 freeSolo
+                disabled={tagMutation !== null}
                 options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))}
                 inputValue={tagInput}
                 onInputChange={(_e, val) => setTagInput(val)}
                 onChange={(_e, val) => {
-                  if (val) handleAddTag(val);
+                  if (val) void handleAddTag(val);
                 }}
                 renderInput={(params) => (
                   <TextField
@@ -624,9 +676,19 @@ function FolderPage({ folderName: requestedFolderName }: { folderName?: string }
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setTagDialog(null); setTagInput(''); }}>닫기</Button>
+          <Button disabled={tagMutation !== null} onClick={() => { setTagDialog(null); setTagInput(''); }}>닫기</Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={tagNotice !== null}
+        autoHideDuration={tagNotice?.severity === 'info' ? null : 2600}
+        onClose={(_event, reason) => { if (reason !== 'clickaway') setTagNotice(null); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={tagNotice?.severity ?? 'info'} variant="filled" onClose={() => setTagNotice(null)}>
+          {tagNotice?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

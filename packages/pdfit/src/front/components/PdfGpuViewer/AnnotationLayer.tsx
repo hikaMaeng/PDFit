@@ -1,26 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PdfGpuViewerController } from '@pdfgpu/core';
 import type { Annotation, AnnotationPoint, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
-import { annotationBounds, annotationFromGesture, createTextAnnotation, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
-import { layerPointToPagePoint, pagePointToLayerPoint, pageRectToLayerRect, projectAnnotationPages } from '../../annotation/coordinates.js';
+import { annotationFromGesture, createTextAnnotation, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
+import { layerPointToPagePoint, projectAnnotationPages, type AnnotationPageProjection } from '../../annotation/coordinates.js';
+import { AnnotationShape } from './AnnotationShape.js';
+import { AnnotationSelection } from './AnnotationSelection.js';
+import { AnnotationTextEditor, type AnnotationTextDraft } from './AnnotationTextEditor.js';
 
-type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void; onCommit: (annotations: Annotation[], previous?: Annotation[]) => void };
+type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void; onCommit: (annotations: Annotation[], previous?: Annotation[]) => void; pageProjections?: ReadonlyMap<number, AnnotationPageProjection>; pageShellSelector?: string };
 type Gesture = { pageIndex: number; start: AnnotationPoint; end: AnnotationPoint; points: AnnotationPoint[] };
 type EditGesture = { annotation: Annotation; start: AnnotationPoint; before: Annotation[]; handle: 'move' | 'nw' | 'ne' | 'sw' | 'se' };
-type TextDraft = { id: string | null; pageIndex: number; point: AnnotationPoint; width: number; height: number; fontSize: number; text: string };
 
 /** Viewer-sized SVG surface for non-destructive PDF annotations. */
-export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange, onCommit }: Props) {
+export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange, onCommit, pageProjections, pageShellSelector = '[data-pdfgpu-page-shell="true"]' }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [editGesture, setEditGesture] = useState<EditGesture | null>(null);
-  const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
-  const projections = useMemo(() => controller ? projectAnnotationPages(controller, visiblePages) : new Map(), [controller, visiblePages]);
+  const [textDraft, setTextDraft] = useState<AnnotationTextDraft | null>(null);
+  const controllerProjections = useMemo(() => controller ? projectAnnotationPages(controller, visiblePages) : new Map(), [controller, visiblePages]);
+  const projections = pageProjections ?? controllerProjections;
 
   const eventPoint = (event: ReactPointerEvent<SVGSVGElement>) => {
     const svgRect = svgRef.current?.getBoundingClientRect();
     if (!svgRect || !viewportElement) return null;
-    const shell = [...viewportElement.querySelectorAll<HTMLElement>('[data-pdfgpu-page-shell="true"]')].find((candidate) => {
+    const shell = [...viewportElement.querySelectorAll<HTMLElement>(pageShellSelector)].find((candidate) => {
       const rect = candidate.getBoundingClientRect();
       return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
     });
@@ -96,34 +99,14 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
   const renderAnnotation = (annotation: Annotation) => {
     const projection = projections.get(annotation.pageIndex);
     if (!projection) return null;
-    const common = { 'data-annotation-id': annotation.id, stroke: annotation.style.color, strokeWidth: annotation.style.strokeWidth, opacity: annotation.style.opacity, vectorEffect: 'non-scaling-stroke' as const, style: { pointerEvents: tool === 'select' ? 'visiblePainted' as const : 'none' as const } };
-    if (annotation.type === 'rectangle' || annotation.type === 'highlight' || annotation.type === 'circle') {
-      const rect = pageRectToLayerRect(projection, annotation.geometry);
-      if (annotation.type === 'circle') return <ellipse key={annotation.id} data-testid="annotation-circle" cx={rect.x + rect.width / 2} cy={rect.y + rect.height / 2} rx={rect.width / 2} ry={rect.height / 2} fill={annotation.style.fillColor ?? 'none'} {...common} />;
-      return <rect key={annotation.id} data-testid={`annotation-${annotation.type}`} x={rect.x} y={rect.y} width={rect.width} height={rect.height} fill={annotation.type === 'highlight' ? annotation.style.color : annotation.style.fillColor ?? 'none'} {...common} />;
-    }
-    if (annotation.type === 'line' || annotation.type === 'arrow') {
-      const start = pagePointToLayerPoint(projection, annotation.geometry.start); const end = pagePointToLayerPoint(projection, annotation.geometry.end);
-      return <line key={annotation.id} data-testid={`annotation-${annotation.type}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} fill="none" markerEnd={annotation.type === 'arrow' ? 'url(#annotation-arrow)' : undefined} {...common} />;
-    }
-    if (annotation.type === 'text') {
-      const rect = pageRectToLayerRect(projection, annotation.geometry);
-      return <foreignObject key={annotation.id} data-testid="annotation-text" data-annotation-id={annotation.id} x={rect.x} y={rect.y} width={Math.max(rect.width, 1)} height={Math.max(rect.height, 1)} style={{ pointerEvents: tool === 'select' ? 'all' : 'none', overflow: 'visible' }} onDoubleClick={(event) => { if (tool !== 'select') return; event.stopPropagation(); setTextDraft({ id: annotation.id, pageIndex: annotation.pageIndex, point: { x: annotation.geometry.x, y: annotation.geometry.y }, width: annotation.geometry.width, height: annotation.geometry.height, fontSize: annotation.geometry.fontSize, text: annotation.geometry.text }); }}><div style={{ width: '100%', height: '100%', color: annotation.style.color, opacity: annotation.style.opacity, fontSize: `${annotation.geometry.fontSize * projection.scaleY}px`, lineHeight: 1.25, whiteSpace: 'pre-wrap', overflow: 'hidden', overflowWrap: 'anywhere' }}>{annotation.geometry.text}</div></foreignObject>;
-    }
-    if (annotation.type === 'ink') {
-      const points = annotation.geometry.points.map((point) => pagePointToLayerPoint(projection, point));
-      return <polyline key={annotation.id} data-testid="annotation-ink" points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" strokeLinecap="round" strokeLinejoin="round" {...common} />;
-    }
-    return null;
+    return <AnnotationShape key={annotation.id} annotation={annotation} projection={projection} tool={tool} onEditText={(textAnnotation) => setTextDraft({ id: textAnnotation.id, pageIndex: textAnnotation.pageIndex, point: { x: textAnnotation.geometry.x, y: textAnnotation.geometry.y }, width: textAnnotation.geometry.width, height: textAnnotation.geometry.height, fontSize: textAnnotation.geometry.fontSize, text: textAnnotation.geometry.text })} />;
   };
 
   const renderSelection = () => {
     const annotation = annotations.find((item) => item.id === selectedId);
     const projection = annotation ? projections.get(annotation.pageIndex) : null;
     if (!annotation || !projection) return null;
-    const rect = pageRectToLayerRect(projection, annotationBounds(annotation));
-    const handles = [{ key: 'nw', x: rect.x, y: rect.y }, { key: 'ne', x: rect.x + rect.width, y: rect.y }, { key: 'sw', x: rect.x, y: rect.y + rect.height }, { key: 'se', x: rect.x + rect.width, y: rect.y + rect.height }] as const;
-    return <g data-testid="annotation-selection"><rect x={rect.x} y={rect.y} width={Math.max(rect.width, 1)} height={Math.max(rect.height, 1)} fill="none" stroke="#3b82f6" strokeDasharray="5 3" vectorEffect="non-scaling-stroke" />{handles.map((handle) => <rect key={handle.key} data-testid={`annotation-resize-${handle.key}`} data-annotation-id={annotation.id} data-resize-handle={handle.key} x={handle.x - 5} y={handle.y - 5} width="10" height="10" fill="#fff" stroke="#2563eb" style={{ pointerEvents: 'all', cursor: `${handle.key}-resize` }} />)}</g>;
+    return <AnnotationSelection annotation={annotation} projection={projection} />;
   };
 
   const commitTextDraft = () => {
@@ -142,8 +125,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     if (!textDraft) return null;
     const projection = projections.get(textDraft.pageIndex);
     if (!projection) return null;
-    const rect = pageRectToLayerRect(projection, { ...textDraft.point, width: textDraft.width, height: textDraft.height });
-    return <foreignObject data-testid="annotation-text-editor" x={rect.x} y={rect.y} width={Math.max(rect.width, 120)} height={Math.max(rect.height, 64)} style={{ overflow: 'visible', pointerEvents: 'all' }}><textarea aria-label="annotation text editor" autoFocus value={textDraft.text} onChange={(event) => setTextDraft((current) => current ? { ...current, text: event.target.value } : null)} onBlur={commitTextDraft} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setTextDraft(null); } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); commitTextDraft(); } }} style={{ boxSizing: 'border-box', width: '100%', height: '100%', resize: 'none', border: '1px solid #2563eb', outline: 'none', padding: 4, color: style.color, background: 'rgba(255,255,255,.9)', fontSize: `${textDraft.fontSize * projection.scaleY}px`, lineHeight: 1.25 }} /></foreignObject>;
+    return <AnnotationTextEditor draft={textDraft} projection={projection} style={style} onChange={setTextDraft} onCommit={commitTextDraft} onCancel={() => setTextDraft(null)} />;
   };
 
   const draft = gesture ? annotationFromGesture({ id: 'annotation-draft', documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: gesture.end, points: gesture.points, style: { ...style, opacity: Math.max(style.opacity, 0.65) }, timestamp: '' }) : null;

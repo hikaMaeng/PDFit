@@ -63,3 +63,5 @@ feature-specific transport listeners or duplicate `BroadcastChannel`/`localStora
 pinned PDFGPU package, source commit, and artifact digest.
 * Release `0.4.3` adds `release-contracts/pdfit/v0.4.3.json`; it keeps the same
   pinned PDFGPU package, source commit, and artifact digest.
+* Release `0.4.4` adds `release-contracts/pdfit/v0.4.4.json`; it keeps the same
+  pinned PDFGPU package, source commit, and artifact digest.

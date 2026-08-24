@@ -65,14 +65,15 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver): 
   router.get('/book/:folder/:filename', async (req: Request, res: Response) => {
     try {
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
-      res.json(await metadataStore.listBookTags(req.params.folder, req.params.filename));
+      const driveFileId = typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined;
+      res.json(await metadataStore.listBookTags(req.params.folder, req.params.filename, driveFileId));
     } catch (error) {
       res.status(500).json({ error: String(error) });
     }
   });
 
   router.post('/book/:folder/:filename', async (req: Request, res: Response) => {
-    const { tag } = req.body as { tag?: string };
+    const { tag, driveFileId } = req.body as { tag?: string; driveFileId?: string };
     if (!tag?.trim()) {
       res.status(400).json({ error: 'Tag is required.' });
       return;
@@ -80,7 +81,7 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver): 
 
     try {
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
-      await metadataStore.addTag(req.params.folder, req.params.filename, tag.trim());
+      await metadataStore.addTag(req.params.folder, req.params.filename, tag.trim(), driveFileId);
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: String(error) });
@@ -90,7 +91,8 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver): 
   router.delete('/book/:folder/:filename/:tag', async (req: Request, res: Response) => {
     try {
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
-      await metadataStore.removeTag(req.params.folder, req.params.filename, req.params.tag);
+      const driveFileId = typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined;
+      await metadataStore.removeTag(req.params.folder, req.params.filename, req.params.tag, driveFileId);
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: String(error) });

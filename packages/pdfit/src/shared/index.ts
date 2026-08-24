@@ -41,9 +41,9 @@ export interface MetadataStore {
   updateFolderColor(folder: string, color: string): Promise<void>;
   syncBooks(books: BookRecord[]): Promise<void>;
   listFolderTags(folder: string): Promise<Record<string, string[]>>;
-  listBookTags(folder: string, filename: string): Promise<string[]>;
-  addTag(folder: string, filename: string, tag: string): Promise<void>;
-  removeTag(folder: string, filename: string, tag: string): Promise<void>;
+  listBookTags(folder: string, filename: string, driveFileId?: string): Promise<string[]>;
+  addTag(folder: string, filename: string, tag: string, driveFileId?: string): Promise<void>;
+  removeTag(folder: string, filename: string, tag: string, driveFileId?: string): Promise<void>;
   deleteTag(tag: string): Promise<void>;
   updateTagColor(tag: string, color: string): Promise<void>;
   getViewerState(folder: string, filename: string, driveFileId?: string): Promise<ViewerStateRecord | null>;

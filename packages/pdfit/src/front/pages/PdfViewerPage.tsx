@@ -8,7 +8,7 @@ import { useViewerState } from '../hooks/useViewerState';
 import PdfViewer from '../components/PdfViewer';
 import PdfGpuViewer from '../components/PdfGpuViewer';
 import type { ViewerStatePayload } from '../api/viewerState';
-import { isPointInViewerCenterGrid, ViewerSessionModel } from '../viewer/sessionModel';
+import { ViewerSessionModel } from '../viewer/sessionModel';
 import { listBookmarks } from '../api/bookmarks';
 import { BookmarkModel } from '../model/bookmarkModel';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
@@ -118,19 +118,13 @@ export default function PdfViewerPage() {
     sessionModel.getState,
     sessionModel.getState,
   );
-  const uiInitializedRef = useRef(false);
-
   useEffect(() => {
-    uiInitializedRef.current = false;
-    sessionModel.dispatch({ type: 'setUiHidden', value: false });
     sessionModel.dispatch({ type: 'setInverted', value: false });
   }, [fileName, folderName, sessionModel]);
 
-  // savedState가 처음 도착하면 uiHidden 복원
+  // 색상 반전은 독서 상태로 복원하되, 뷰어 UI는 항상 노출한다.
   useEffect(() => {
-    if (savedState && !uiInitializedRef.current) {
-      uiInitializedRef.current = true;
-      sessionModel.dispatch({ type: 'setUiHidden', value: savedState.uiHidden });
+    if (savedState) {
       sessionModel.dispatch({ type: 'setInverted', value: savedState.inverted });
     }
   }, [savedState, sessionModel]);
@@ -155,13 +149,9 @@ export default function PdfViewerPage() {
     };
   }, [bookmarkModel, fileName, folderName]);
 
-  // 최신 뷰어 내부 상태 캐시 (uiHidden 병합용)
-  const viewerInternalRef = useRef<Omit<ViewerStatePayload, 'uiHidden'> | null>(null);
-
   const handleStateChange = useCallback(
     (state: Omit<ViewerStatePayload, 'uiHidden'>) => {
-      viewerInternalRef.current = state;
-      reportState({ ...state, uiHidden: sessionModel.getState().uiHidden });
+      reportState({ ...state, uiHidden: false });
     },
     [reportState],
   );
@@ -170,49 +160,19 @@ export default function PdfViewerPage() {
     setViewerEngine('legacy');
   }, []);
 
-  const toggleUi = useCallback(() => {
-    sessionModel.dispatch({ type: 'toggleUi' });
-    if (viewerInternalRef.current) {
-      reportState({ ...viewerInternalRef.current, uiHidden: sessionModel.getState().uiHidden });
-    }
-  }, [reportState, sessionModel]);
-
-  const handleViewerClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest('a, button, input, textarea, select, [role="button"], [role="dialog"], [data-viewer-center-toggle-ignore="true"]')) return;
-    if (!isPointInViewerCenterGrid(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())) return;
-    toggleUi();
-  }, [toggleUi]);
-
-  // 스페이스바는 페이지/렌더러와 독립된 세션 모델에만 입력을 보낸다.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (e.key === ' ') {
-        e.preventDefault();
-        toggleUi();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [toggleUi]);
-
   return (
-    <Box component="main" onClick={handleViewerClick} sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <Box component="main" sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-      {/* 상단 헤더 (UI 숨김 시 사라짐) */}
-      {!sessionState.uiHidden && (
-        <Box
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 1.5,
-            px: 2, py: 1,
-            bgcolor: 'background.paper',
-            borderBottom: '1px solid', borderColor: 'divider',
-            flexShrink: 0,
-          }}
-        >
+      {/* 상단 헤더 */}
+      <Box
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          px: 2, py: 1,
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid', borderColor: 'divider',
+          flexShrink: 0,
+        }}
+      >
           <Tooltip title="목록으로 돌아가기" arrow>
             <IconButton size="small" onClick={returnToFolder}>
               <ArrowBackIcon fontSize="small" />
@@ -231,8 +191,7 @@ export default function PdfViewerPage() {
           <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1 }}>
             {fileName}
           </Typography>
-        </Box>
-      )}
+      </Box>
 
       {pendingUpload ? (
         <Box sx={{ flex: 1, display: 'grid', placeItems: 'center', p: 3 }}>
@@ -242,15 +201,15 @@ export default function PdfViewerPage() {
         <PdfGpuViewer
           url={pdfUrl}
           initialPage={initialPage ?? savedState?.page ?? null}
-          initialScale={savedState?.scale}
-          initialFitMode={savedState?.fitMode}
+          initialScale={savedState?.fitMode === 'none' ? savedState.scale : undefined}
+          initialFitMode="none"
           initialViewMode={savedState?.viewMode}
           inverted={sessionState.inverted}
           onToggleInverted={() => sessionModel.dispatch({ type: 'toggleInverted' })}
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
           onUnavailable={handleGpuUnavailable}
-          uiHidden={sessionState.uiHidden}
+          uiHidden={false}
           bookmarks={bookmarks}
           onBookmarkCaptured={handleBookmarkCaptured}
           onBookmarkUpdated={handleBookmarkUpdated}
@@ -260,15 +219,15 @@ export default function PdfViewerPage() {
         <PdfViewer
           url={pdfUrl}
           initialPage={initialPage ?? savedState?.page ?? null}
-          initialScale={savedState?.scale}
-          initialFitMode={savedState?.fitMode}
+          initialScale={savedState?.fitMode === 'none' ? savedState.scale : undefined}
+          initialFitMode="none"
           initialViewMode={savedState?.viewMode}
           initialInverted={sessionState.inverted}
           inverted={sessionState.inverted}
           onToggleInverted={() => sessionModel.dispatch({ type: 'toggleInverted' })}
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
-          uiHidden={sessionState.uiHidden}
+          uiHidden={false}
           bookmarks={bookmarks}
           onBookmarkCaptured={handleBookmarkCaptured}
           onBookmarkDeleted={handleBookmarkDeleted}

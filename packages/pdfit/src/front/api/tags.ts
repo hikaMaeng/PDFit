@@ -47,25 +47,29 @@ export const tagsApi = {
   listForFolder: async (folder: string) => (await listCachedFolderTags(folder)) ?? request<Record<string, string[]>>(`/tags/folder/${encodeURIComponent(folder)}`),
 
   /** 특정 PDF의 태그 목록 */
-  listForBook: async (folder: string, filename: string) => (await listCachedBookTags(folder, filename)) ?? request<string[]>(
-      `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`,
+  listForBook: async (folder: string, filename: string, driveFileId?: string | null) => (await listCachedBookTags(folder, filename, driveFileId)) ?? request<string[]>(
+      `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}${driveFileId ? `?driveFileId=${encodeURIComponent(driveFileId)}` : ''}`,
     ),
 
   /** PDF에 태그 추가 */
-  addTag: async (folder: string, filename: string, tag: string) => { await mutateCachedTag(folder, filename, tag, false); return mutate<{ ok: boolean }>(
+  addTag: async (folder: string, filename: string, tag: string, driveFileId?: string | null) => { await mutateCachedTag(folder, filename, tag, false, driveFileId); return mutate<{ ok: boolean }>(
       `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag }),
+        body: JSON.stringify({ tag, ...(driveFileId ? { driveFileId } : {}) }),
       },
       `tag:relation:${folder}:${filename}:${tag}`,
     ); },
 
   /** PDF에서 태그 제거 */
-  removeTag: async (folder: string, filename: string, tag: string) => { await mutateCachedTag(folder, filename, tag, true); return mutate<{ ok: boolean }>(
-      `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}/${encodeURIComponent(tag)}`,
+  removeTag: async (folder: string, filename: string, tag: string, driveFileId?: string | null) => { await mutateCachedTag(folder, filename, tag, true, driveFileId); return mutate<{ ok: boolean }>(
+      `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}/${encodeURIComponent(tag)}${driveFileId ? `?driveFileId=${encodeURIComponent(driveFileId)}` : ''}`,
       { method: 'DELETE' },
       `tag:relation:${folder}:${filename}:${tag}`,
     ); },
+
+  /** 네트워크 변경 실패 시 로컬 태그 관계만 원상 복구 */
+  restoreCachedRelation: (folder: string, filename: string, tag: string, present: boolean, driveFileId?: string | null) =>
+    mutateCachedTag(folder, filename, tag, !present, driveFileId),
 };

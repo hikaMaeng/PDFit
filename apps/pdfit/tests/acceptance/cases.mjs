@@ -251,7 +251,18 @@ export const B05 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openFolder(page, 'viewer-link');
-    const popup = await popupFromLink(page, 'sample.pdf');
+    const viewerLink = page.locator('a[href*="/viewer/"]', { hasText: 'sample.pdf' }).first();
+    assert.equal(await viewerLink.evaluate((element) => getComputedStyle(element).cursor), 'pointer');
+    const metadata = page.getByText(/MB · 수정:/).first();
+    assert.notEqual(await metadata.evaluate((element) => getComputedStyle(element).cursor), 'pointer');
+    const pageCountBeforeMetadataClick = page.context().pages().length;
+    await metadata.click();
+    await page.waitForTimeout(150);
+    assert.equal(page.context().pages().length, pageCountBeforeMetadataClick);
+    const popupPromise = page.context().waitForEvent('page');
+    await viewerLink.click();
+    const popup = await popupPromise;
+    await popup.waitForLoadState('domcontentloaded');
     await popup.waitForURL(/\/viewer\/viewer-link\/sample\.pdf/);
     await waitText(popup, 'sample.pdf');
     const response = await page.request.get(`${baseUrl}/api/folders/viewer-link/files/sample.pdf`);
@@ -333,15 +344,24 @@ export const C01 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openFolder(page, 'tag-folder');
-    await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tag: 'alpha' }),
+    await page.route('**/api/tags/book/tag-folder/tag.pdf*', async (route) => {
+      if (route.request().method() === 'POST' || route.request().method() === 'DELETE') {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      await route.continue();
     });
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '태그 관리' }).click();
+    await page.getByLabel('태그 추가').fill('alpha');
+    await page.getByLabel('태그 추가').press('Enter');
+    await waitText(page, '"alpha" 태그를 추가하는 중입니다…');
     await waitText(page, 'alpha');
+    await waitText(page, '"alpha" 태그가 추가되었습니다.');
     const tags = await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`);
     assert.deepEqual(tags, ['alpha']);
+    await page.locator('.MuiChip-root').filter({ hasText: 'alpha' }).locator('.MuiChip-deleteIcon').click();
+    await waitText(page, '"alpha" 태그를 삭제하는 중입니다…');
+    await waitText(page, '"alpha" 태그가 삭제되었습니다.');
+    assert.deepEqual(await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`), []);
   },
 };
 
@@ -517,7 +537,7 @@ export const D04 = {
 export const D05 = {
   id: 'D05',
   group: 'D',
-  title: 'Viewer UI hide and show',
+  title: 'Viewer UI remains visible during reading interactions',
   seed: seed({
     folders: [{ name: 'viewer-ui', files: [{ name: 'ui.pdf', pages: 1 }] }],
   }),
@@ -525,10 +545,12 @@ export const D05 = {
     await openViewer(page, 'viewer-ui', 'ui.pdf');
     await page.keyboard.press('Space');
     await page.waitForTimeout(150);
-    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 0);
-    await page.keyboard.press('Space');
+    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 1);
+    const mainBox = await page.getByRole('main').boundingBox();
+    assert.notEqual(mainBox, null);
+    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(150);
-    await waitText(page, 'ui.pdf');
+    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 1);
   },
 };
 
@@ -541,7 +563,7 @@ export const E01 = {
     viewerStates: [{
       page: 3,
       scale: 1.5,
-      fitMode: 'none',
+      fitMode: 'width',
       viewMode: 'single',
       inverted: true,
       uiHidden: true,
@@ -552,15 +574,22 @@ export const E01 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openViewer(page, 'viewer-state', 'state.pdf');
-    await page.waitForTimeout(1200);
-    const state = await fetchJson(`${baseUrl}/api/viewer-state/viewer-state/state.pdf`);
+    let state = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      state = await fetchJson(`${baseUrl}/api/viewer-state/viewer-state/state.pdf`);
+      if (state?.fitMode === 'none' && state.uiHidden === false) break;
+      await page.waitForTimeout(250);
+    }
+    assert.notEqual(state, null);
     assert.equal(state.page, 3);
-    assert.equal(state.scale, 1.5);
+    assert.equal(state.scale, 1.2);
     assert.equal(state.fitMode, 'none');
     assert.equal(state.viewMode, 'single');
     assert.equal(state.inverted, true);
-    assert.equal(state.uiHidden, true);
-    await assert.equal(await page.locator('svg[data-testid="NavigateBeforeIcon"]').count(), 0);
+    assert.equal(state.uiHidden, false);
+    assert.equal(await page.locator('svg[data-testid="NavigateBeforeIcon"]').count(), 1);
+    assert.equal(await iconButton(page, 'FitScreenIcon').getAttribute('class').then((value) => value?.includes('MuiIconButton-colorPrimary') ?? false), false);
+    assert.equal(await iconButton(page, 'HeightIcon').getAttribute('class').then((value) => value?.includes('MuiIconButton-colorPrimary') ?? false), false);
   },
 };
 
@@ -762,7 +791,7 @@ export const F03 = {
     assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
     await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
-    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);
+    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
     await page.keyboard.press('Space');
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
@@ -780,19 +809,9 @@ export const F03 = {
     assert.equal(state.inverted, true);
     assert.equal(state.uiHidden, false);
 
-    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
-    let hiddenState = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const response = await page.request.get(stateUrl);
-      assert.equal(response.ok(), true);
-      hiddenState = await response.json();
-      if (hiddenState?.uiHidden === true) break;
-      await page.waitForTimeout(250);
-    }
-    assert.equal(hiddenState?.uiHidden, true);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(600);
-    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);
+    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
     assert.match(await page.locator('canvas').first().evaluate((element) => getComputedStyle(element).filter), /invert/i);
   },
 };

@@ -170,12 +170,12 @@ type CachedRelation = { relationId: string; driveFileId: string; tagId: string; 
 export async function listCachedTagSummaries(): Promise<Array<{ name: string; bookCount: number; color: string }> | null> {
   const scope = await cachedScope(); if (!scope) return null;
   const [tags, relations] = await Promise.all([readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags')]);
-  return tags.filter((tag) => !tag.deletedAt).map((tag) => ({ name: tag.name, color: tag.color, bookCount: new Set(relations.filter((row) => !row.deletedAt && row.tagId === tag.tagId).map((row) => row.driveFileId)).size }));
+  return tags.filter((tag) => !tag.deletedAt).map((tag) => ({ name: tag.name, color: tag.color, bookCount: new Set(relations.filter((row) => !row.deletedAt && row.tagId === tag.tagId).map((row) => row.driveFileId)).size })).filter((tag) => tag.bookCount > 0);
 }
 
-export async function listCachedBookTags(folder: string, filename: string): Promise<string[] | null> {
+export async function listCachedBookTags(folder: string, filename: string, driveFileId?: string | null): Promise<string[] | null> {
   const scope = await cachedScope(); if (!scope) return null;
-  const file = await cachedFile(scope, folder, filename); if (!file) return [];
+  const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return [];
   const [tags, relations] = await Promise.all([readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags')]);
   const ids = new Set(relations.filter((row) => row.driveFileId === file.driveFileId && !row.deletedAt).map((row) => row.tagId));
   return tags.filter((tag) => ids.has(tag.tagId) && !tag.deletedAt).map((tag) => tag.name).sort();
@@ -188,9 +188,9 @@ export async function listCachedFolderTags(folder: string): Promise<Record<strin
   return result;
 }
 
-export async function mutateCachedTag(folder: string, filename: string, name: string, deleted: boolean): Promise<void> {
+export async function mutateCachedTag(folder: string, filename: string, name: string, deleted: boolean, driveFileId?: string | null): Promise<void> {
   const scope = await cachedScope(); if (!scope) return;
-  const file = await cachedFile(scope, folder, filename); if (!file) return;
+  const file = await cachedFile(scope, folder, filename, driveFileId); if (!file) return;
   await mutateStores(scope, ['tags', 'pdfTags'], async (transaction) => {
     const tags = await requestResult<CachedTag[]>(transaction.objectStore('tags').getAll());
     const existing = tags.find((tag) => tag.name === name); const timestamp = new Date().toISOString();

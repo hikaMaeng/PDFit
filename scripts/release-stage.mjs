@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
-const version = '0.4.3';
+const version = '0.4.4';
 const sourceImage = process.env.PDFIT_SERVICE_IMAGE ?? 'pdfit-service:latest';
 const releaseImage = `pdfit/service:${version}`;
 const repositoryRoot = resolve(import.meta.dirname, '..');
