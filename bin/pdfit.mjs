@@ -105,9 +105,18 @@ console.log(`[pdfit] 문서 루트: ${resolvedBooksPath}`);
 console.log(`[pdfit] 접속 주소: ${url} (같은 네트워크: http://${bindAddress}:${port})`);
 console.log('[pdfit] 빌드와 Docker Compose 업데이트를 시작합니다.');
 
+// `npm install <git url>` copies only this package, not its workspace and build
+// dependencies, so the first run installs them inside the package directory.
+const npmCommand = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+const npmArgs = (script) => process.platform === 'win32' ? ['/d', '/s', '/c', `npm ${script}`] : script.split(' ');
+if (!existsSync(resolve(root, 'node_modules', '.bin', process.platform === 'win32' ? 'turbo.cmd' : 'turbo'))) {
+  console.log('[pdfit] 빌드 의존성을 설치합니다(처음 한 번).');
+  run(npmCommand, npmArgs('install --no-audit --no-fund'));
+}
+
 // deploy:standalone recreates only the `pdfit` container. `npm run deploy` is the
 // hosted service and needs private modules that the public checkout does not have.
-run(process.platform === 'win32' ? 'cmd.exe' : 'npm', process.platform === 'win32' ? ['/d', '/s', '/c', 'npm run deploy:standalone'] : ['run', 'deploy:standalone'], {
+run(npmCommand, npmArgs('run deploy:standalone'), {
   PDFIT_BOOKS_HOST_PATH: resolvedBooksPath,
   // Bind the chosen folder itself as the library root instead of the external NAS volume.
   PDFIT_BOOKS_SOURCE: resolvedBooksPath,
