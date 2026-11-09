@@ -68,6 +68,10 @@ Hosted metadata read path:
 IndexedDB -> folder/PDF UI. A missing cache calls the configured bootstrap endpoint once,
 atomically replaces all cache stores, and then serves normal folder navigation locally.
 The integrated local app does not configure this adapter and retains its HTTP behavior.
+Two versions guard the cache: `PDFIT_METADATA_SOURCE_SCHEMA_VERSION` is the bootstrap
+snapshot schema it accepts (the hosted Spreadsheet schema), and
+`PDFIT_METADATA_CACHE_SCHEMA_VERSION` is the local IndexedDB layout; raising the latter
+discards caches written by an older layout.
 
 Hosted metadata mutation path:
 

@@ -4,7 +4,9 @@ import type { ViewerStatePayload } from '../api/viewerState.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/tagColor.js';
 import { configureDocumentOpenHistory } from '../model/documentOpenHistory.js';
 
-const PDFIT_METADATA_SOURCE_SCHEMA_VERSION = '1';
+/** Metadata source (hosted Spreadsheet) schema this cache accepts; must equal the service's spreadsheet schema version. */
+export const PDFIT_METADATA_SOURCE_SCHEMA_VERSION = '1';
+/** Local IndexedDB layout version; bump to discard caches written by an older layout. */
 export const PDFIT_METADATA_CACHE_SCHEMA_VERSION = '4';
 
 export interface CachedFolderRow {
