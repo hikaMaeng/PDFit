@@ -6,19 +6,39 @@ import { layerPointToPagePoint, projectAnnotationPages, type AnnotationPageProje
 import { AnnotationShape } from './AnnotationShape.js';
 import { AnnotationSelection } from './AnnotationSelection.js';
 import { AnnotationTextEditor, type AnnotationTextDraft } from './AnnotationTextEditor.js';
+import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 
 type Props = { controller: PdfGpuViewerController | null; annotations: readonly Annotation[]; visiblePages: readonly number[]; viewportElement: HTMLElement | null; documentId: string; tool: AnnotationTool; style: AnnotationStyle; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (annotations: Annotation[]) => void; onCommit: (annotations: Annotation[], previous?: Annotation[]) => void; pageProjections?: ReadonlyMap<number, AnnotationPageProjection>; pageShellSelector?: string };
 type Gesture = { pageIndex: number; start: AnnotationPoint; end: AnnotationPoint; points: AnnotationPoint[] };
 type EditGesture = { annotation: Annotation; start: AnnotationPoint; before: Annotation[]; handle: 'move' | 'nw' | 'ne' | 'sw' | 'se' };
+const TOOL_HINTS: Partial<Record<AnnotationTool, string>> = {
+  highlight: '형광펜 활성화 · PDF 위에서 영역을 드래그하세요',
+  text: '텍스트 추가 활성화 · PDF 위에서 입력할 위치를 클릭하세요',
+  pen: '자유 그리기 활성화 · PDF 위에서 드래그해 그리세요',
+  rectangle: '사각형 활성화 · PDF 위에서 영역을 드래그하세요',
+  circle: '원 활성화 · PDF 위에서 영역을 드래그하세요',
+  line: '선 활성화 · PDF 위에서 시작점부터 끝점까지 드래그하세요',
+  arrow: '화살표 활성화 · PDF 위에서 시작점부터 끝점까지 드래그하세요',
+};
 
 /** Viewer-sized SVG surface for non-destructive PDF annotations. */
 export function AnnotationLayer({ controller, annotations, visiblePages, viewportElement, documentId, tool, style, selectedId, onSelect, onChange, onCommit, pageProjections, pageShellSelector = '[data-pdfgpu-page-shell="true"]' }: Props) {
+  const { ui } = usePdfitI18n();
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [editGesture, setEditGesture] = useState<EditGesture | null>(null);
   const [textDraft, setTextDraft] = useState<AnnotationTextDraft | null>(null);
+  const visiblePageKey = visiblePages.join(',');
   const controllerProjections = useMemo(() => controller ? projectAnnotationPages(controller, visiblePages) : new Map(), [controller, visiblePages]);
   const projections = pageProjections ?? controllerProjections;
+  const visiblePageSet = useMemo(() => new Set(visiblePages), [visiblePages]);
+
+  useEffect(() => {
+    const currentVisiblePages = new Set(visiblePageKey.split(',').filter(Boolean).map(Number));
+    setGesture((current) => current && !currentVisiblePages.has(current.pageIndex) ? null : current);
+    setEditGesture((current) => current && !currentVisiblePages.has(current.annotation.pageIndex) ? null : current);
+    setTextDraft((current) => current && !currentVisiblePages.has(current.pageIndex) ? null : current);
+  }, [visiblePageKey]);
 
   const eventPoint = (event: ReactPointerEvent<SVGSVGElement>) => {
     const svgRect = svgRef.current?.getBoundingClientRect();
@@ -97,6 +117,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
   }, [annotations, onCommit, onSelect, selectedId]);
 
   const renderAnnotation = (annotation: Annotation) => {
+    if (!visiblePageSet.has(annotation.pageIndex)) return null;
     const projection = projections.get(annotation.pageIndex);
     if (!projection) return null;
     return <AnnotationShape key={annotation.id} annotation={annotation} projection={projection} tool={tool} onEditText={(textAnnotation) => setTextDraft({ id: textAnnotation.id, pageIndex: textAnnotation.pageIndex, point: { x: textAnnotation.geometry.x, y: textAnnotation.geometry.y }, width: textAnnotation.geometry.width, height: textAnnotation.geometry.height, fontSize: textAnnotation.geometry.fontSize, text: textAnnotation.geometry.text })} />;
@@ -104,6 +125,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
 
   const renderSelection = () => {
     const annotation = annotations.find((item) => item.id === selectedId);
+    if (!annotation || !visiblePageSet.has(annotation.pageIndex)) return null;
     const projection = annotation ? projections.get(annotation.pageIndex) : null;
     if (!annotation || !projection) return null;
     return <AnnotationSelection annotation={annotation} projection={projection} />;
@@ -129,5 +151,10 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
   };
 
   const draft = gesture ? annotationFromGesture({ id: 'annotation-draft', documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: gesture.end, points: gesture.points, style: { ...style, opacity: Math.max(style.opacity, 0.65) }, timestamp: '' }) : null;
-  return <svg ref={svgRef} data-testid="annotation-layer" aria-label="PDF annotations" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={() => { setGesture(null); setEditGesture(null); }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: tool === 'bookmark' ? 'none' : 'auto', touchAction: 'none', zIndex: 4 }}><defs><marker id="annotation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 z" fill="context-stroke" /></marker></defs>{annotations.map(renderAnnotation)}{draft ? renderAnnotation(draft) : null}{renderSelection()}{renderTextEditor()}</svg>;
+  const cursor = tool === 'highlight' ? 'crosshair' : tool === 'text' ? 'text' : tool === 'pen' || tool === 'rectangle' || tool === 'circle' || tool === 'line' || tool === 'arrow' ? 'crosshair' : 'default';
+  const toolHint = TOOL_HINTS[tool] ? ui(TOOL_HINTS[tool]) : null;
+  return <>
+    <svg ref={svgRef} data-testid="annotation-layer" data-active-tool={tool} aria-label="PDF annotations" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={() => { setGesture(null); setEditGesture(null); }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: tool === 'bookmark' ? 'none' : 'auto', touchAction: 'none', cursor, zIndex: 4 }}><defs><marker id="annotation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 z" fill="context-stroke" /></marker></defs>{annotations.map(renderAnnotation)}{draft ? renderAnnotation(draft) : null}{renderSelection()}{renderTextEditor()}</svg>
+    {toolHint ? <div data-testid="annotation-tool-hint" role="status" style={{ position: 'absolute', top: 12, right: 12, zIndex: 5, pointerEvents: 'none', padding: '7px 10px', borderRadius: 6, color: '#fff', background: 'rgba(24, 24, 27, 0.9)', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.28)', fontSize: 12, fontWeight: 600 }}>{toolHint}</div> : null}
+  </>;
 }

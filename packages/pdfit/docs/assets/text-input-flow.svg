@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title desc">
+  <title id="title">PDFit 텍스트 입력 기능 동작 흐름</title>
+  <desc id="desc">텍스트 도구 선택부터 PDF 좌표 변환, textarea 입력, 주석 생성, 서버 저장, SVG 렌더링까지의 흐름</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1e293b" flood-opacity=".12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      text { font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif; }
+      .title { font-size: 38px; font-weight: 800; fill: #0f172a; }
+      .subtitle { font-size: 18px; font-weight: 500; fill: #475569; }
+      .step { font-size: 17px; font-weight: 800; fill: #fff; }
+      .card-title { font-size: 21px; font-weight: 800; fill: #0f172a; }
+      .body { font-size: 15px; font-weight: 500; fill: #475569; }
+      .small { font-size: 13px; font-weight: 600; fill: #64748b; }
+      .mono { font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; fill: #334155; }
+      .pill { font-size: 13px; font-weight: 800; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1040" fill="url(#bg)"/>
+
+  <g transform="translate(70 54)">
+    <rect x="0" y="0" width="78" height="38" rx="19" fill="#dbeafe"/>
+    <text x="39" y="25" text-anchor="middle" class="pill" fill="#1d4ed8">PDFit</text>
+    <text x="0" y="88" class="title">텍스트 입력은 이렇게 작동합니다</text>
+    <text x="0" y="122" class="subtitle">PDF 파일 자체는 건드리지 않고, 별도의 주석 레이어와 데이터베이스에 텍스트를 저장합니다.</text>
+  </g>
+
+  <!-- Left: actual interaction mock -->
+  <g transform="translate(70 220)" filter="url(#shadow)">
+    <rect width="600" height="570" rx="24" fill="#fff"/>
+    <rect width="600" height="64" rx="24" fill="#0f172a"/>
+    <rect y="40" width="600" height="24" fill="#0f172a"/>
+    <circle cx="30" cy="31" r="6" fill="#ef4444"/>
+    <circle cx="50" cy="31" r="6" fill="#f59e0b"/>
+    <circle cx="70" cy="31" r="6" fill="#22c55e"/>
+    <text x="98" y="37" font-size="15" font-weight="700" fill="#e2e8f0">PDF 뷰어</text>
+
+    <!-- toolbar -->
+    <rect x="22" y="82" width="556" height="54" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+    <g transform="translate(42 94)">
+      <rect width="112" height="30" rx="8" fill="#2563eb"/>
+      <text x="18" y="21" font-size="18" font-weight="800" fill="#fff">T</text>
+      <text x="42" y="21" font-size="13" font-weight="800" fill="#fff">텍스트 추가</text>
+    </g>
+    <text x="172" y="115" class="small">색상</text>
+    <circle cx="220" cy="109" r="10" fill="#ef4444"/>
+    <text x="252" y="115" class="small">불투명도 25%</text>
+    <rect x="398" y="96" width="158" height="26" rx="7" fill="#111827"/>
+    <text x="477" y="114" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">입력할 위치를 클릭하세요</text>
+
+    <!-- PDF page -->
+    <rect x="88" y="160" width="424" height="372" rx="5" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="116" y="198" font-size="17" font-weight="800" fill="#334155">PROJECT OVERVIEW</text>
+    <rect x="116" y="217" width="266" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="116" y="235" width="340" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="116" y="253" width="310" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="116" y="296" width="128" height="92" rx="6" fill="#eff6ff"/>
+    <rect x="258" y="296" width="198" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="258" y="316" width="174" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="258" y="336" width="190" height="8" rx="4" fill="#e2e8f0"/>
+
+    <!-- pointer and textarea -->
+    <path d="M320 375 l11 32 8-10 12 14 7-6-12-14 12-5z" fill="#0f172a" stroke="#fff" stroke-width="2"/>
+    <rect x="288" y="397" width="194" height="88" rx="3" fill="#fff" fill-opacity=".96" stroke="#2563eb" stroke-width="2"/>
+    <text x="300" y="424" font-size="14" font-weight="500" fill="#ef4444">검토가 필요한 부분</text>
+    <text x="300" y="448" font-size="14" font-weight="500" fill="#ef4444">다음 회의에서 확인</text>
+    <line x1="300" y1="458" x2="301" y2="476" stroke="#2563eb" stroke-width="2"/>
+    <circle cx="480" cy="397" r="13" fill="#2563eb"/>
+    <text x="480" y="402" text-anchor="middle" font-size="13" font-weight="800" fill="#fff">2</text>
+
+    <rect x="22" y="546" width="556" height="1" fill="#e2e8f0"/>
+    <text x="30" y="566" class="small">① 텍스트 도구 선택</text>
+    <text x="199" y="566" class="small">② PDF 위치 클릭</text>
+    <text x="350" y="566" class="small">③ 여러 줄 입력</text>
+    <text x="472" y="566" class="small">④ 저장</text>
+  </g>
+
+  <!-- Right: implementation flow -->
+  <g transform="translate(730 220)">
+    <g filter="url(#shadow)">
+      <rect width="800" height="118" rx="20" fill="#fff"/>
+      <circle cx="55" cy="59" r="26" fill="url(#hero)"/>
+      <text x="55" y="65" text-anchor="middle" class="step">1</text>
+      <text x="98" y="44" class="card-title">클릭 위치를 PDF 좌표로 변환</text>
+      <text x="98" y="72" class="body">화면의 클릭 지점을 현재 페이지와 확대 비율에 독립적인 좌표로 바꿉니다.</text>
+      <rect x="570" y="29" width="196" height="58" rx="10" fill="#f1f5f9"/>
+      <text x="668" y="52" text-anchor="middle" class="mono">layerPoint</text>
+      <path d="M620 66 H710" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="668" y="82" text-anchor="middle" class="mono">pagePoint</text>
+    </g>
+
+    <path d="M400 118 V146" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(0 154)" filter="url(#shadow)">
+      <rect width="800" height="132" rx="20" fill="#fff"/>
+      <circle cx="55" cy="66" r="26" fill="url(#hero)"/>
+      <text x="55" y="72" text-anchor="middle" class="step">2</text>
+      <text x="98" y="43" class="card-title">SVG 안에 HTML textarea 표시</text>
+      <text x="98" y="71" class="body">`foreignObject`로 입력창을 띄우고 React 상태인 `textDraft`를 즉시 갱신합니다.</text>
+      <text x="98" y="98" class="small">기본 크기 180 × 72 · 글자 크기 16 · 자동 포커스 · 여러 줄 지원</text>
+      <rect x="602" y="34" width="164" height="68" rx="8" fill="#fff" stroke="#2563eb" stroke-width="2"/>
+      <text x="616" y="58" font-size="13" fill="#ef4444">검토가 필요한 부분</text>
+      <text x="616" y="80" font-size="13" fill="#ef4444">다음 회의에서 확인</text>
+    </g>
+
+    <path d="M400 286 V314" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(0 322)" filter="url(#shadow)">
+      <rect width="800" height="132" rx="20" fill="#fff"/>
+      <circle cx="55" cy="66" r="26" fill="url(#hero)"/>
+      <text x="55" y="72" text-anchor="middle" class="step">3</text>
+      <text x="98" y="43" class="card-title">입력 완료 후 텍스트 주석 생성</text>
+      <text x="98" y="71" class="body">포커스 아웃 또는 Ctrl/⌘ + Enter로 `createTextAnnotation()`을 실행합니다.</text>
+      <text x="98" y="99" class="small">앞뒤 공백 제거 → 빈 텍스트면 생성 안 함 → ID·페이지·위치·크기·스타일 포함</text>
+      <rect x="590" y="26" width="176" height="82" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="605" y="48" class="mono">type: "text"</text>
+      <text x="605" y="69" class="mono">x, y, width, height</text>
+      <text x="605" y="90" class="mono">text, fontSize, style</text>
+    </g>
+
+    <path d="M400 454 V482" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(0 490)" filter="url(#shadow)">
+      <rect width="800" height="132" rx="20" fill="#fff"/>
+      <circle cx="55" cy="66" r="26" fill="url(#hero)"/>
+      <text x="55" y="72" text-anchor="middle" class="step">4</text>
+      <text x="98" y="43" class="card-title">화면에 즉시 반영하고 서버에 저장</text>
+      <text x="98" y="71" class="body">로컬 히스토리에 먼저 커밋한 뒤 REST API로 PostgreSQL에 영속화합니다.</text>
+      <text x="98" y="99" class="small">새 주석 POST · 수정 PATCH · 실패 시 재시도 가능 · Undo/Redo 히스토리 유지</text>
+      <g transform="translate(584 25)">
+        <rect width="78" height="82" rx="12" fill="#eff6ff"/>
+        <text x="39" y="34" text-anchor="middle" font-size="20">⚡</text>
+        <text x="39" y="58" text-anchor="middle" class="small">로컬</text>
+        <path d="M84 41 H111" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="118" width="78" height="82" rx="12" fill="#f5f3ff"/>
+        <text x="157" y="34" text-anchor="middle" font-size="20">▤</text>
+        <text x="157" y="58" text-anchor="middle" class="small">DB</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom notes -->
+  <g transform="translate(70 842)">
+    <rect width="1460" height="144" rx="22" fill="#0f172a"/>
+    <g transform="translate(34 28)">
+      <circle cx="24" cy="24" r="24" fill="#1d4ed8"/>
+      <text x="24" y="31" text-anchor="middle" font-size="22" font-weight="900" fill="#fff">↺</text>
+      <text x="64" y="18" font-size="18" font-weight="800" fill="#fff">다시 표시할 때</text>
+      <text x="64" y="45" font-size="14" font-weight="500" fill="#cbd5e1">저장된 PDF 좌표를 현재 확대율에 맞춰 투영하고, SVG `foreignObject` 안의 텍스트로 렌더링합니다.</text>
+      <text x="64" y="73" font-size="14" font-weight="500" fill="#93c5fd">선택 도구에서 더블클릭하면 같은 textarea가 열려 재편집됩니다.</text>
+    </g>
+    <line x1="760" y1="24" x2="760" y2="120" stroke="#334155"/>
+    <g transform="translate(796 26)">
+      <text x="0" y="18" font-size="18" font-weight="800" fill="#fff">입력 종료 규칙</text>
+      <rect x="0" y="36" width="126" height="32" rx="8" fill="#1e293b"/>
+      <text x="63" y="57" text-anchor="middle" font-size="13" font-weight="700" fill="#e2e8f0">포커스 아웃 저장</text>
+      <rect x="138" y="36" width="164" height="32" rx="8" fill="#1e293b"/>
+      <text x="220" y="57" text-anchor="middle" font-size="13" font-weight="700" fill="#e2e8f0">Ctrl/⌘ + Enter 저장</text>
+      <rect x="314" y="36" width="92" height="32" rx="8" fill="#3f1d2e"/>
+      <text x="360" y="57" text-anchor="middle" font-size="13" font-weight="700" fill="#fda4af">Esc 취소</text>
+      <text x="0" y="91" font-size="13" font-weight="600" fill="#94a3b8">원본 PDF는 수정되지 않습니다. 주석 데이터만 별도로 관리됩니다.</text>
+    </g>
+  </g>
+</svg>

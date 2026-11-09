@@ -13,4 +13,8 @@ export interface PdfitViewerExtension {
   basename?: string;
   themeOptions?: ThemeOptions;
   metadataCache?: PdfitMetadataCacheOptions;
+  languagePreference?: PdfitFrontExtension['languagePreference'];
+  displayTranslation?: PdfitFrontExtension['displayTranslation'];
+  bookMetadataEnabled?: PdfitFrontExtension['bookMetadataEnabled'];
+  bookResearchAccess?: PdfitFrontExtension['bookResearchAccess'];
 }

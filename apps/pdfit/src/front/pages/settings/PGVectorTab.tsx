@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
 import StorageIcon from '@mui/icons-material/Storage';
 import { getPgVectorConfig, savePgVectorConfig, type PgVectorConfig } from '../../api/settings';
+import { usePdfitI18n } from '@pdfit/pdfit/client/service';
 
 const VOLUME_PATH = 'apps/pdfit/docker/volumes/data/pgvector -> /app/data/pgvector';
 
 export default function PGVectorTab() {
+  const { t } = usePdfitI18n();
   const [config, setConfig] = useState<PgVectorConfig>({ user: '', password: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,7 +24,7 @@ export default function PGVectorTab() {
     setStatus(null);
     try {
       await savePgVectorConfig(config);
-      setStatus({ type: 'success', message: 'Saved PostgreSQL runtime settings.' });
+      setStatus({ type: 'success', message: t('settingsSaved') });
     } catch (caught) {
       setStatus({ type: 'error', message: String(caught) });
     } finally {
@@ -35,17 +37,17 @@ export default function PGVectorTab() {
       <Stack direction="row" spacing={1} alignItems="center" mb={2}>
         <StorageIcon color="primary" />
         <Typography variant="subtitle1" fontWeight={600}>
-          PGVector runtime
+          {t('pgRuntime')}
         </Typography>
       </Stack>
 
       <Typography variant="body2" color="text.secondary" mb={3}>
-        These settings are stored in the embedded PostgreSQL runtime.
+        {t('pgRuntimeCopy')}
       </Typography>
 
       {loading ? (
         <Typography variant="body2" color="text.secondary">
-          Loading...
+          {t('loading')}
         </Typography>
       ) : (
         <Stack spacing={2} maxWidth={480}>
@@ -75,7 +77,7 @@ export default function PGVectorTab() {
           ) : null}
 
           <Button variant="contained" onClick={() => void handleSave()} disabled={saving} sx={{ alignSelf: 'flex-start' }}>
-            {saving ? 'Saving...' : 'Save settings'}
+            {saving ? t('saving') : t('saveSettings')}
           </Button>
         </Stack>
       )}

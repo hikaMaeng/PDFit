@@ -14,6 +14,31 @@ Shared package changes are verified through:
 * PostgreSQL/pgvector extension, shared metadata CRUD, and Settings CRUD checks
   against the deployed integrated container
 
+Viewer-toolbar and export coverage builds the shared front package and opens a
+deployed viewer in Chromium with
+`apps/pdfit/tests/viewer-toolbar-export-browser.mjs`. It verifies toolbar order,
+manual zoom entry, continuous-scroll on/off behavior, momentary fit width,
+the select/move cursor, the single PDF download path, and an error-free browser
+console. The source PDF must remain unchanged.
+
+Same-account library reconciliation is covered by
+`apps/pdfit/tests/same-account-library-sync-browser.mjs` with independent PC
+and tablet browser contexts. The Safari download hint, direct user-clicked
+attachment link, and filename fallback are covered in Chromium and WebKit with
+`apps/pdfit/tests/viewer-toolbar-export-browser.mjs --touch-save-hint`.
+
+Tablet page-mode gestures are covered by
+`apps/pdfit/tests/viewer-double-fit-height-browser.mjs --touch-swipe` and
+`--horizontal-swipe`, each with and without `--gpu`. The tests verify
+one-page/two-page navigation without continuous scroll, fitted touch-action,
+and zoomed-page panning before navigation.
+
+Acrobat-compatible zoom coverage runs
+`apps/pdfit/tests/pdf-zoom-acrobat-browser.mjs` against the deployed viewer. A
+612-by-792-point Letter fixture must render as 816-by-1056 CSS pixels at 100%,
+as 1020-by-1320 pixels at 125%, and must still exactly honor fit-width and
+fit-height controls.
+
 Folder multi-delete browser coverage selects two uniquely named PDF rows,
 checks the selected-count confirmation, deletes them, and verifies both the UI
 and file API no longer expose either PDF. It also verifies select-all and
@@ -99,3 +124,5 @@ output, exercise zoom/fit/view-mode controls, and record whether the backend is
 Hosted IndexedDB changes require a real browser engine. The service browser fixture uses
 mock authentication and a mock Spreadsheet snapshot to verify first hydration, reload
 without another request, and reconstruction after database deletion without Google API calls.
+
+Title-based automatic tagging is covered by `npm run test:ai-tags`. The suite verifies filename-to-title derivation, prompt data isolation, fenced JSON handling, tag bounds and de-duplication, and persistence through the shared Express route.

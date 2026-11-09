@@ -65,12 +65,16 @@ for (const file of requiredFiles) {
 
 const compose = spawnSync('docker', ['compose', 'config'], { cwd: root, encoding: 'utf-8' });
 assert(compose.status === 0, 'docker compose config failed');
-assert(compose.stdout.includes('pdfit:'), 'compose config missing integrated pdfit service');
-assert(compose.stdout.includes('published: "15201"') && compose.stdout.includes('target: 15201'), 'compose config missing integrated port');
 assert(!compose.stdout.includes('pdfit-free') && !compose.stdout.includes('pdfit-pro'), 'compose config still exposes split services');
 assert(compose.stdout.includes('service:') && compose.stdout.includes('target: 15202'), 'compose config missing hosted service');
-assert(compose.stdout.includes('BOOKMARKS_ROOT: /app/data/bookmarks'), 'compose config missing local bookmark root');
-assert(compose.stdout.includes('target: /app/data/bookmarks'), 'compose config missing local bookmark bind mount');
+assert(compose.stdout.includes('published: "15201"') && compose.stdout.includes('published: "15202"'), 'service must expose identical local and diagnostic bindings');
+
+const standaloneCompose = spawnSync('docker', ['compose', '--profile', 'standalone', 'config'], { cwd: root, encoding: 'utf-8' });
+assert(standaloneCompose.status === 0, 'docker compose standalone config failed');
+assert(standaloneCompose.stdout.includes('pdfit:'), 'standalone compose config missing legacy pdfit service');
+assert(standaloneCompose.stdout.includes('published: "15203"') && standaloneCompose.stdout.includes('target: 15201'), 'standalone compose config missing isolated port');
+assert(standaloneCompose.stdout.includes('BOOKMARKS_ROOT: /app/data/bookmarks'), 'standalone compose config missing local bookmark root');
+assert(standaloneCompose.stdout.includes('target: /app/data/bookmarks'), 'standalone compose config missing local bookmark bind mount');
 
 const parity = spawnSync(process.execPath, ['scripts/verify-service-parity.mjs'], { cwd: root, encoding: 'utf-8' });
 assert(parity.status === 0, parity.stderr || parity.stdout || 'service parity check failed');

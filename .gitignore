@@ -26,3 +26,8 @@ test-results/
 test/*/*headless-browser-test/
 test/*/mobile-responsive-check/
 test/
+
+# Local release staging and Python bytecode
+/release/
+/release-bundles/
+__pycache__/

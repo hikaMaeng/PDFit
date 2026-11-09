@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { CssBaseline, GlobalStyles, ThemeProvider, createTheme } from '@mui/material';
 import App from './App.js';
 import {
   PdfitFrontProvider,
@@ -34,6 +34,22 @@ const baseTheme = {
         html: { backgroundColor: '#141414' },
         body: { backgroundColor: '#141414', color: '#f5f5f5' },
         '*': { boxSizing: 'border-box' },
+        '.pdfit-pdf-row .pdfit-row-reveal': {
+          opacity: 0,
+          pointerEvents: 'none',
+          transition: 'opacity 160ms ease',
+        },
+        '.pdfit-pdf-row .pdfit-row-actions': {
+          opacity: 0.58,
+          pointerEvents: 'auto',
+        },
+        '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal, .pdfit-pdf-row[data-selected="true"] .pdfit-row-selection': {
+          opacity: 1,
+          pointerEvents: 'auto',
+        },
+        '@media (hover: none)': {
+          '.pdfit-pdf-row .pdfit-row-reveal': { opacity: 1, pointerEvents: 'auto' },
+        },
         '*::-webkit-scrollbar': { width: 8, height: 8 },
         '*::-webkit-scrollbar-thumb': {
           border: '2px solid transparent',
@@ -99,6 +115,12 @@ export function createPdfitFrontApp(extension: PdfitFrontExtension = {}) {
     appVersion: extension.appVersion ?? '0.0.0',
     extraRoutes: extension.extraRoutes ?? [],
     extraSidebarItems: extension.extraSidebarItems ?? [],
+    aiAutoTagAccess: extension.aiAutoTagAccess,
+    aiBulkTagLimit: extension.aiBulkTagLimit,
+    onAiTagProcessed: extension.onAiTagProcessed,
+    onAiTagRemoved: extension.onAiTagRemoved,
+    bookMetadataEnabled: extension.bookMetadataEnabled,
+    bookResearchAccess: extension.bookResearchAccess,
     themeOptions: extension.themeOptions,
     languagePreference: extension.languagePreference,
   };
@@ -111,6 +133,37 @@ export function createPdfitFrontApp(extension: PdfitFrontExtension = {}) {
         <PdfitFrontProvider value={config}>
           <ThemeProvider theme={theme}>
             <CssBaseline />
+            <GlobalStyles styles={{
+              '.pdfit-pdf-row .pdfit-row-reveal': {
+                opacity: 0,
+                pointerEvents: 'none',
+                transition: 'opacity 160ms ease',
+              },
+              '.pdfit-pdf-row .pdfit-row-actions': {
+                opacity: 0.58,
+                pointerEvents: 'auto',
+              },
+              '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal, .pdfit-pdf-row[data-selected="true"] .pdfit-row-selection': {
+                opacity: 1,
+                pointerEvents: 'auto',
+              },
+              '@media (hover: none)': {
+                '.pdfit-pdf-row .pdfit-row-reveal': { opacity: 1, pointerEvents: 'auto' },
+              },
+              '.pdfit-row-action:hover': {
+                backgroundColor: theme.palette.action.hover,
+                transform: 'translateY(-1px)',
+              },
+              '.pdfit-row-action:focus-visible': {
+                opacity: 1,
+                backgroundColor: theme.palette.action.selected,
+                outline: `2px solid ${theme.palette.primary.main}`,
+                outlineOffset: 1,
+              },
+              '.pdfit-row-action-delete:hover, .pdfit-row-action-delete:focus-visible': {
+                color: `${theme.palette.error.main} !important`,
+              },
+            }} />
             <BrowserRouter>
               <App />
             </BrowserRouter>

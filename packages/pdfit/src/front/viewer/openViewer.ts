@@ -5,6 +5,7 @@ export interface OpenViewerRequest {
   filename: string;
   page?: number | null;
   driveFileId?: string | null;
+  sample?: boolean;
 }
 
 interface ViewerWindowRecord {
@@ -55,11 +56,12 @@ export function viewerWindowName(folder: string, filename: string) {
   return `${TARGET_PREFIX}${encodeURIComponent(folder)}--${encodeURIComponent(filename)}`;
 }
 
-export function viewerUrl({ folder, filename, page, driveFileId }: OpenViewerRequest) {
+export function viewerUrl({ folder, filename, page, driveFileId, sample }: OpenViewerRequest) {
   const path = `/viewer/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
   const query = new URLSearchParams();
   if (page && page > 0) query.set('page', String(page));
   if (driveFileId) query.set('driveFileId', driveFileId);
+  if (sample) query.set('sample', '1');
   const search = query.toString();
   return search ? `${path}?${search}` : path;
 }
@@ -88,6 +90,7 @@ export function isViewerCommand(value: unknown): value is ViewerCommand {
     && typeof command.folder === 'string'
     && typeof command.filename === 'string'
     && (command.driveFileId == null || typeof command.driveFileId === 'string')
+    && (command.sample == null || typeof command.sample === 'boolean')
     && (command.page == null || (Number.isSafeInteger(command.page) && command.page > 0));
 }
 

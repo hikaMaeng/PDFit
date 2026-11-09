@@ -21,6 +21,7 @@ export interface PdfitServerOptions {
   viewerIndexFile?: string;
   viewerBasePath?: string;
   maxUploadBytes?: number;
+  suggestBookTags?: import('../services/tagSuggestion.js').BookTagSuggestionProvider;
   commonRouters?: PdfitServerRouterMount[];
   configureApp?: (app: Express) => void;
   defaultMiddlewareEnabled?: boolean;
@@ -59,6 +60,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
       booksRootName,
       watcherEnabled,
       maxUploadBytes: options.maxUploadBytes,
+      suggestBookTags: options.suggestBookTags,
     }).routers;
   })();
 
@@ -130,3 +132,5 @@ export { createPdfitMetadataRouterMounts } from './createCommonRouters.js';
 export type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
 export { createPdfitRemoteFoldersRouter, parsePdfitByteRange } from '../routes/remoteFolders.js';
 export type { PdfitRemoteFile, PdfitRemoteFoldersRouterOptions, PdfitRemoteLibraryAdapter, PdfitRemoteRefreshResult, PdfitResumableUploadSession } from '../routes/remoteFolders.js';
+export { BOOKSTORE_TAG_TAXONOMY, bookTitleFromFilename, createLocalTitleTagSuggestionProvider, createOpenAiCompatibleTagSuggestionProvider, createTagSuggestionProviderFromEnvironment, createYes24PublicPageTagSuggestionProvider, createYes24TagSuggestionProvider, normalizeSuggestedTags, scoreBookTitleMatch } from '../services/tagSuggestion.js';
+export type { BookTagSuggestionProvider, BookTagSuggestionRequest, OpenAiCompatibleTagSuggestionConfig, TagSuggestionEnvironment } from '../services/tagSuggestion.js';

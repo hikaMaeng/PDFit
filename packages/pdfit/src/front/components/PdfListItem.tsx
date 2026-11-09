@@ -1,34 +1,38 @@
-import React from 'react';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import React, { useSyncExternalStore } from 'react';
+import { useNavigate } from 'react-router-dom';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useMediaQuery, useTheme } from '@mui/material';
 import { DRAG_TYPE } from '../layout/LNB';
-import { openViewer } from '../viewer/openViewer.js';
-
-const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
-  year: 'numeric', month: 'short', day: 'numeric',
-});
+import { isPendingUploadDriveFileId, openViewer } from '../viewer/openViewer.js';
+import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
+import TagChip from './TagChip.js';
+import { PDF_LIST_COLUMNS, PDF_LIST_MOBILE_COLUMNS, PDF_LIST_FREE_COLUMNS, PDF_LIST_FREE_MOBILE_COLUMNS, PDF_LIST_WIDE_LAYOUT_QUERY } from './PdfListHeader.js';
+import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
+import { bookMetadataApi } from '../api/bookMetadata.js';
 
 const ROW_STYLE: React.CSSProperties = {
   position: 'relative',
   display: 'flex',
-  minHeight: 72,
+  minHeight: 50,
   boxSizing: 'border-box',
   borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
   contentVisibility: 'auto',
-  containIntrinsicSize: '0 72px',
+  containIntrinsicSize: '0 50px',
   cursor: 'default',
 };
 
 const CONTENT_STYLE: React.CSSProperties = {
-  display: 'flex',
+  display: 'grid',
   flex: 1,
   minWidth: 0,
-  alignItems: 'flex-start',
-  gap: 16,
-  padding: '12px 128px 12px 24px',
+  alignItems: 'center',
+  columnGap: 8,
+  rowGap: 8,
+  padding: '6px 18px',
   cursor: 'default',
 };
 
@@ -36,7 +40,6 @@ const FILE_NAME_STYLE: React.CSSProperties = {
   display: 'inline-block',
   maxWidth: '100%',
   overflow: 'hidden',
-  fontWeight: 500,
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 };
@@ -55,32 +58,15 @@ const META_STYLE: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   marginTop: 4,
-  color: 'rgba(255, 255, 255, 0.62)',
   cursor: 'default',
   fontSize: '0.75rem',
 };
 
-const TAG_STYLE: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 2,
-  height: 18,
-  padding: '0 6px',
-  border: '1px solid rgba(34, 197, 94, 0.7)',
-  borderRadius: 9,
-  color: '#86efac',
-  fontSize: '0.68rem',
-  lineHeight: '16px',
-};
-
 const ACTIONS_STYLE: React.CSSProperties = {
-  position: 'absolute',
-  top: '50%',
-  right: 20,
   display: 'flex',
   alignItems: 'center',
+  justifyContent: 'center',
   gap: 4,
-  transform: 'translateY(-50%)',
 };
 
 const ICON_BUTTON_STYLE: React.CSSProperties = {
@@ -94,6 +80,7 @@ const ICON_BUTTON_STYLE: React.CSSProperties = {
   background: 'transparent',
   color: 'inherit',
   cursor: 'pointer',
+  transition: 'color 140ms ease, background-color 140ms ease, transform 140ms ease',
 };
 
 function formatBytes(bytes: number): string {
@@ -103,6 +90,7 @@ function formatBytes(bytes: number): string {
 }
 
 export interface PdfListItemProps {
+  compactTagActions?: boolean;
   filename: string;
   href: string;
   folder: string;
@@ -115,6 +103,11 @@ export interface PdfListItemProps {
   tagColors?: Record<string, string>;
   onTagDelete?: (folder: string, filename: string, tag: string) => void;
   onManageTags?: (folder: string, filename: string) => void;
+  onAutoTag?: (folder: string, filename: string) => void;
+  onEditMetadata?: (folder: string, filename: string) => void;
+  autoTagLabel?: string;
+  autoTagging?: boolean;
+  autoTagDisabled?: boolean;
   onMove?: (folder: string, filename: string) => void;
   onDelete?: (folder: string, filename: string) => void;
   manageTagsLabel?: string;
@@ -124,19 +117,28 @@ export interface PdfListItemProps {
   onSelectionChange?: (folder: string, filename: string, selected: boolean) => void;
 }
 
+function DisplayText({ value }: { value: string }) {
+  return <>{useTranslatedDisplayText(value)}</>;
+}
+
 function PdfListItem({
+  compactTagActions = false,
   filename,
   href,
   folder,
   driveFileId,
   size,
-  modifiedAt,
   secondaryLinkLabel,
   onSecondaryLink,
   tags,
   tagColors,
-  onTagDelete,
   onManageTags,
+  onTagDelete,
+  onAutoTag,
+  autoTagLabel,
+  autoTagging = false,
+  autoTagDisabled = false,
+  onEditMetadata,
   onMove,
   onDelete,
   manageTagsLabel,
@@ -145,12 +147,16 @@ function PdfListItem({
   selected = false,
   onSelectionChange,
 }: PdfListItemProps) {
+  const { language, t } = usePdfitI18n();
+  const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const metaParts = [
-    size !== undefined ? formatBytes(size) : null,
-    modifiedAt ? `수정: ${DATE_FORMATTER.format(new Date(modifiedAt))}` : null,
-  ].filter(Boolean).join(' · ');
+  const aiAccentColor = theme.palette.mode === 'light' ? '#b7791f' : '#f59e0b';
+  const isMobile = !useMediaQuery(PDF_LIST_WIDE_LAYOUT_QUERY);
+  const isTablet = useMediaQuery('(min-width: 720px) and (pointer: coarse)');
+  const pendingUpload = isPendingUploadDriveFileId(driveFileId);
+  const openedAt = useSyncExternalStore(subscribeDocumentOpenHistory, () => getDocumentOpenedAt({ folder, filename, driveFileId }), () => null);
+  const openedLabel = formatDocumentOpenedDate(openedAt, language);
+  const metaParts = size !== undefined ? formatBytes(size) : '';
 
   const stopLink = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -158,26 +164,46 @@ function PdfListItem({
   };
 
   return (
-    <li style={ROW_STYLE}>
+    <li className="pdfit-pdf-row" data-selected={selected || undefined} style={{ ...ROW_STYLE, borderBottomColor: theme.palette.divider }}>
       <div
         style={{
           ...CONTENT_STYLE,
-          gap: isMobile ? 10 : CONTENT_STYLE.gap,
-          padding: isMobile
-            ? (onSelectionChange ? '10px 100px 10px 16px' : '10px 58px 10px 16px')
-            : (onSelectionChange ? '12px 164px 12px 24px' : CONTENT_STYLE.padding),
+          gridTemplateColumns: compactTagActions ? (isMobile ? PDF_LIST_FREE_MOBILE_COLUMNS : PDF_LIST_FREE_COLUMNS) : (isMobile ? PDF_LIST_MOBILE_COLUMNS : PDF_LIST_COLUMNS),
+          padding: isMobile ? '10px 12px' : CONTENT_STYLE.padding,
         }}
       >
-        <PictureAsPdfIcon color="error" sx={{ mt: 0.25, flexShrink: 0 }} />
+        {onSelectionChange ? (
+          <input
+            className="pdfit-row-selection"
+            type="checkbox"
+            data-testid="pdf-selection-checkbox"
+            aria-label={`${t('selectPdf')}: ${filename}`}
+            checked={selected}
+            disabled={pendingUpload}
+            onChange={(event) => onSelectionChange(folder, filename, event.target.checked)}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 16,
+              height: 16,
+              margin: 0,
+              accentColor: theme.palette.primary.main,
+              cursor: pendingUpload ? 'not-allowed' : 'pointer',
+            }}
+          />
+        ) : <div />}
         <div style={{ minWidth: 0, flex: 1 }}>
+          <div data-testid="pdf-filename-line" style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 4, minWidth: 0 }}>
           <a
             href={href}
-            title={`상세보기: ${filename}`}
-            draggable
-            style={{ ...FILE_NAME_LINK_STYLE, ...(isMobile ? { whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.35 } : {}) }}
+            title={pendingUpload ? t('pdfStillUploading') : `${t('viewDetails')}: ${filename}`}
+            aria-disabled={pendingUpload || undefined}
+            translate="no"
+            draggable={!pendingUpload}
+            style={{ ...FILE_NAME_LINK_STYLE, fontFamily: theme.typography.fontFamily, fontWeight: theme.palette.mode === 'light' ? 550 : 400, letterSpacing: theme.typography.body2.letterSpacing, cursor: pendingUpload ? 'wait' : 'pointer', opacity: pendingUpload ? 0.72 : 1, ...(isMobile ? { whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.35 } : {}) }}
             onDragStart={(event) => {
+              if (pendingUpload) { event.preventDefault(); return; }
               event.dataTransfer.effectAllowed = 'copyMove';
-              event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder, filename }));
+              event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder, filename, driveFileId }));
             }}
             onClick={(event) => {
               if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -187,70 +213,91 @@ function PdfListItem({
           >
             {filename}
           </a>
-          <div style={META_STYLE}>
-            {metaParts && <span>{metaParts}</span>}
+
+          </div>
+          {tags && tags.length > 0 && (
+          <div data-testid="pdf-tag-values" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', gap: 6, minWidth: 0, marginTop: 4 }}>
+            {tags?.map((tag) => <TagChip key={tag} tag={tag} color={tagColors?.[tag]} compact plain onDelete={onTagDelete ? () => onTagDelete(folder, filename, tag) : undefined} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
+          </div>
+          )}
+          {(pendingUpload || (secondaryLinkLabel && onSecondaryLink)) && <div style={{ ...META_STYLE, color: theme.palette.text.secondary }}>
+            {pendingUpload && (
+              <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 7px', border: `1px solid ${theme.palette.warning.main}`, borderRadius: 999, color: theme.palette.warning.dark, background: theme.palette.action.hover, fontWeight: 650 }}>
+                <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: theme.palette.warning.main, animation: 'pdfit-upload-pulse 900ms ease-in-out infinite alternate' }} />
+                {t('uploadPending')}
+                <style>{'@keyframes pdfit-upload-pulse { from { opacity: .35; } to { opacity: 1; } }'}</style>
+              </span>
+            )}
             {secondaryLinkLabel && onSecondaryLink && (
               <button
                 type="button"
+                data-testid="pdf-folder-location"
+                aria-label={`${t('folderLocation')}: ${secondaryLinkLabel}`}
+                title={`${t('folderLocation')}: ${secondaryLinkLabel}`}
                 onClick={(event) => onSecondaryLink(folder, event)}
-                style={{ padding: 0, border: 0, background: 'transparent', color: '#60a5fa', cursor: 'pointer', font: 'inherit' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', border: `1px solid ${theme.palette.divider}`, borderRadius: 4, background: theme.palette.action.hover, color: theme.palette.text.secondary, cursor: 'pointer', font: 'inherit' }}
               >
-                {secondaryLinkLabel}
+                <FolderOutlinedIcon sx={{ fontSize: 13, color: theme.palette.primary.main }} />
+                <span><DisplayText value={secondaryLinkLabel} /></span>
               </button>
             )}
-            {tags?.map((tag) => (
-              <span key={tag} style={{ ...TAG_STYLE, borderColor: tagColors?.[tag] ?? '#22c55e', color: tagColors?.[tag] ?? '#86efac' }}>
-                {tag}
-                {onTagDelete && (
-                  <button
-                    type="button"
-                    onClick={(event) => { stopLink(event); onTagDelete(folder, filename, tag); }}
-                    style={{ padding: 0, border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', lineHeight: 1 }}
-                  >
-                    ×
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
+          </div>}
         </div>
-      </div>
-      {(onManageTags || onMove || onDelete || onSelectionChange) && (
-        <div style={{ ...ACTIONS_STYLE, ...(isMobile ? { right: 6, gap: 0 } : {}) }}>
+        <div data-testid="pdf-list-tags" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 12, minWidth: 0 }}>
+
+          <div data-testid="pdf-tag-actions" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', flexShrink: 0, gap: 12 }}>
           {onManageTags && (
-            <button type="button" title={manageTagsLabel} aria-label={manageTagsLabel} style={{ ...ICON_BUTTON_STYLE, color: '#86efac' }} onClick={(event) => { stopLink(event); onManageTags(folder, filename); }}>
-              <LocalOfferIcon fontSize="small" />
+            <button type="button" className="pdfit-row-action pdfit-row-action-tags" disabled={pendingUpload} title={pendingUpload ? t('pdfStillUploading') : manageTagsLabel} aria-label={pendingUpload ? t('pdfStillUploading') : manageTagsLabel} style={{ ...ICON_BUTTON_STYLE, display: 'inline-flex', alignItems: 'center', width: 'auto', padding: '0 2px', font: 'inherit', fontSize: '0.75rem', textDecoration: 'underline', textUnderlineOffset: 3, whiteSpace: 'nowrap', flexShrink: 0, color: theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.primary.main, opacity: pendingUpload ? 0.38 : 1, cursor: pendingUpload ? 'not-allowed' : 'pointer' }} onClick={(event) => { stopLink(event); if (!pendingUpload) onManageTags(folder, filename); }}>
+              {t('manageTags')}
             </button>
           )}
+          {onAutoTag && (
+            <button
+              type="button"
+              className="pdfit-row-action pdfit-row-action-ai"
+              disabled={pendingUpload || autoTagging || autoTagDisabled}
+              data-testid="pdf-ai-auto-tag"
+              title={pendingUpload ? t('pdfStillUploading') : autoTagLabel}
+              aria-label={pendingUpload ? t('pdfStillUploading') : autoTagLabel}
+              style={{
+                ...ICON_BUTTON_STYLE,
+                flexShrink: 0,
+                color: aiAccentColor,
+                background: autoTagging ? theme.palette.action.selected : 'transparent',
+                opacity: pendingUpload || autoTagDisabled ? 0.38 : 1,
+                cursor: pendingUpload || autoTagging || autoTagDisabled ? 'wait' : 'pointer',
+              }}
+              onClick={(event) => { stopLink(event); if (!pendingUpload && !autoTagging && !autoTagDisabled) onAutoTag(folder, filename); }}
+            >
+              <AutoAwesomeIcon fontSize="small" sx={autoTagging ? { animation: 'pdfit-ai-pulse 900ms ease-in-out infinite alternate', '@keyframes pdfit-ai-pulse': { from: { opacity: 0.45 }, to: { opacity: 1 } } } : undefined} />
+            </button>
+          )}
+          </div>
+        </div>
+        <div data-testid="pdf-list-document-info">
+          {onEditMetadata && (
+            <button type="button" data-testid="pdf-document-info" className="pdfit-row-action pdfit-row-action-metadata" disabled={pendingUpload} title={pendingUpload ? t('pdfStillUploading') : t('documentInfo')} aria-label={pendingUpload ? t('pdfStillUploading') : t('documentInfo')} style={{ ...ICON_BUTTON_STYLE, width: 'auto', padding: '0 2px', font: 'inherit', fontSize: '0.75rem', textDecoration: 'underline', textUnderlineOffset: 3, whiteSpace: 'nowrap', flexShrink: 0, color: theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.primary.main, opacity: pendingUpload ? 0.38 : 1, cursor: pendingUpload ? 'not-allowed' : 'pointer' }} onMouseEnter={() => { if (driveFileId && !pendingUpload) bookMetadataApi.prefetch(driveFileId); }} onFocus={() => { if (driveFileId && !pendingUpload) bookMetadataApi.prefetch(driveFileId); }} onClick={(event) => { stopLink(event); if (!pendingUpload) onEditMetadata(folder, filename); }}>
+              {t('documentInfo')}
+            </button>
+          )}
+        </div>
+        <time data-testid="pdf-opened-at" dateTime={openedAt ?? undefined} style={{ color: theme.palette.text.secondary, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{openedLabel}</time>
+        <span data-testid="pdf-file-size" style={{ color: theme.palette.text.secondary, fontSize: '0.75rem', textAlign: 'left' }}>{metaParts || '—'}</span>
+      {(onMove || onDelete) && (
+        <div className="pdfit-row-reveal pdfit-row-actions" aria-label={t('fileActions')} style={{ ...ACTIONS_STYLE, gridColumn: '2 / -1', justifyContent: 'flex-end' }}>
           {onMove && (
-            <button type="button" title={moveLabel} aria-label={moveLabel} style={ICON_BUTTON_STYLE} onClick={(event) => { stopLink(event); onMove(folder, filename); }}>
+            <button type="button" className="pdfit-row-action pdfit-row-action-move" disabled={pendingUpload} title={pendingUpload ? t('pdfStillUploading') : moveLabel} aria-label={pendingUpload ? t('pdfStillUploading') : moveLabel} style={{ ...ICON_BUTTON_STYLE, color: theme.palette.text.secondary, opacity: pendingUpload ? 0.38 : 1, cursor: pendingUpload ? 'not-allowed' : 'pointer' }} onClick={(event) => { stopLink(event); if (!pendingUpload) onMove(folder, filename); }}>
               <DriveFileMoveIcon fontSize="small" />
             </button>
           )}
           {onDelete && (
-            <button type="button" title={deleteLabel} aria-label={deleteLabel} style={{ ...ICON_BUTTON_STYLE, color: '#f87171' }} onClick={(event) => { stopLink(event); onDelete(folder, filename); }}>
+            <button type="button" className="pdfit-row-action pdfit-row-action-delete" disabled={pendingUpload} title={pendingUpload ? t('pdfStillUploading') : deleteLabel} aria-label={pendingUpload ? t('pdfStillUploading') : deleteLabel} style={{ ...ICON_BUTTON_STYLE, color: theme.palette.text.secondary, opacity: pendingUpload ? 0.38 : 1, cursor: pendingUpload ? 'not-allowed' : 'pointer' }} onClick={(event) => { stopLink(event); if (!pendingUpload) onDelete(folder, filename); }}>
               <DeleteIcon fontSize="small" />
             </button>
           )}
-          {onSelectionChange && (
-            <input
-              type="checkbox"
-              data-testid="pdf-selection-checkbox"
-              aria-label={`${filename} 선택`}
-              checked={selected}
-              onChange={(event) => onSelectionChange(folder, filename, event.target.checked)}
-              onClick={(event) => event.stopPropagation()}
-              style={{
-                width: 16,
-                height: 16,
-                margin: '0 2px 0 4px',
-                accentColor: '#3b82f6',
-                cursor: 'pointer',
-              }}
-            />
-          )}
         </div>
       )}
+      </div>
     </li>
   );
 }

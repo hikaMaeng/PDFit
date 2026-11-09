@@ -1,3 +1,4 @@
+import { uiText } from '../i18n/uiText.js';
 import type { FolderInfo, PdfInfo } from '../api/folders.js';
 import { foldersApi } from '../api/folders.js';
 import { tagsApi } from '../api/tags.js';
@@ -11,6 +12,10 @@ export interface FolderLibraryState {
   error: string | null;
   filesLoaded: boolean;
   tagsLoaded: boolean;
+}
+
+export function fileIdentity(filename: string, driveFileId?: string): string {
+  return driveFileId || filename;
 }
 
 type Listener = () => void;
@@ -30,6 +35,8 @@ class FolderModel {
     filesLoaded: false,
     tagsLoaded: false,
   };
+
+  private hasFileSnapshot = false;
 
   constructor(readonly folderName: string) {}
 
@@ -74,37 +81,42 @@ class FolderModel {
     this.emit();
   }
 
-  removeFile(filename: string): void {
-    this.state.files = this.state.files.filter((file) => file.name !== filename);
-    delete this.state.fileTags[filename];
+  removeFile(filename: string, driveFileId?: string): void {
+    const identity = fileIdentity(filename, driveFileId);
+    this.state.files = this.state.files.filter((file) => fileIdentity(file.name, file.driveFileId) !== identity);
+    delete this.state.fileTags[identity];
     this.emit();
   }
 
   upsertFile(file: PdfInfo): void {
-    this.state.files = [...this.state.files.filter((current) => current.name !== file.name), file];
+    const identity = fileIdentity(file.name, file.driveFileId);
+    this.state.files = [...this.state.files.filter((current) => fileIdentity(current.name, current.driveFileId) !== identity), file];
     this.emit();
   }
 
-  addTag(filename: string, tag: string): void {
-    const current = this.state.fileTags[filename] ?? [];
+  addTag(filename: string, tag: string, driveFileId?: string): void {
+    const identity = fileIdentity(filename, driveFileId);
+    const current = this.state.fileTags[identity] ?? [];
     if (current.includes(tag)) return;
-    this.state.fileTags[filename] = [...current, tag];
+    this.state.fileTags[identity] = [...current, tag];
     this.emit();
   }
 
-  removeTag(filename: string, tag: string): void {
-    const current = this.state.fileTags[filename] ?? [];
-    this.state.fileTags[filename] = current.filter((item) => item !== tag);
+  removeTag(filename: string, tag: string, driveFileId?: string): void {
+    const identity = fileIdentity(filename, driveFileId);
+    const current = this.state.fileTags[identity] ?? [];
+    this.state.fileTags[identity] = current.filter((item) => item !== tag);
     this.emit();
   }
 
   private async loadFiles(): Promise<void> {
-    this.state.loading = true;
+    this.state.loading = !this.hasFileSnapshot;
     this.state.error = null;
     this.emit();
     try {
       this.state.files = await foldersApi.listFiles(this.folderName);
       this.state.filesLoaded = true;
+      this.hasFileSnapshot = true;
       this.state.loading = false;
       this.emit();
       if (!this.state.tagsLoaded && !this.tagsRequest) {
@@ -112,7 +124,7 @@ class FolderModel {
       }
     } catch (error) {
       this.state.loading = false;
-      this.state.error = error instanceof Error ? error.message : '로드 실패';
+      this.state.error = error instanceof Error ? error.message : uiText("로드 실패");
       this.emit();
     } finally {
       this.filesRequest = null;
@@ -142,7 +154,7 @@ class FolderLibraryModel {
     subscribeLibraryFileMutations((mutation) => {
       const model = this.folders.get(mutation.folder);
       if (!model) return;
-      if (mutation.kind === 'remove') model.removeFile(mutation.filename);
+      if (mutation.kind === 'remove') model.removeFile(mutation.filename, mutation.driveFileId);
       else model.upsertFile(mutation.file);
     });
   }

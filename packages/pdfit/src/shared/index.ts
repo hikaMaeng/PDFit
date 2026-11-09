@@ -8,6 +8,10 @@ export interface ViewerStateRecord {
   scrollTop: number;
 }
 
+export { distinctTagColor, withDistinctTagColors } from './tagColor.js';
+export { BOOKSTORE_TAG_GROUPS, BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, bookstoreTagGroupFor, documentTagFromTitle } from './tagTaxonomy.js';
+export type { BookstoreTagGroupId } from './tagTaxonomy.js';
+
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
 
@@ -43,8 +47,11 @@ export interface MetadataStore {
   listFolderTags(folder: string): Promise<Record<string, string[]>>;
   listBookTags(folder: string, filename: string, driveFileId?: string): Promise<string[]>;
   addTag(folder: string, filename: string, tag: string, driveFileId?: string): Promise<void>;
+  addTags?(relations: Array<{ folder: string; filename: string; tag: string; driveFileId?: string }>): Promise<void>;
   removeTag(folder: string, filename: string, tag: string, driveFileId?: string): Promise<void>;
+  removeFolderTags?(folder: string): Promise<number>;
   deleteTag(tag: string): Promise<void>;
+  deleteAllTags(): Promise<void>;
   updateTagColor(tag: string, color: string): Promise<void>;
   getViewerState(folder: string, filename: string, driveFileId?: string): Promise<ViewerStateRecord | null>;
   setViewerState(folder: string, filename: string, state: ViewerStateRecord, driveFileId?: string): Promise<void>;
@@ -52,8 +59,8 @@ export interface MetadataStore {
   purgeFolder(folder: string): Promise<void>;
   purgeOrphanTags(): Promise<void>;
   listAllBookmarks(): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;
-  listBookmarks(folder: string, filename: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;
-  createBookmark(folder: string, filename: string, bookmark: import('../common/protocol/bookmarks/index.js').CreateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord>;
+  listBookmarks(folder: string, filename: string, driveFileId?: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;
+  createBookmark(folder: string, filename: string, bookmark: import('../common/protocol/bookmarks/index.js').CreateBookmarkRequest, driveFileId?: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord>;
   updateBookmark(id: string, update: import('../common/protocol/bookmarks/index.js').UpdateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
   deleteBookmark(id: string): Promise<void>;
   listAnnotations(documentId: string): Promise<import('../common/protocol/annotations/index.js').Annotation[]>;

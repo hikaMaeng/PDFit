@@ -32,6 +32,10 @@ The exact core artifact, source commit, and SHA-256 are recorded in
 `packages/pdfit/vendor/pdfgpu-build.json`; the released package resolves its
 PDFium WASM dependency through `@embedpdf/pdfium@2.14.0`.
 
+The viewer header exposes direct PDF download through the existing same-origin
+file route without rewriting the source. The confirmation dialog intentionally
+offers no alternate Markdown or JSON data formats.
+
 Extension fields:
 
 * `appName`
@@ -83,6 +87,10 @@ validation, multipart upload handling, byte ranges, and response contracts;
 the adapter owns only remote storage operations. An adapter may implement
 `getFileById` and `openFileById` to expose `GET /by-id/:driveFileId`; common code
 validates the identifier and Range response while the adapter verifies ownership.
+An authenticated adapter may additionally implement `openThumbnailById` to expose
+`GET /by-id/:driveFileId/thumbnail`. The common route proxies the image with private
+browser caching, so remote credentials and short-lived provider URLs never reach the
+client.
 
 Adapters may also implement `createResumableUploadSession` and
 `completeResumableUpload`. The common router then exposes metadata-only session and
@@ -102,6 +110,10 @@ existing installations. After a successful import it renames the source file to
 ## Tag endpoints
 
 The shared tags router in [`src/server/routes/tags.ts`](../src/server/routes/tags.ts) keeps `/api/tags` as the string-list compatibility endpoint, adds `GET /api/tags/summary` with `{ name, bookCount }` rows for the sidebar, and supports `DELETE /api/tags/:tag` to remove the tag and all `book_tags` links through the database cascade.
+
+`POST /api/tags/book/:folder/:filename/auto` derives the book title from the PDF filename, selects one to three reusable bookstore categories, persists only new normalized tags, and returns `title`, `suggestedTags`, and `addedTags`. A configured OpenAI-compatible endpoint supplies semantic classification, but its output is restricted to the shared bookstore taxonomy. Without one, the shared zero-configuration category classifier is used so local and hosted Docker runtimes remain functional.
+
+`POST /api/tags/folder/:folder/auto` accepts 1-500 `{ filename, driveFileId? }` book references, classifies them with concurrency limited to three, and persists all successful tag relations through one metadata batch when the storage adapter supports it. The response includes processed/failed counts, the total number of added tags, per-book results, and per-book classifier errors.
 
 ## Bookmark endpoints
 

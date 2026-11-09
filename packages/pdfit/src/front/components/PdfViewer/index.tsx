@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   Box, CircularProgress, Alert, Typography,
@@ -14,7 +14,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
-import BookmarksIcon from '@mui/icons-material/Bookmarks';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PdfPage from './PdfPage';
 import type { ViewerStatePayload } from '../../api/viewerState';
@@ -26,16 +26,56 @@ import {
 import type { PdfJsModule } from '../../pdfjs.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
-import { AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
+import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
+import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
+import { usePageSwipe } from '../usePageSwipe.js';
 import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
+import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
+import { DEFAULT_VIEWER_ZOOM, fitZoomForCssExtent, toPdfJsViewportScale } from './pdfDisplayScale.js';
 
 const loadPdfJs = () => import('../../pdfjs.js').then(({ loadPdfJs: load }) => load());
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+// Remote Drive PDFs have a meaningful round-trip cost per byte-range request.
+// A 2 MiB range reduces sequential Drive round trips for ordinary documents
+// without forcing the browser to fetch an entire large PDF before page one.
+const REMOTE_PDF_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
+const SINGLE_REQUEST_PDF_MAX_BYTES = 20 * 1024 * 1024;
+const PAGE_HORIZONTAL_PADDING = 12;
 type ViewMode = 'scroll' | 'single' | 'double';
+type PageLayout = Exclude<ViewMode, 'scroll'>;
 type FitMode = 'none' | 'width' | 'height';
+
+/** @see docs/internals.md#remote-pdf-loading */
+async function readSmallRemotePdf(url: string, signal: AbortSignal, onProgress: (loaded: number, total: number) => void): Promise<Uint8Array | null> {
+  const target = new URL(url, window.location.href);
+  if (target.origin !== window.location.origin || !/^\/api\/folders\/by-id\/[^/]+$/.test(target.pathname)) return null;
+  const metadata = await fetch(target, { method: 'HEAD', signal });
+  if (!metadata.ok) throw Object.assign(new Error(`PDF request failed (${metadata.status})`), { status: metadata.status });
+  const total = Number(metadata.headers.get('Content-Length'));
+  if (!Number.isSafeInteger(total) || total <= 0 || total > SINGLE_REQUEST_PDF_MAX_BYTES) return null;
+
+  const response = await fetch(target, { signal });
+  if (!response.ok) throw Object.assign(new Error(`PDF request failed (${response.status})`), { status: response.status });
+  if (!response.body) return new Uint8Array(await response.arrayBuffer());
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    if (loaded > SINGLE_REQUEST_PDF_MAX_BYTES) throw new Error('PDF size changed while loading.');
+    onProgress(loaded, total);
+  }
+  const bytes = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
 
 // center 페이지를 기준으로 양쪽으로 퍼져나가는 순서 생성
 // 예: center=5, total=8 → [5, 4, 6, 3, 7, 2, 8, 1]
@@ -70,6 +110,7 @@ interface Props {
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
+  onDocumentUnavailable?: () => void;
 }
 
 export default function PdfViewer({
@@ -88,18 +129,26 @@ export default function PdfViewer({
   bookmarks = [],
   onBookmarkCaptured,
   onBookmarkDeleted,
+  onDocumentUnavailable,
 }: Props) {
+  const { t, ui } = usePdfitI18n();
   // pages: 희소 배열 (null = 아직 미로드)
+  const [rangeLoading, setRangeLoading] = useState(false);
   const [pages, setPages] = useState<(PDFPageProxy | null)[]>([]);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
-  const [scale, setScale] = useState(initialScale ?? 1.2);
+  const [scale, setScale] = useState(initialScale ?? DEFAULT_VIEWER_ZOOM);
+  const [zoomInput, setZoomInput] = useState(String(Math.round((initialScale ?? DEFAULT_VIEWER_ZOOM) * 100)));
   const [fitMode, setFitMode] = useState<FitMode>(initialFitMode ?? 'none');
-  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'scroll');
+  const [pageLayout, setPageLayout] = useState<PageLayout>(initialViewMode === 'double' ? 'double' : 'single');
+  const [continuousScroll, setContinuousScroll] = useState(initialViewMode === 'scroll');
+  const viewMode: ViewMode = continuousScroll ? 'scroll' : pageLayout;
   const [localInverted, setLocalInverted] = useState(initialInverted ?? false);
   const inverted = controlledInverted ?? localInverted;
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [loadProgressDeterminate, setLoadProgressDeterminate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // doc이 로드되고 첫 페이지가 준비된 상태 (스프레드 트리거용)
   const [docReady, setDocReady] = useState(false);
@@ -113,17 +162,27 @@ export default function PdfViewer({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const initialPageAppliedRef = useRef(false);
+  const initialPageRef = useRef(initialPage);
   const annotation = usePdfAnnotations(url);
   const pan = usePdfPan(containerRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
+  const annotationPageIndices = useMemo(() => {
+    if (continuousScroll) return pages.map((_, pageIndex) => pageIndex);
+    if (pageLayout === 'single') return [Math.max(0, currentPage - 1)];
+    if (pageLayout === 'double') return [Math.max(0, currentPage - 1), currentPage].filter((pageIndex) => pageIndex < totalPages);
+    return pages.map((_, pageIndex) => pageIndex);
+  }, [continuousScroll, currentPage, pageLayout, pages, totalPages]);
 
   // 최신 상태를 이벤트 핸들러 내부에서 참조하기 위한 refs
   const currentPageRef = useRef(currentPage);
   const totalPagesRef = useRef(totalPages);
   const viewModeRef = useRef(viewMode);
+  const pageLayoutRef = useRef(pageLayout);
   const interactionRef = useRef(createViewerInteractionState({ mode: viewMode }));
   useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+  useEffect(() => { pageLayoutRef.current = pageLayout; }, [pageLayout]);
+  useEffect(() => { setZoomInput(String(Math.round(scale * 100))); }, [scale]);
   useEffect(() => {
     interactionRef.current = reduceViewerInteraction(interactionRef.current, {
       type: 'setPageCount',
@@ -142,7 +201,7 @@ export default function PdfViewer({
   // 상태 스냅샷 — 스크롤 핸들러 등 이벤트에서 최신 상태를 참조할 때 사용
   const stateSnapshotRef = useRef<Omit<ViewerStatePayload, 'uiHidden'>>({
     page: 1,
-    scale: initialScale ?? 1.2,
+    scale: initialScale ?? DEFAULT_VIEWER_ZOOM,
     fitMode: initialFitMode ?? 'none',
     viewMode: initialViewMode ?? 'scroll',
     inverted: initialInverted ?? false,
@@ -194,7 +253,11 @@ export default function PdfViewer({
   useEffect(() => {
     let cancelled = false;
     let task: ReturnType<PdfJsModule['getDocument']> | null = null;
+    const downloadAbort = new AbortController();
+    setRangeLoading(false);
     setLoading(true);
+    setLoadProgress(0);
+    setLoadProgressDeterminate(false);
     setDocReady(false);
     setError(null);
     setPages([]);
@@ -211,10 +274,25 @@ export default function PdfViewer({
       docRef.current = null;
     }
 
-    loadPdfJs()
-      .then((pdfjsLib) => {
+    Promise.all([
+      loadPdfJs(),
+      readSmallRemotePdf(url, downloadAbort.signal, (loaded, total) => {
+        if (cancelled) return;
+        setLoadProgressDeterminate(true);
+        setLoadProgress(Math.min(100, Math.max(0, (loaded / total) * 100)));
+      }).then((bytes) => { if (bytes && !cancelled) setLoadProgressDeterminate(false); return bytes; }),
+    ])
+      .then(([pdfjsLib, smallPdf]) => {
         if (cancelled) return null;
-        task = pdfjsLib.getDocument({ url });
+        setRangeLoading(!smallPdf);
+        task = pdfjsLib.getDocument(smallPdf ? { data: smallPdf } : {
+          url, rangeChunkSize: REMOTE_PDF_RANGE_CHUNK_SIZE, disableAutoFetch: true, disableStream: true,
+        });
+        task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+          if (cancelled || smallPdf || !Number.isFinite(total) || total <= 0) return;
+          setLoadProgressDeterminate(true);
+          setLoadProgress(Math.min(100, Math.max(0, (loaded / total) * 100)));
+        };
         return task.promise;
       })
       .then(async (doc: PDFDocumentProxy | null) => {
@@ -225,26 +303,39 @@ export default function PdfViewer({
         // 희소 배열로 초기화
         setPages(new Array(doc.numPages).fill(null));
 
-        // 1페이지를 먼저 로드해 뷰어를 즉시 표시
-        const firstPage = await doc.getPage(1);
+        // 저장된 현재 페이지를 먼저 로드해 불필요한 1페이지 왕복을 피한다.
+        const firstPageNumber = Math.max(1, Math.min(doc.numPages, initialPageRef.current ?? 1));
+        const firstPage = await doc.getPage(firstPageNumber);
         if (cancelled) return;
-        loadedRef.current.add(1);
+        loadedRef.current.add(firstPageNumber);
         const vp = firstPage.getViewport({ scale: 1 });
         baseVpRef.current = { width: vp.width, height: vp.height };
         setPages(prev => {
           const next = [...prev];
-          next[0] = firstPage;
+          next[firstPageNumber - 1] = firstPage;
           return next;
         });
+        currentPageRef.current = firstPageNumber;
+        setCurrentPage(firstPageNumber);
+        setPageInput(String(firstPageNumber));
+        initialPageAppliedRef.current = initialPageRef.current != null;
+        setLoadProgress(100);
         setLoading(false);
         setDocReady(true); // → currentPage 스프레드 effect 트리거
       })
       .catch((e: unknown) => {
-        if (!cancelled) { setError(String(e)); setLoading(false); }
+        if (cancelled) return;
+        const status = (e as { status?: unknown } | null)?.status;
+        if (status === 404 || status === 410) {
+          setError(t('documentUnavailable'));
+          onDocumentUnavailable?.();
+        } else setError(String(e));
+        setLoading(false);
       });
 
     return () => {
       cancelled = true;
+      downloadAbort.abort();
       spreadTokenRef.current.cancelled = true;
       task?.destroy().catch(() => {});
     };
@@ -287,6 +378,7 @@ export default function PdfViewer({
     const m = viewModeRef.current;
     goToPage(m === 'double' ? currentPageRef.current + 2 : currentPageRef.current + 1);
   }, [goToPage]);
+  const pageSwipe = usePageSwipe(containerRef, viewMode !== 'scroll' && (annotation.tool === 'select' || annotation.tool === 'bookmark'), prevPage, nextPage, fitMode === 'height');
 
   // ── initialPage 적용 ─────────────────────────────────────────
   useEffect(() => {
@@ -394,18 +486,23 @@ export default function PdfViewer({
   }, [docReady, viewMode, initialScrollTop]);
 
   // ── fit 스케일 계산 ──────────────────────────────────────────
-  const calcScale = useCallback((fit: FitMode, mode: ViewMode): number => {
+  const calcScale = useCallback((fit: FitMode, layout: PageLayout): number => {
     const container = containerRef.current;
     const firstLoaded = pages.find(p => p !== null);
-    if (!container || !firstLoaded) return 1.2;
+    if (!container || !firstLoaded) return DEFAULT_VIEWER_ZOOM;
     const vp = firstLoaded.getViewport({ scale: 1 });
     if (fit === 'width') {
-      const avail = container.clientWidth - 48;
-      return mode === 'double' ? (avail - 16) / (2 * vp.width) : avail / vp.width;
+      const avail = container.clientWidth - PAGE_HORIZONTAL_PADDING * 2;
+      return layout === 'double'
+        ? fitZoomForCssExtent(avail - 16, 2 * vp.width)
+        : fitZoomForCssExtent(avail, vp.width);
     }
     if (fit === 'height') {
       const avail = container.clientHeight - 48;
-      return avail / vp.height;
+      const heightScale = fitZoomForCssExtent(avail, vp.height);
+      if (layout !== 'double') return heightScale;
+      const widthScale = fitZoomForCssExtent(container.clientWidth - PAGE_HORIZONTAL_PADDING * 2 - 16, 2 * vp.width);
+      return Math.min(heightScale, widthScale);
     }
     return scale;
   }, [pages, scale]);
@@ -413,31 +510,61 @@ export default function PdfViewer({
   // fit 모드 또는 뷰 모드 변경 시 스케일 재계산
   useEffect(() => {
     if (fitMode === 'none' || pages.length === 0) return;
-    setScale(calcScale(fitMode, viewMode));
-  }, [fitMode, viewMode, pages]); // eslint-disable-line
+    setScale(calcScale(fitMode, pageLayout));
+  }, [fitMode, pageLayout, pages]); // eslint-disable-line
 
   // 창 크기 변경 시 재계산
   useEffect(() => {
     if (fitMode === 'none') return;
-    const handler = () => setScale(calcScale(fitMode, viewMode));
+    const handler = () => setScale(calcScale(fitMode, pageLayout));
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, [fitMode, viewMode, calcScale]);
+  }, [fitMode, pageLayout, calcScale]);
+
+  useEffect(() => {
+    if (fitMode === 'none') return;
+    const page = currentPageRef.current;
+    const timer = requestAnimationFrame(() => {
+      setScale(calcScale(fitMode, pageLayout));
+      if (continuousScroll) {
+        requestAnimationFrame(() => pageRefs.current[page - 1]?.scrollIntoView({ block: 'start' }));
+      }
+    });
+    return () => cancelAnimationFrame(timer);
+  }, [bookmarkPanelOpen, calcScale, continuousScroll, fitMode, pageLayout]);
 
   // ── 뷰모드 변경 ──────────────────────────────────────────────
-  const handleViewMode = (_: React.MouseEvent, next: ViewMode | null) => {
-    if (!next) return;
-    interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: next }).state;
-    setViewMode(next);
+  const selectPageLayout = (next: PageLayout) => {
+    const interactionMode: ViewMode = continuousScroll ? 'scroll' : next;
+    interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: interactionMode }).state;
+    setPageLayout(next);
     if (next === 'double') {
       const odd = currentPageRef.current % 2 === 0
         ? currentPageRef.current - 1
         : currentPageRef.current;
-      goToPage(odd, next);
+      goToPage(odd, interactionMode);
+      setFitMode('width');
+      setTimeout(() => setScale(calcScale('width', next)), 0);
+      return;
     }
     if (fitMode !== 'none') {
       setTimeout(() => setScale(calcScale(fitMode, next)), 0);
     }
+  };
+  const handlePageLayout = (_: React.MouseEvent, next: PageLayout | null) => {
+    if (next) selectPageLayout(next);
+  };
+  useLayoutEffect(() => {
+    if (!continuousScroll && containerRef.current) containerRef.current.scrollTop = 0;
+  }, [continuousScroll]);
+
+  const toggleContinuousScroll = () => {
+    const next = !continuousScroll;
+    const page = currentPageRef.current;
+    const mode: ViewMode = next ? 'scroll' : pageLayoutRef.current;
+    interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode }).state;
+    setContinuousScroll(next);
+    requestAnimationFrame(() => requestAnimationFrame(() => goToPage(page, mode)));
   };
 
   // ── 줌 ───────────────────────────────────────────────────────
@@ -449,12 +576,18 @@ export default function PdfViewer({
     setFitMode('none');
     setScale((s) => [...ZOOM_LEVELS].reverse().find((z) => z < s) ?? s);
   };
-  const toggleFit = (mode: FitMode) => {
-    setFitMode((prev) => {
-      const next = prev === mode ? 'none' : mode;
-      if (next !== 'none') setTimeout(() => setScale(calcScale(next, viewModeRef.current)), 0);
-      return next;
-    });
+  const fitTo = (mode: Exclude<FitMode, 'none'>) => {
+    setFitMode(mode);
+    setTimeout(() => setScale(calcScale(mode, pageLayoutRef.current)), 0);
+  };
+  const submitZoom = () => {
+    const percentage = Number.parseFloat(zoomInput.replace('%', '').trim());
+    if (!Number.isFinite(percentage)) {
+      setZoomInput(String(Math.round(scale * 100)));
+      return;
+    }
+    setFitMode('none');
+    setScale(Math.min(800, Math.max(25, percentage)) / 100);
   };
 
   const capturePoint = useCallback((clientX: number, clientY: number) => {
@@ -509,9 +642,9 @@ export default function PdfViewer({
     setCaptureNotice(null);
     try {
       await onBookmarkCaptured({ pageIndex: start.pageIndex, rect: { x: x / canvasRect.width * baseViewport.width, y: y / canvasRect.height * baseViewport.height, width: width / canvasRect.width * baseViewport.width, height: height / canvasRect.height * baseViewport.height }, imageBase64: crop.toDataURL('image/png').split(',')[1] ?? '', mimeType: 'image/png', quality: 'high-resolution', dpi: Math.round(96 * sourceScaleX) });
-      setCaptureNotice('북마크가 저장되었습니다.');
+      setCaptureNotice(ui("북마크가 저장되었습니다."));
     } catch (error) {
-      setCaptureNotice(error instanceof Error ? error.message : '북마크를 저장하지 못했습니다.');
+      setCaptureNotice(error instanceof Error ? error.message : ui("북마크를 저장하지 못했습니다."));
     } finally {
       setCaptureBusy(false);
       window.setTimeout(() => setCaptureNotice(null), 3000);
@@ -538,31 +671,24 @@ export default function PdfViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [goToPage]);
 
-  // ── 마우스 휠: 모드별 소비 정책은 공통 순수 모델이 결정한다 ────
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const onWheel = (e: WheelEvent) => {
-      const transition = reduceViewerInteraction(interactionRef.current, {
-        type: 'wheel',
-        deltaY: e.deltaY,
-        ctrlKey: e.ctrlKey,
-      });
-      interactionRef.current = transition.state;
-      if (transition.preventDefault) e.preventDefault();
-      for (const effect of transition.effects) {
-        if (effect.type === 'navigate') goToPage(effect.page);
-        if (effect.type === 'zoom') {
-          if (effect.direction === 'in') zoomIn();
-          else zoomOut();
-        }
+  // ── 마우스 휠: 교체되는 viewport와 상위 overlay를 함께 처리한다 ──
+  const handleViewerWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const transition = reduceViewerInteraction(interactionRef.current, {
+      type: 'wheel',
+      deltaY: event.deltaY,
+      ctrlKey: event.ctrlKey,
+    });
+    interactionRef.current = transition.state;
+    if (transition.preventDefault) event.preventDefault();
+    for (const effect of transition.effects) {
+      if (effect.type === 'navigate') goToPage(effect.page);
+      if (effect.type === 'zoom') {
+        if (effect.direction === 'in') zoomIn();
+        else zoomOut();
       }
-    };
-
-    container.addEventListener('wheel', onWheel, { passive: false });
-    return () => container.removeEventListener('wheel', onWheel);
-  }, [goToPage]);
+    }
+    if (interactionRef.current.mode === 'scroll' && !event.ctrlKey && annotation.tool === 'select') pan.wheel(event);
+  }, [annotation.tool, goToPage, pan.wheel, zoomIn, zoomOut]);
 
   // ── 공통 props ────────────────────────────────────────────────
   const basePageProps = { scale, inverted, eager: true as const, noMargin: true as const };
@@ -574,14 +700,15 @@ export default function PdfViewer({
 
   // 플레이스홀더 크기 (scale 적용)
   const bv = baseVpRef.current;
-  const phW = bv ? Math.floor(bv.width * scale) : Math.floor(595 * scale);
-  const phH = bv ? Math.floor(bv.height * scale) : Math.floor(842 * scale);
+  const viewportScale = toPdfJsViewportScale(scale);
+  const phW = bv ? Math.round(bv.width * viewportScale) : Math.round(595 * viewportScale);
+  const phH = bv ? Math.round(bv.height * viewportScale) : Math.round(842 * viewportScale);
+  const viewerLeftInset = (uiHidden ? 0 : ANNOTATION_RAIL_WIDTH) + (bookmarkPanelOpen ? 220 : 0);
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 2 }}>
-        <CircularProgress />
-        <Typography color="text.secondary">PDF 로딩 중...</Typography>
+      <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading} label={rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
       </Box>
     );
   }
@@ -596,154 +723,159 @@ export default function PdfViewer({
       {/* ── 툴바 (UI 숨김 시 사라짐) ── */}
       {!uiHidden && (
         <Box
+          role="toolbar"
+          aria-label="viewer controls"
           sx={{
             display: 'flex', alignItems: 'center', gap: 0.5,
             px: 2, py: 0.5,
-            bgcolor: 'background.paper',
+            bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : 'background.paper',
             borderBottom: '1px solid', borderColor: 'divider',
-            flexShrink: 0,
+            flexShrink: 0, position: 'relative', zIndex: 10, overflowX: 'auto',
           }}
         >
-          {/* 페이지 네비게이션 */}
-          <Tooltip title="이전 페이지 (←/PageUp)" arrow enterDelay={0} enterNextDelay={0}>
-            <span>
-              <IconButton size="small" onClick={prevPage} disabled={isPrevDisabled}>
-                <NavigateBeforeIcon fontSize="small" />
-              </IconButton>
-            </span>
+          {/* 페이지 레이아웃 */}
+          <ToggleButtonGroup
+            size="small" value={pageLayout} exclusive onChange={handlePageLayout}
+            sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}
+          >
+            <ToggleButton value="single" aria-label={t('singlePage')}>
+              <Tooltip title={t('singlePage')} arrow enterDelay={0} enterNextDelay={0}><CropPortraitIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+            <ToggleButton value="double" aria-label={t('doublePage')}>
+              <Tooltip title={t('doublePage')} arrow enterDelay={0} enterNextDelay={0}><MenuBookIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+          <Tooltip title={t('continuousScroll')} arrow enterDelay={0} enterNextDelay={0}>
+            <ToggleButton value="scroll" selected={continuousScroll} aria-label={t('continuousScroll')} aria-pressed={continuousScroll} onClick={toggleContinuousScroll} sx={{ py: 0.25, px: 0.75, border: 'none' }}>
+              <ViewStreamIcon fontSize="small" />
+            </ToggleButton>
           </Tooltip>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+          <Tooltip title={t('fitWidth')} arrow enterDelay={0} enterNextDelay={0}>
+            <IconButton size="small" aria-label={t('fitWidth')} onClick={() => fitTo('width')}>
+              <FitScreenIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={t('fitHeight')} arrow enterDelay={0} enterNextDelay={0}>
+            <IconButton size="small" aria-label={t('fitHeight')} onClick={() => fitTo('height')}>
+              <HeightIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={t('zoomOut')} arrow enterDelay={0} enterNextDelay={0}>
+            <span><IconButton size="small" onClick={zoomOut} disabled={scale <= ZOOM_LEVELS[0]}><ZoomOutIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <TextField
+              size="small"
+              value={zoomInput}
+              onChange={(event) => setZoomInput(event.target.value.replace(/[^0-9.]/g, ''))}
+              onKeyDown={(event) => { if (event.key === 'Enter') (event.currentTarget.querySelector('input') as HTMLInputElement | null)?.blur(); }}
+              onBlur={submitZoom}
+              inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', width: 38, padding: '2px 2px', fontSize: '0.8rem' }, 'aria-label': t('zoomPercentage') }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25 }}>%</Typography>
+          </Box>
+          <Tooltip title={t('zoomIn')} arrow enterDelay={0} enterNextDelay={0}>
+            <span><IconButton size="small" onClick={zoomIn} disabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}><ZoomInIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+          <Tooltip title={t('invertColors')} arrow enterDelay={0} enterNextDelay={0}>
+            <IconButton size="small" onClick={onToggleInverted ?? (() => setLocalInverted((v) => !v))} color={inverted ? 'primary' : 'default'}>
+              <InvertColorsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} arrow enterDelay={0} enterNextDelay={0}>
+            <IconButton data-testid="legacy-bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}>
+              <AttachFileIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Box sx={{ flex: 1 }} />
+
+          <Tooltip title={`${t('previousPage')} (←/PageUp)`} arrow enterDelay={0} enterNextDelay={0}>
+            <span><IconButton size="small" onClick={prevPage} disabled={isPrevDisabled}><NavigateBeforeIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+          <Box data-testid="viewer-page-indicator" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <TextField
               size="small"
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { const n = parseInt(pageInput, 10); if (!isNaN(n)) goToPage(n); } }}
               onBlur={() => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goToPage(n); }}
-              inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' } }}
+              inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': t('pageNumber') }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
             />
             <Typography variant="caption" color="text.secondary">/ {totalPages}</Typography>
           </Box>
-
-          <Tooltip title="다음 페이지 (→/PageDown)" arrow enterDelay={0} enterNextDelay={0}>
-            <span>
-              <IconButton size="small" onClick={nextPage} disabled={isNextDisabled}>
-                <NavigateNextIcon fontSize="small" />
-              </IconButton>
-            </span>
+          <Tooltip title={`${t('nextPage')} (→/PageDown)`} arrow enterDelay={0} enterNextDelay={0}>
+            <span><IconButton size="small" onClick={nextPage} disabled={isNextDisabled}><NavigateNextIcon fontSize="small" /></IconButton></span>
           </Tooltip>
-
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-          {/* 줌 */}
-          <Tooltip title="축소" arrow enterDelay={0} enterNextDelay={0}>
-            <span>
-              <IconButton size="small" onClick={zoomOut} disabled={scale <= ZOOM_LEVELS[0]}>
-                <ZoomOutIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Typography variant="caption" sx={{ minWidth: 40, textAlign: 'center', color: 'text.secondary' }}>
-            {Math.round(scale * 100)}%
-          </Typography>
-          <Tooltip title="확대" arrow enterDelay={0} enterNextDelay={0}>
-            <span>
-              <IconButton size="small" onClick={zoomIn} disabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}>
-                <ZoomInIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-
-          {/* 가로 맞춤 */}
-          <Tooltip title="가로 너비 맞춤" arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" onClick={() => toggleFit('width')} color={fitMode === 'width' ? 'primary' : 'default'}>
-              <FitScreenIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          {/* 세로 맞춤 */}
-          <Tooltip title="세로 높이 맞춤" arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" onClick={() => toggleFit('height')} color={fitMode === 'height' ? 'primary' : 'default'}>
-              <HeightIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          {/* 색상 반전 */}
-          <Tooltip title="색상 반전" arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" onClick={onToggleInverted ?? (() => setLocalInverted((v) => !v))} color={inverted ? 'primary' : 'default'}>
-              <InvertColorsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton data-testid="legacy-bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? '북마크 사이드바 닫기' : '북마크 사이드바 열기'} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}>
-              <BookmarksIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-          {/* 뷰 모드 */}
-          <ToggleButtonGroup
-            size="small" value={viewMode} exclusive onChange={handleViewMode}
-            sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}
-          >
-            <ToggleButton value="scroll">
-              <Tooltip title="연속 스크롤" arrow enterDelay={0} enterNextDelay={0}><ViewStreamIcon fontSize="small" /></Tooltip>
-            </ToggleButton>
-            <ToggleButton value="single">
-              <Tooltip title="한 페이지 보기" arrow enterDelay={0} enterNextDelay={0}><CropPortraitIcon fontSize="small" /></Tooltip>
-            </ToggleButton>
-            <ToggleButton value="double">
-              <Tooltip title="두 페이지 보기" arrow enterDelay={0} enterNextDelay={0}><MenuBookIcon fontSize="small" /></Tooltip>
-            </ToggleButton>
-          </ToggleButtonGroup>
-
-          <Box sx={{ flex: 1 }} />
         </Box>
       )}
 
       <Box
         ref={surfaceRef}
         data-testid="legacy-bookmark-capture-surface"
-        onPointerDown={annotation.tool === 'bookmark' ? handleCapturePointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined}
+        onTouchStart={pageSwipe.touchStart}
+        onTouchEnd={pageSwipe.touchEnd}
+        onTouchCancel={pageSwipe.touchCancel}
+        onPointerDown={(event) => {
+          if (annotation.tool === 'bookmark') handleCapturePointerDown(event);
+          else if (annotation.tool === 'select') pan.pointerDown(event);
+        }}
         onPointerMove={annotation.tool === 'bookmark' ? handleCapturePointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined}
-        onPointerUp={annotation.tool === 'bookmark' ? (event) => void handleCapturePointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined}
-        onPointerCancel={annotation.tool === 'bookmark' ? () => { captureStartRef.current = null; setCaptureDrag(null); } : annotation.tool === 'select' ? pan.pointerCancel : undefined}
-        onWheel={annotation.tool === 'select' ? pan.wheel : undefined}
-        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }}
+        onPointerUp={(event) => {
+          if (annotation.tool === 'bookmark') void handleCapturePointerUp(event);
+          else if (annotation.tool === 'select') pan.pointerUp(event);
+        }}
+        onPointerCancel={(event) => {
+          if (annotation.tool === 'bookmark') { captureStartRef.current = null; setCaptureDrag(null); }
+          else if (annotation.tool === 'select') pan.pointerCancel(event);
+        }}
+        onWheel={handleViewerWheel}
+        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: viewMode !== 'scroll' && fitMode === 'height' ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }}
       >
-      {!uiHidden && <AnnotationControls tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
-      <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
+      {!uiHidden && <AnnotationControls leftOffset={bookmarkPanelOpen ? 220 : 0} tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+      <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} visiblePages={annotationPageIndices} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
 
       {bookmarkPanelOpen && (
-        <Box component="aside" aria-label="Book bookmarks" sx={{ position: 'absolute', zIndex: 8, top: 0, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: '#242426', borderRight: '1px solid rgba(255,255,255,.08)', p: 1 }}>
-          <Typography variant="caption" sx={{ display: 'block', color: 'grey.400', px: 0.5, pb: 0.75 }}>Book bookmarks</Typography>
-          {bookmarks.length === 0 ? <Typography variant="caption" color="grey.600" sx={{ px: 0.5 }}>Drag on a page to capture.</Typography> : bookmarks.map((bookmark) => (
-            <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: '#303034' }}>
+        <Box component="aside" aria-label={t('bookBookmarks')} sx={{ position: 'absolute', zIndex: 8, top: 0, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : '#242426', borderRight: '1px solid', borderColor: (theme) => theme.palette.mode === 'light' ? theme.palette.divider : 'rgba(255,255,255,.08)', p: 1 }}>
+          <Typography variant="caption" sx={{ display: 'block', color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[400], px: 0.5, pb: 0.75 }}>{t('bookBookmarks')}</Typography>
+          {bookmarks.length === 0 ? <Typography variant="caption" sx={{ color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[600], px: 0.5 }}>{t('dragToCapture')}</Typography> : bookmarks.map((bookmark) => (
+            <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
               <Box sx={{ height: 92, position: 'relative', bgcolor: '#161618' }}>
                 <Box component="img" src={bookmark.imageUrl} alt="" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                {onBookmarkDeleted && <IconButton aria-label="북마크 삭제" size="small" color="error" onClick={() => void onBookmarkDeleted(bookmark.id)} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(10,10,12,.72)' }}><DeleteOutlineIcon sx={{ fontSize: 18 }} /></IconButton>}
+                {onBookmarkDeleted && <IconButton aria-label={ui("북마크 삭제")} size="small" color="error" onClick={() => void onBookmarkDeleted(bookmark.id)} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(10,10,12,.72)' }}><DeleteOutlineIcon sx={{ fontSize: 18 }} /></IconButton>}
               </Box>
-              <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: 'grey.200' }}>p. {bookmark.pageIndex + 1}</Typography>
+              <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.primary : theme.palette.grey[200] }}>p. {bookmark.pageIndex + 1}</Typography>
             </Box>
           ))}
         </Box>
       )}
 
       {captureDrag && <Box data-testid="legacy-bookmark-drag-preview" sx={{ position: 'fixed', zIndex: 15, pointerEvents: 'none', left: Math.min(captureDrag.startX, captureDrag.endX), top: Math.min(captureDrag.startY, captureDrag.endY), width: Math.abs(captureDrag.endX - captureDrag.startX), height: Math.abs(captureDrag.endY - captureDrag.startY), border: '2px dashed #f59e0b', bgcolor: 'rgba(245,158,11,.18)' }} />}
-      {(captureBusy || captureNotice) && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: captureNotice?.includes('저장되었습니다') ? 'rgba(20,83,45,.95)' : captureNotice ? 'rgba(127,29,29,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{captureNotice ?? '북마크를 저장하는 중입니다…'}</Box>}
+      {(captureBusy || captureNotice) && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: captureNotice?.includes('저장되었습니다') ? 'rgba(20,83,45,.95)' : captureNotice ? 'rgba(127,29,29,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{captureNotice ?? ui("북마크를 저장하는 중입니다…")}</Box>}
 
       {/* ── 스크롤 모드 ── */}
-      {viewMode === 'scroll' && (
-        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ height: '100%', overflow: 'auto', bgcolor: '#3a3a3a', py: 3 }}>
-          {pages.map((page, idx) => {
+      {(continuousScroll || pageLayout === 'single') && (
+        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`, overflow: continuousScroll ? 'auto' : 'hidden', display: continuousScroll ? 'block' : 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}>
+          {pageLayout === 'single' ? pages.map((page, idx) => {
             const pn = idx + 1;
             return (
-              <Box key={idx} ref={(el) => { pageRefs.current[idx] = el as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
+              <Box key={idx} sx={{ display: continuousScroll || pn === currentPage ? 'block' : 'none' }} ref={(el) => { pageRefs.current[idx] = el as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
                 {page ? (
                   <PdfPage
-                    page={page} scale={scale} pageNumber={pn} inverted={inverted}
+                    page={page} scale={scale} pageNumber={pn} inverted={inverted} eager={pn === currentPage}
                     bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted}
                   />
                 ) : (
@@ -753,7 +885,7 @@ export default function PdfViewer({
                       width: phW, height: phH,
                       mx: 'auto', mb: 2,
                       bgcolor: '#fff',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+                      boxShadow: (theme) => theme.palette.mode === 'light' ? '0 3px 16px rgba(32,78,121,.18)' : '0 4px 20px rgba(0,0,0,.6)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                     }}
@@ -763,42 +895,31 @@ export default function PdfViewer({
                 )}
               </Box>
             );
+          }) : Array.from({ length: Math.ceil(pages.length / 2) }, (_, rowIndex) => {
+            const indices = [rowIndex * 2, rowIndex * 2 + 1].filter((index) => index < pages.length);
+            return <Box key={rowIndex} sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 2, mb: 2 }}>
+              {indices.map((idx) => {
+                const page = pages[idx];
+                return <Box key={idx} ref={(element) => { pageRefs.current[idx] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
+                  {page ? (
+                    <PdfPage page={page} scale={scale} pageNumber={idx + 1} inverted={inverted} eager={idx === currentPage - 1 || idx === currentPage} bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted} />
+                  ) : (
+                    <Box sx={{ width: phW, height: phH, bgcolor: '#fff', boxShadow: (theme) => theme.palette.mode === 'light' ? '0 3px 16px rgba(32,78,121,.18)' : '0 4px 20px rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <CircularProgress size={20} sx={{ opacity: 0.4 }} />
+                    </Box>
+                  )}
+                </Box>;
+              })}
+            </Box>;
           })}
         </Box>
       )}
 
-      {/* ── 한 페이지 모드 ── */}
-      {viewMode === 'single' && (
-        <Box
-          ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ height: '100%', overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}
-        >
-          {pages[currentPage - 1] ? (
-            <Box ref={(element) => { pageRefs.current[currentPage - 1] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={currentPage - 1}>
-              <PdfPage
-                page={pages[currentPage - 1]!} pageNumber={currentPage} {...basePageProps}
-                bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === currentPage - 1)} onBookmarkDeleted={onBookmarkDeleted}
-              />
-            </Box>
-          ) : (
-            <Box
-              sx={{
-                width: phW, height: phH,
-                bgcolor: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <CircularProgress size={28} />
-            </Box>
-          )}
-        </Box>
-      )}
-
       {/* ── 두 페이지 모드 ── */}
-      {viewMode === 'double' && (
+      {!continuousScroll && pageLayout === 'double' && (
         <Box
           ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ height: '100%', overflow: 'hidden', bgcolor: '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}
+          sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}
         >
           {/* 좌측 페이지 */}
           {pages[currentPage - 1] ? (
@@ -812,7 +933,7 @@ export default function PdfViewer({
             <Box
               sx={{
                 width: phW, height: phH,
-                bgcolor: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+                bgcolor: '#fff', boxShadow: (theme) => theme.palette.mode === 'light' ? '0 3px 16px rgba(32,78,121,.18)' : '0 4px 20px rgba(0,0,0,.6)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -832,7 +953,7 @@ export default function PdfViewer({
               <Box
                 sx={{
                   width: phW, height: phH,
-                  bgcolor: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+                  bgcolor: '#fff', boxShadow: (theme) => theme.palette.mode === 'light' ? '0 3px 16px rgba(32,78,121,.18)' : '0 4px 20px rgba(0,0,0,.6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >

@@ -1,12 +1,13 @@
 # Workspace Overview
 
-PDFit is a monorepo for the public local-library app and its shared package.
+PDFit is a monorepo for the authenticated service, its shared package, and an opt-in legacy NAS runtime.
 
 | Location | Role |
 | --- | --- |
 | `packages/pdfit` | Shared viewer, server, types, PostgreSQL metadata, and PDFGPU code |
-| `apps/pdfit` | Integrated service/viewer entrypoints, settings, Docker image, docs, and tests |
-| `docker-compose.yml` | The local `pdfit` runtime service on port 15201 |
+| `apps/service` | Canonical authenticated service UI/server used by local port 15201 and diagnostic port 15202 |
+| `apps/pdfit` | Legacy NAS-only standalone runtime, available explicitly on port 15203 |
+| `docker-compose.yml` | Single orchestration entrypoint for canonical service and optional standalone profile |
 
-The public checkout does not contain or require account, billing, or remote
-Drive service code.
+The default Compose deployment runs the service module. Because 15201 and 15202
+bind the same container, account, billing, logout, and Drive behavior are byte-identical.

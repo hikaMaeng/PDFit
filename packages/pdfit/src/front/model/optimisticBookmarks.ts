@@ -1,3 +1,4 @@
+import { uiText } from '../i18n/uiText.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks.js';
 import { cacheBookmarkRecord, deleteCachedBookmark } from '../cache/metadataCache.js';
@@ -18,7 +19,7 @@ export interface BookmarkMutationResult {
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof TypeError && error.message === 'Failed to fetch') {
-    return '서버에 연결할 수 없습니다. 잠시 후 재시도하세요.';
+    return uiText("서버에 연결할 수 없습니다. 잠시 후 재시도하세요.");
   }
   return error instanceof Error ? error.message : fallback;
 }
@@ -28,6 +29,7 @@ export function createBookmarkOptimistically(
   filename: string,
   input: CreateBookmarkRequest,
   hooks: BookmarkMutationHooks,
+  driveFileId?: string | null,
 ): BookmarkMutationResult {
   const operationId = input.operationId ?? crypto.randomUUID();
   const timestamp = new Date().toISOString();
@@ -47,7 +49,7 @@ export function createBookmarkOptimistically(
     updatedAt: timestamp,
   };
   const timing = beginMutationPerformance('bookmark.create', operationId);
-  const retry = () => { createBookmarkOptimistically(folder, filename, { ...input, operationId }, hooks); };
+  const retry = () => { createBookmarkOptimistically(folder, filename, { ...input, operationId }, hooks, driveFileId); };
   const syncId = backgroundSyncModel.begin('Saving bookmark', retry);
   hooks.upsert(optimistic);
   publishBookmarkChange({ folder, filename, kind: 'created', record: optimistic });
@@ -59,7 +61,7 @@ export function createBookmarkOptimistically(
       timing.mark('indexeddb');
       timing.mark('request-start');
       backgroundSyncModel.syncing(syncId);
-      const saved = await createBookmark(folder, filename, { ...input, operationId });
+      const saved = await createBookmark(folder, filename, { ...input, operationId }, driveFileId);
       timing.mark('server-response');
       await deleteCachedBookmark(optimistic.id);
       hooks.remove(optimistic.id);
@@ -73,8 +75,8 @@ export function createBookmarkOptimistically(
       await deleteCachedBookmark(optimistic.id).catch(() => undefined);
       hooks.remove(optimistic.id);
       publishBookmarkChange({ folder, filename, kind: 'deleted', id: optimistic.id });
-      hooks.failed?.(errorMessage(error, '북마크를 저장하지 못했습니다.'), retry);
-      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 저장하지 못했습니다.'), retry);
+      hooks.failed?.(errorMessage(error, uiText("북마크를 저장하지 못했습니다.")), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, uiText("북마크를 저장하지 못했습니다.")), retry);
       timing.mark('failed');
       return false;
     }
@@ -111,8 +113,8 @@ export function updateBookmarkOptimistically(
       await cacheBookmarkRecord(current).catch(() => undefined);
       hooks.upsert(current);
       publishBookmarkChange({ folder: current.folder, filename: current.filename, kind: 'updated', record: current });
-      hooks.failed?.(errorMessage(error, '북마크를 수정하지 못했습니다.'), retry);
-      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 수정하지 못했습니다.'), retry);
+      hooks.failed?.(errorMessage(error, uiText("북마크를 수정하지 못했습니다.")), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, uiText("북마크를 수정하지 못했습니다.")), retry);
       timing.mark('failed');
       return false;
     }
@@ -142,8 +144,8 @@ export function deleteBookmarkOptimistically(record: BookmarkRecord, hooks: Book
       await cacheBookmarkRecord(record).catch(() => undefined);
       hooks.upsert(record);
       publishBookmarkChange({ folder: record.folder, filename: record.filename, kind: 'created', record });
-      hooks.failed?.(errorMessage(error, '북마크를 삭제하지 못했습니다.'), retry);
-      backgroundSyncModel.fail(syncId, errorMessage(error, '북마크를 삭제하지 못했습니다.'), retry);
+      hooks.failed?.(errorMessage(error, uiText("북마크를 삭제하지 못했습니다.")), retry);
+      backgroundSyncModel.fail(syncId, errorMessage(error, uiText("북마크를 삭제하지 못했습니다.")), retry);
       timing.mark('failed');
       return false;
     }

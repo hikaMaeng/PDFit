@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createViewerInteractionState,
   normalizeDetailDpi,
@@ -13,6 +16,13 @@ describe('PDFit pdfgpu artifact integration', () => {
   it('loads the pinned public core API', () => {
     assert.equal(normalizeDetailDpi(193), 192);
     assert.deepEqual(viewerModeParts('double'), { scrollMode: 'page', viewMode: 'spread' });
+  });
+
+  it('keeps PDFium in native BGRA order before the single RGBA conversion', () => {
+    const entry = fileURLToPath(import.meta.resolve('@pdfgpu/core'));
+    const engine = readFileSync(join(dirname(entry), 'engine', 'pdfiumEngine.js'), 'utf8');
+    assert.match(engine, /const RENDER_FLAGS = 0;/);
+    assert.doesNotMatch(engine, /const RENDER_FLAGS = 16;/);
   });
 
   it('keeps interaction behavior framework-independent at the app boundary', () => {

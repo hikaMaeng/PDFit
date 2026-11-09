@@ -1,3 +1,4 @@
+import { uiText } from '../../i18n/uiText.js';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PdfGpuCaptureResult, PdfGpuViewerController } from '@pdfgpu/core';
 import type { BookmarkRecord, UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
@@ -101,15 +102,15 @@ export function usePdfBookmarks({ enabled, controller, onCaptured, onUpdated, on
         if (recentTimerRef.current !== null) window.clearTimeout(recentTimerRef.current);
         setRecentId(created.id);
         recentTimerRef.current = window.setTimeout(() => { recentTimerRef.current = null; setRecentId((current) => current === created.id ? null : current); }, 3200);
-        showNotice('북마크가 저장되었습니다.', false);
+        showNotice(uiText("북마크가 저장되었습니다."), false);
       }
     } catch (error) {
       const code = (error as { code?: string }).code;
       const message = error instanceof Error ? error.message : 'Bookmark capture failed';
-      const userMessage = code === 'capture-too-small' ? '북마크 영역을 조금 더 크게 드래그하세요.'
-        : code === 'invalid-coordinates' ? '한 페이지 안에서 북마크 영역을 드래그하세요.'
-          : code === 'high-resolution-not-ready' || message.includes('high-resolution') ? '고해상도 페이지를 불러오는 중입니다. 잠시 후 다시 시도하세요.'
-            : `북마크를 저장하지 못했습니다. ${message}`;
+      const userMessage = code === 'capture-too-small' ? uiText("북마크 영역을 조금 더 크게 드래그하세요.")
+        : code === 'invalid-coordinates' ? uiText("한 페이지 안에서 북마크 영역을 드래그하세요.")
+          : code === 'high-resolution-not-ready' || message.includes('high-resolution') ? uiText("고해상도 페이지를 불러오는 중입니다. 잠시 후 다시 시도하세요.")
+            : uiText("북마크를 저장하지 못했습니다. {p0}", { p0: message });
       showNotice(userMessage, true);
     } finally {
       setCaptureBusy(false);

@@ -748,14 +748,16 @@ export const F02 = {
     await iconButton(page, 'CropPortraitIcon').click();
     await pageInput.fill('1');
     await pageInput.press('Enter');
-    await canvas.hover();
+    const bookmarkTool = page.getByRole('button', { name: 'bookmark' });
+    await bookmarkTool.click();
+    await bookmarkTool.hover();
     await page.mouse.wheel(0, 900);
     await page.waitForFunction(() => document.querySelector('input[type="text"]')?.value === '2');
 
     await iconButton(page, 'MenuBookIcon').click();
     await pageInput.fill('1');
     await pageInput.press('Enter');
-    await canvas.hover();
+    await bookmarkTool.hover();
     await page.mouse.wheel(0, 900);
     await page.waitForFunction(() => document.querySelector('input[type="text"]')?.value === '3');
   },
@@ -845,6 +847,15 @@ export const F04 = {
     await overlay.waitFor({ state: 'visible' });
     const deleteButton = overlay.getByTestId('bookmark-overlay-delete');
     assert.ok(Number(await deleteButton.evaluate((element) => getComputedStyle(element).opacity)) > 0.9);
+
+    const pageInput = page.locator('input[type="text"]').first();
+    await overlay.hover();
+    await page.mouse.wheel(0, 900);
+    await page.waitForFunction(() => document.querySelector('input[type="text"]')?.value === '2');
+    await pageInput.fill('1');
+    await pageInput.press('Enter');
+    await overlay.waitFor({ state: 'visible' });
+
     await page.waitForFunction((element) => Number(getComputedStyle(element).opacity) < 0.6, await deleteButton.elementHandle(), { timeout: 7000 });
 
     await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   Box,
   Button,
@@ -16,8 +16,12 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Menu,
   MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  ToggleButton,
+  ToggleButtonGroup,
   TextField,
   Tooltip,
   Typography,
@@ -27,27 +31,36 @@ import {
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
-import BookmarkIcon from '@mui/icons-material/Bookmark';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import LanguageIcon from '@mui/icons-material/Language';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import TagIcon from '../components/HashTagIcon.js';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
+import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePdfitFrontConfig } from '../context';
 import { foldersApi, type FolderInfo } from '../api/folders';
 import { tagsApi, type TagSummary } from '../api/tags';
-import TagColorPicker from '../components/TagColorPicker';
 import { folderLibraryModel } from '../model/folderLibraryModel';
 import { listAllBookmarks } from '../api/bookmarks';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
+import { distinctTagColor } from '../../shared/tagColor.js';
+import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
+import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
+import { BOOKSTORE_TAG_GROUPS, bookstoreTagGroupFor, type BookstoreTagGroupId } from '../../shared/tagTaxonomy.js';
+import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
+import { synchronizeLibraryMetadata } from '../model/libraryMetadataSync.js';
 
 export const LNB_WIDTH = 288;
 
 export interface DragPayload {
   folder: string;
   filename: string;
+  driveFileId?: string;
 }
 
 export const DRAG_TYPE = 'application/pdf-item';
@@ -55,25 +68,44 @@ export const DRAG_TYPE = 'application/pdf-item';
 const noopSubscribe = (_listener: () => void) => () => undefined;
 const zeroVersion = () => 0;
 
+function DisplayName({ value }: { value: string }) {
+  return <>{useTranslatedDisplayText(value)}</>;
+}
+
 interface LNBProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
 }
 
 export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
+  const { language, t, ui } = usePdfitI18n();
   const navigate = useNavigate();
   const location = useLocation();
-  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard } = usePdfitFrontConfig();
+  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved } = usePdfitFrontConfig();
   const go = (path: string) => navigate(navigationGuard?.(path) ?? path);
   const { languagePreference } = usePdfitFrontConfig();
-  const [languageAnchor, setLanguageAnchor] = useState<HTMLElement | null>(null);
+  const sidebarLabel = (item: { path: string; label: string; localizedLabels?: Partial<Record<PdfitLanguage, string>> }) => item.path === '/settings'
+    ? t('settings')
+    : item.localizedLabels?.[language] ?? item.label;
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   useSyncExternalStore(
     languagePreference?.model.subscribe ?? noopSubscribe,
     languagePreference?.model.getVersion ?? zeroVersion,
     languagePreference?.model.getVersion ?? zeroVersion,
   );
   const selectedLanguage = languagePreference?.model.language;
+  useSyncExternalStore(pdfitAppearancePreferenceModel.subscribe, pdfitAppearancePreferenceModel.getVersion, pdfitAppearancePreferenceModel.getVersion);
+  const colorMode = pdfitAppearancePreferenceModel.mode;
   const theme = useTheme();
+  const sidebarBackground = colorMode === 'light' ? '#ffffff' : '#1b1b1d';
+  const selectedNavigationBackground = colorMode === 'light' ? '#edf4ff' : '#2a2f36';
+  const sidebarTextPrimary = colorMode === 'light' ? '#30343b' : theme.palette.text.primary;
+  const sidebarTextSecondary = colorMode === 'light' ? '#626975' : theme.palette.text.secondary;
+  const sidebarTextDisabled = colorMode === 'light' ? '#9298a2' : theme.palette.text.disabled;
+  const sidebarDivider = colorMode === 'light' ? '#d2d2d2' : theme.palette.divider;
+  const sidebarHover = colorMode === 'light' ? '#f7faff' : 'action.hover';
+  const sidebarAccent = colorMode === 'light' ? '#626975' : theme.palette.primary.main;
+  const selectedAccent = theme.palette.primary.main;
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -87,9 +119,27 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<FolderInfo | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ kind: 'folder' | 'tag'; name: string; count?: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ kind: 'folder' | 'tag' | 'all_tags'; name: string; count?: number } | null>(null);
+
+  const orderedTags = useMemo(() => {
+    const groups = new Map<BookstoreTagGroupId, TagSummary[]>();
+    for (const tag of tags) {
+      const groupId = bookstoreTagGroupFor(tag.name);
+      groups.set(groupId, [...(groups.get(groupId) ?? []), tag]);
+    }
+    return [...BOOKSTORE_TAG_GROUPS.map((group) => group.id), 'documents' as const, 'other' as const]
+      .flatMap((id) => groups.get(id) ?? []);
+  }, [tags]);
+  const totalTagAssignments = useMemo(
+    () => tags.reduce((total, tag) => total + tag.bookCount, 0),
+    [tags],
+  );
 
   const loadFolders = useCallback(async () => {
     try {
@@ -122,11 +172,12 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     setError(null);
     try {
       await foldersApi.refresh();
+      await synchronizeLibraryMetadata();
       folderLibraryModel.invalidateFiles();
       folderLibraryModel.invalidateTags();
       await Promise.all([loadFolders(), loadTags(), loadBookmarkCount()]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '새로고침에 실패했습니다.');
+      setError(caught instanceof Error ? caught.message : ui("새로고침에 실패했습니다."));
     } finally {
       setRefreshing(false);
     }
@@ -145,17 +196,66 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   }, [loadBookmarkCount, loadFolders, loadTags]);
 
   useEffect(() => {
+    let active = true;
+    let syncing = false;
+    const reconcile = async () => {
+      if (!active || syncing || document.hidden) return;
+      syncing = true;
+      try {
+        const updated = await synchronizeLibraryMetadata();
+        if (!active || !updated) return;
+        folderLibraryModel.invalidateFiles();
+        await Promise.all([loadFolders(), loadTags(), loadBookmarkCount()]);
+      } catch (error) {
+        console.warn('[library-sync] Remote metadata refresh failed; keeping the local snapshot.', error);
+      } finally {
+        syncing = false;
+      }
+    };
+    const onFocus = () => { void reconcile(); };
+    void reconcile();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    const timer = window.setInterval(onFocus, 60_000);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      window.clearInterval(timer);
+    };
+  }, [loadBookmarkCount, loadFolders, loadTags]);
+
+  useEffect(() => {
     const onFolderChange = () => void loadFolders();
     const onTagChange = () => void loadTags();
+    const onOptimisticTagChange = (event: Event) => {
+      const { name, delta } = (event as CustomEvent<TagSummaryOptimisticDetail>).detail;
+      setTags((current) => {
+        const existing = current.find((tag) => tag.name === name);
+        if (!existing && delta > 0) {
+          return [...current, {
+            name,
+            bookCount: 1,
+            color: distinctTagColor(name, current.map((tag) => tag.color)),
+          }].sort((left, right) => left.name.localeCompare(right.name, 'ko'));
+        }
+        if (!existing) return current;
+        const bookCount = existing.bookCount + delta;
+        if (bookCount <= 0) return current.filter((tag) => tag.name !== name);
+        return current.map((tag) => tag.name === name ? { ...tag, bookCount } : tag);
+      });
+    };
     const onBookmarkChange = () => void loadBookmarkCount();
 
     window.addEventListener('folders-changed', onFolderChange);
     window.addEventListener('tags-changed', onTagChange);
+    window.addEventListener(TAG_SUMMARY_OPTIMISTIC_EVENT, onOptimisticTagChange);
     const unsubscribeBookmarks = subscribeBookmarkChanges(onBookmarkChange);
 
     return () => {
       window.removeEventListener('folders-changed', onFolderChange);
       window.removeEventListener('tags-changed', onTagChange);
+      window.removeEventListener(TAG_SUMMARY_OPTIMISTIC_EVENT, onOptimisticTagChange);
       unsubscribeBookmarks();
     };
   }, [loadBookmarkCount, loadFolders, loadTags]);
@@ -218,6 +318,36 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     setConfirmDelete({ kind: 'folder', name: folderName });
   };
 
+  const openRenameFolder = (folder: FolderInfo, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setRenameTarget(folder);
+    setRenameName(folder.name);
+    setRenameError(null);
+  };
+
+  const handleRenameFolder = async () => {
+    if (!renameTarget || renaming) return;
+    const newName = renameName.trim();
+    if (!newName || newName === renameTarget.name) return;
+    if (folders.some((folder) => folder.name === newName && folder.name !== renameTarget.name)) {
+      setRenameError(ui('이미 사용 중인 폴더 이름입니다.'));
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await foldersApi.renameConfirmed(renameTarget.name, newName);
+      folderLibraryModel.drop(renameTarget.name);
+      await loadFolders();
+      if (location.pathname === `/folder/${encodeURIComponent(renameTarget.name)}`) go(`/folder/${encodeURIComponent(newName)}`);
+      setRenameTarget(null);
+    } catch (caught) {
+      setRenameError(caught instanceof Error ? caught.message : ui('폴더 이름을 변경하지 못했습니다.'));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const confirmDeleteItem = async () => {
     if (!confirmDelete) return;
     const target = confirmDelete;
@@ -225,20 +355,33 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
     try {
       if (target.kind === 'folder') {
-        await foldersApi.delete(target.name);
+        await foldersApi.deleteConfirmed(target.name);
         folderLibraryModel.drop(target.name);
         await loadFolders();
-      } else {
-        await tagsApi.delete(target.name);
+      } else if (target.kind === 'tag') {
         setTags((current) => current.filter((item) => item.name !== target.name));
         folderLibraryModel.invalidateTags();
+        await tagsApi.delete(target.name);
+        await onAiTagRemoved?.({ tag: target.name });
+      } else {
+        await tagsApi.deleteAll();
+        await onAiTagRemoved?.({});
+        setTags([]);
+        folderLibraryModel.invalidateTags();
+        window.dispatchEvent(new Event('tags-changed'));
       }
       if (target.kind === 'folder' && location.pathname === `/folder/${encodeURIComponent(target.name)}`) {
         go('/');
         onMobileClose();
       }
-    } catch {
-      // keep current UI state on error
+      if ((target.kind === 'all_tags' && location.pathname.startsWith('/tag/'))
+        || (target.kind === 'tag' && location.pathname === `/tag/${encodeURIComponent(target.name)}`)) {
+        navigate(navigationGuard?.('/') ?? '/', { replace: true });
+        onMobileClose();
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : ui("요청에 실패했습니다."));
+      await Promise.all([loadFolders(), loadTags()]);
     }
   };
 
@@ -259,8 +402,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     }
 
     try {
-      await foldersApi.moveFile(payload.folder, targetFolder, payload.filename);
-      folderLibraryModel.get(payload.folder).removeFile(payload.filename);
+      await foldersApi.moveFile(payload.folder, targetFolder, payload.filename, payload.driveFileId);
+      folderLibraryModel.get(payload.folder).removeFile(payload.filename, payload.driveFileId);
       folderLibraryModel.invalidateFiles([targetFolder]);
       await loadFolders();
     } catch {
@@ -277,17 +420,17 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     }
 
     try {
-      const currentTags = await tagsApi.listForBook(payload.folder, payload.filename);
+      const currentTags = await tagsApi.listForBook(payload.folder, payload.filename, payload.driveFileId);
       if (currentTags.includes(tag)) {
         return;
       }
 
-      await tagsApi.addTag(payload.folder, payload.filename, tag);
-      folderLibraryModel.get(payload.folder).addTag(payload.filename, tag);
+      await tagsApi.addTag(payload.folder, payload.filename, tag, payload.driveFileId);
+      folderLibraryModel.get(payload.folder).addTag(payload.filename, tag, payload.driveFileId);
       await loadTags();
       window.dispatchEvent(
         new CustomEvent('tag-added', {
-          detail: { folder: payload.folder, filename: payload.filename, tag },
+          detail: { folder: payload.folder, filename: payload.filename, driveFileId: payload.driveFileId, tag },
         }),
       );
     } catch {
@@ -312,12 +455,16 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           '& .MuiDrawer-root': { width: LNB_WIDTH },
           '& .MuiDrawer-paper': {
             width: LNB_WIDTH,
+            height: '100dvh',
+            top: 0,
             boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            backgroundColor: '#1b1b1d',
-            borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+            backgroundColor: sidebarBackground,
+            color: sidebarTextPrimary,
+            borderRight: '1px solid',
+            borderColor: sidebarDivider,
           },
         }}
       >
@@ -330,81 +477,49 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             px: 1.75,
             py: 1.5,
             flexShrink: 0,
-            borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+            borderBottom: '1px solid', borderColor: sidebarDivider,
           }}
         >
+          <Box component={Link} to="/" data-testid="lnb-home-link" aria-label={ui('메인화면으로 이동')} title={ui('메인화면으로 이동')} sx={{ gridColumn: '1 / 3', display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr)', alignItems: 'center', gap: 1.25, minWidth: 0, textDecoration: 'none', borderRadius: 1, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 3 }, '&:hover': { bgcolor: sidebarHover } }}>
           <Box component="img" src="/brand/pdfit-logo-dark.png" alt="" aria-hidden="true" sx={{ width: 48, height: 48, objectFit: 'contain' }} />
           <Box sx={{ minWidth: 0 }}>
             <Typography
               variant="subtitle1"
               fontWeight={700}
-              sx={{ overflow: 'hidden', color: '#fff', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}
+              sx={{ overflow: 'hidden', color: sidebarTextPrimary, textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}
             >
               {appName}
             </Typography>
             <Typography
               variant="caption"
-              sx={{ display: 'block', mt: 0.35, color: '#9a9aa0', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}
+              sx={{ display: 'block', mt: 0.35, color: sidebarTextSecondary, fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em' }}
             >
               v{appVersion}
             </Typography>
           </Box>
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {extraSidebarItems.filter((item) => item.placement !== 'primary').map((item) => (
-              <Tooltip key={item.path} title={item.label} placement="bottom" arrow>
+            <Tooltip title={t('settings')} placement="bottom" arrow>
+              <IconButton data-testid="lnb-preferences" size="small" aria-label={t('settings')} aria-haspopup="dialog" onClick={() => setPreferencesOpen(true)} sx={{ color: sidebarTextSecondary, '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover } }}>
+                <SettingsOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            {extraSidebarItems.filter((item) => !item.placement || item.placement === 'header').map((item) => (
+              <Tooltip key={item.path} title={sidebarLabel(item)} placement="bottom" arrow>
                 <IconButton
                   size="small"
-                  aria-label={item.label}
+                  aria-label={sidebarLabel(item)}
                   onClick={() => { go(item.path); onMobileClose(); }}
                   color={isActive(item.path) ? 'primary' : 'inherit'}
                   sx={{
-                    color: isActive(item.path) ? 'primary.main' : '#9a9aa0',
-                    '&:hover': { color: '#fff' },
+                    color: isActive(item.path) ? sidebarAccent : sidebarTextSecondary,
+                    '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover },
                   }}
                 >
                   {item.icon}
                 </IconButton>
               </Tooltip>
             ))}
-            {languagePreference && selectedLanguage && (() => {
-              const labels = languagePreference.labels(selectedLanguage);
-              return (
-              <>
-                <Tooltip title={languagePreference.selectorLabel(selectedLanguage)} placement="bottom" arrow>
-                  <IconButton
-                    size="small"
-                    aria-label={languagePreference.selectorLabel(selectedLanguage)}
-                    aria-controls={languageAnchor ? 'pdfit-language-menu' : undefined}
-                    aria-expanded={languageAnchor ? 'true' : undefined}
-                    aria-haspopup="menu"
-                    onClick={(event) => setLanguageAnchor(event.currentTarget)}
-                    sx={{ color: '#9a9aa0', '&:hover': { color: '#fff' } }}
-                  >
-                    <LanguageIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Menu
-                  id="pdfit-language-menu"
-                  anchorEl={languageAnchor}
-                  open={Boolean(languageAnchor)}
-                  onClose={() => setLanguageAnchor(null)}
-                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                  MenuListProps={{ 'aria-label': languagePreference.menuLabel(selectedLanguage) }}
-                >
-                  {(Object.keys(labels) as PdfitLanguage[]).map((option) => (
-                    <MenuItem
-                      key={option}
-                      selected={option === selectedLanguage}
-                      onClick={() => { languagePreference.model.setLanguage(option); setLanguageAnchor(null); }}
-                    >
-                      {labels[option]}
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </>
-              );
-            })()}
           </Box>
         </Box>
 
@@ -416,32 +531,140 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
               {extraSidebarItems.filter((item) => item.placement === 'primary').map((item) => (
                 <ListItemButton
                   key={item.path}
-                  data-testid={`lnb-primary-${item.label.toLowerCase()}`}
+                  data-testid={`lnb-primary-${item.path.replace(/^\//, '').replace(/\//g, '-')}`}
                   selected={isActive(item.path)}
                   onClick={() => { go(item.path); onMobileClose(); }}
-                  sx={{ borderRadius: 1, mx: 1, py: 0.75, '&.Mui-selected': { backgroundColor: '#2a2f36', boxShadow: 'inset 3px 0 0 #3b82f6', '&:hover': { backgroundColor: '#2a2f36' } } }}
+                  sx={{ borderRadius: 1, mx: 1, py: 0.75, color: sidebarTextPrimary, '&:hover': { bgcolor: sidebarHover }, '&.Mui-selected': { color: sidebarTextPrimary, backgroundColor: selectedNavigationBackground, boxShadow: `inset 3px 0 0 ${selectedAccent}`, '&:hover': { backgroundColor: selectedNavigationBackground } } }}
                 >
-                  <ListItemIcon sx={{ minWidth: 28, color: isActive(item.path) ? '#60a5fa' : '#9a9aa0' }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={<Typography variant="caption" fontWeight={700} letterSpacing={0.7}>{item.label}</Typography>} />
+                  <ListItemIcon sx={{ minWidth: 28, color: isActive(item.path) ? selectedAccent : sidebarTextSecondary }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={<Typography variant="caption" fontWeight={700} letterSpacing={0.7}>{sidebarLabel(item)}</Typography>} />
                 </ListItemButton>
               ))}
             </List>
           )}
-          <List dense disablePadding sx={{ py: 0.5 }}>
-            <ListItemButton
-              data-testid="lnb-bookmarks"
-              selected={isActive('/bookmarks')}
-              onClick={() => { go('/bookmarks'); onMobileClose(); }}
-              sx={{ borderRadius: 1, mx: 1, py: 0.6, '&.Mui-selected': { backgroundColor: '#2a2f36', boxShadow: 'inset 3px 0 0 #3b82f6', '&:hover': { backgroundColor: '#2a2f36' } } }}
-            >
-              <ListItemIcon sx={{ minWidth: 28 }}><BookmarkIcon sx={{ fontSize: 17, color: '#3b82f6' }} /></ListItemIcon>
-              <ListItemText primary={<Typography variant="caption" fontWeight={600} letterSpacing={0.5}>BOOKMARKS</Typography>} />
-              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.68rem' }}>{bookmarkCount}</Typography>
-            </ListItemButton>
-          </List>
-
           <Box>
             <Box
+              role="button"
+              tabIndex={0}
+              aria-label={t('tags')}
+              aria-expanded={tagsOpen}
+              data-testid="lnb-tags-section"
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                color: sidebarTextSecondary,
+                '&:hover': { backgroundColor: sidebarHover },
+              }}
+              onClick={() => setTagsOpen((value) => !value)}
+              onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setTagsOpen((value) => !value); } }}
+            >
+              {tagsOpen ? (
+                <ExpandMoreIcon sx={{ fontSize: 16, color: sidebarTextSecondary, mr: 0.5 }} />
+              ) : (
+                <ChevronRightIcon sx={{ fontSize: 16, color: sidebarTextSecondary, mr: 0.5 }} />
+              )}
+              <Tooltip title={t('tags')} placement="right" arrow><TagIcon sx={{ fontSize: 18, color: sidebarAccent }} /></Tooltip>
+              <Typography variant="caption" sx={{ ml: 0.75, fontWeight: 700 }}>{t('tags')}</Typography>
+              <Typography
+                data-testid="tag-assignment-total"
+                variant="caption"
+                title={t('tagAssignmentTotal', { count: totalTagAssignments })}
+                aria-label={t('tagAssignmentTotal', { count: totalTagAssignments })}
+                sx={{ color: sidebarTextSecondary, ml: 'auto', minWidth: 24, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {totalTagAssignments}
+              </Typography>
+
+            </Box>
+
+            <Collapse in={tagsOpen} timeout="auto" unmountOnExit>
+              {tags.length === 0 ? (
+                <Typography variant="caption" sx={{ color: sidebarTextDisabled, px: 2, display: 'block', pb: 1 }}>
+                  {t('addTagHint')}
+                </Typography>
+              ) : (
+                <List dense disablePadding sx={{ pb: 1 }}>
+                  {orderedTags.map((tag) => {
+                        const tagPath = `/tag/${encodeURIComponent(tag.name)}`;
+                        const dragOver = dragOverTag === tag.name;
+                        return (
+                          <ListItem
+                            key={tag.name}
+                            className="pdfit-tag-row"
+                            secondaryAction={
+                              <Tooltip title={t('deleteTag')} placement="right" arrow>
+                                <IconButton
+                                  size="small"
+                                  aria-label={t('deleteTag')}
+                                  onClick={(event) => void handleDeleteTag(tag, event)}
+                                  sx={{ p: 0.25, color: sidebarTextSecondary, opacity: 0, transition: 'opacity 120ms ease', '.pdfit-tag-row:hover &, .pdfit-tag-row:focus-within &': { opacity: 0.8 }, '&:focus-visible, &:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover }, '@media (hover: none)': { opacity: 0.8 } }}
+                                >
+                                  <DeleteIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                            }
+                            sx={{ pr: 4 }}
+                            disablePadding
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = 'copy';
+                              setDragOverTag(tag.name);
+                            }}
+                            onDragLeave={() => setDragOverTag(null)}
+                            onDrop={(event) => void handleDropOnTag(tag.name, event)}
+                          >
+                            <ListItemButton
+                              selected={location.pathname === tagPath}
+                              onClick={() => { go(tagPath); onMobileClose(); }}
+                              sx={{
+                                borderRadius: 1,
+                                mx: 1,
+                                pl: 1.5,
+                                py: 0.4,
+                                outline: dragOver ? '2px solid' : 'none',
+                                outlineColor: 'secondary.main',
+                                backgroundColor: dragOver ? 'rgba(34, 197, 94, 0.16)' : undefined,
+                                color: sidebarTextPrimary,
+                                '&:hover': { backgroundColor: sidebarHover },
+                                '&.Mui-selected': {
+                                  color: sidebarTextPrimary,
+                                  backgroundColor: `${tag.color}29`,
+                                  boxShadow: `inset 3px 0 0 ${tag.color}`,
+                                  '&:hover': { backgroundColor: 'rgba(34, 197, 94, 0.16)' },
+                                },
+                              }}
+                            >
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
+                                      {'# '}<DisplayName value={tag.name} />
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0 }}>
+                                      {tag.bookCount}
+                                    </Typography>
+                                  </Box>
+                                }
+                                disableTypography
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        );
+                  })}
+                </List>
+              )}
+            </Collapse>
+          </Box>
+          <Box>
+            <Box
+              role="button"
+              tabIndex={0}
+              aria-label={t('folders')}
+              aria-expanded={foldersOpen}
+              data-testid="lnb-folders-section"
               sx={{
                 px: 1.5,
                 py: 0.75,
@@ -449,42 +672,36 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 cursor: 'pointer',
-                color: '#9a9aa0',
-                '&:hover': { backgroundColor: 'action.hover' },
+                color: sidebarTextSecondary,
+                '&:hover': { backgroundColor: sidebarHover },
               }}
               onClick={() => setFoldersOpen((value) => !value)}
+              onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setFoldersOpen((value) => !value); } }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 {foldersOpen ? (
-                  <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                  <ExpandMoreIcon sx={{ fontSize: 16, color: sidebarTextSecondary }} />
                 ) : (
-                  <ChevronRightIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                  <ChevronRightIcon sx={{ fontSize: 16, color: sidebarTextSecondary }} />
                 )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  fontWeight={600}
-                  letterSpacing={0.5}
-                  sx={{ textTransform: 'uppercase', userSelect: 'none' }}
-                >
-                  Folders
-                </Typography>
+                <Tooltip title={t('folders')} placement="right" arrow><FolderIcon sx={{ fontSize: 18, color: sidebarAccent }} /></Tooltip>
+              <Typography variant="caption" sx={{ ml: 0.75, fontWeight: 700 }}>{t('folders')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                <Tooltip title="폴더 새로고침" placement="right" arrow>
+                <Tooltip title={t('refreshFolders')} placement="right" arrow>
                   <span>
                     <IconButton
                       size="small"
-                      aria-label="폴더 새로고침"
+                      aria-label={t('refreshFolders')}
                       onClick={(event) => { event.stopPropagation(); void handleRefresh(); }}
                       disabled={refreshing}
-                      sx={{ p: 0.25 }}
+                      sx={{ p: 0.25, color: sidebarTextSecondary, '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover } }}
                     >
                       {refreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title="Create folder" placement="right" arrow>
+                <Tooltip title={t('createFolder')} placement="right" arrow>
                   <IconButton
                     size="small"
                     data-testid="create-folder-button"
@@ -492,7 +709,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                       event.stopPropagation();
                       setDialogOpen(true);
                     }}
-                    sx={{ p: 0.25 }}
+                    sx={{ p: 0.25, color: sidebarTextSecondary, '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover } }}
                   >
                     <CreateNewFolderIcon sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -506,8 +723,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                   <CircularProgress size={14} />
                 </Box>
               ) : folders.length === 0 ? (
-                <Typography variant="caption" color="text.disabled" sx={{ px: 2, display: 'block', pb: 1 }}>
-                  Create a folder to start adding PDFs.
+                <Typography variant="caption" sx={{ color: sidebarTextDisabled, px: 2, display: 'block', pb: 1 }}>
+                  {t('createFolderHint')}
                 </Typography>
               ) : (
                 <List dense disablePadding>
@@ -519,22 +736,36 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                     return (
                       <ListItem
                         key={folder.name}
+                        data-testid="lnb-folder-row"
                         disablePadding
                         secondaryAction={
-                          <Tooltip title="Delete folder" placement="right" arrow>
-                            <span>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                            <Tooltip title={t('renameFolder')} placement="right" arrow>
                               <IconButton
                                 size="small"
-                                disabled={folder.isRoot}
-                                onClick={(event) => void handleDeleteFolder(folder.name, event)}
-                                sx={{ p: 0.25, opacity: folder.isRoot ? 0.15 : 0.4, '&:hover': { opacity: 1, color: 'error.main' } }}
+                                data-testid="lnb-folder-rename"
+                                aria-label={`${folder.name} ${t('renameFolder')}`}
+                                onClick={(event) => openRenameFolder(folder, event)}
+                                sx={{ p: 0.5, color: sidebarTextSecondary, opacity: 0.8, '&:hover': { opacity: 1, color: sidebarTextPrimary, bgcolor: sidebarHover } }}
                               >
-                                <DeleteIcon sx={{ fontSize: 14 }} />
+                                <EditOutlinedIcon sx={{ fontSize: 16 }} />
                               </IconButton>
-                            </span>
-                          </Tooltip>
+                            </Tooltip>
+                            {!folder.isRoot && <Tooltip title={t('deleteFolder')} placement="right" arrow>
+                              <IconButton
+                                size="small"
+                                data-testid="lnb-folder-delete"
+                                aria-label={`${folder.name} ${t('deleteFolder')}`}
+                                onClick={(event) => void handleDeleteFolder(folder.name, event)}
+                                sx={{ p: 0.5, color: sidebarTextSecondary, opacity: 0.8, '&:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover } }}
+                              >
+                                <DeleteIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>}
+                            {folder.isRoot && <Box aria-hidden="true" sx={{ width: 24, height: 24 }} />}
+                          </Box>
                         }
-                        sx={{ pr: 4 }}
+                        sx={{ pr: 7 }}
                         onDragOver={(event) => {
                           event.preventDefault();
                           event.dataTransfer.dropEffect = 'move';
@@ -551,30 +782,29 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                             mx: 1,
                             py: 0.5,
                             outline: dragOver ? '2px solid' : 'none',
-                            outlineColor: 'primary.main',
-                            backgroundColor: dragOver ? '#2a2f36' : undefined,
+                            outlineColor: sidebarAccent,
+                            backgroundColor: dragOver ? 'action.selected' : undefined,
+                            color: sidebarTextPrimary,
+                            '&:hover': { backgroundColor: sidebarHover },
                             '&.Mui-selected': {
-                              backgroundColor: '#2a2f36',
-                              boxShadow: `inset 3px 0 0 ${folder.color}`,
-                              '&:hover': { backgroundColor: '#2a2f36' },
+                              color: sidebarTextPrimary,
+                              backgroundColor: selectedNavigationBackground,
+                              boxShadow: `inset 3px 0 0 ${selectedAccent}`,
+                              '&:hover': { backgroundColor: selectedNavigationBackground },
                             },
                           }}
                         >
-                          <ListItemIcon sx={{ minWidth: 28 }}>
-                            <TagColorPicker color={folder.color} label="폴더 색상 변경" icon={<FolderIcon sx={{ fontSize: 17, color: folder.color }} />} onChange={(color) => void foldersApi.updateColor(folder.name, color).then(() => { setFolders((current) => current.map((item) => item.name === folder.name ? { ...item, color } : item)); window.dispatchEvent(new Event('folders-changed')); })} />
-                          </ListItemIcon>
                           <ListItemText
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                 <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                                  {folder.name}
+                                  <DisplayName value={folder.name} />
                                 </Typography>
                                 <Typography
                                   variant="caption"
-                                  color={selected ? 'inherit' : 'text.disabled'}
-                                  sx={{ fontSize: '0.68rem', flexShrink: 0 }}
+                                  sx={{ color: selected ? sidebarTextPrimary : sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0, minWidth: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                                 >
-                                  {folder.pdfCount}
+                                  {t('pdfCount', { count: folder.pdfCount })}
                                 </Typography>
                               </Box>
                             }
@@ -589,117 +819,76 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Collapse>
           </Box>
 
-          <Box>
-            <Box
-              sx={{
-                px: 1.5,
-                py: 0.75,
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                '&:hover': { backgroundColor: 'action.hover' },
-              }}
-              onClick={() => setTagsOpen((value) => !value)}
-            >
-              {tagsOpen ? (
-                <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5 }} />
-              ) : (
-                <ChevronRightIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5 }} />
-              )}
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                fontWeight={600}
-                letterSpacing={0.5}
-                sx={{ textTransform: 'uppercase', userSelect: 'none' }}
+          <List dense disablePadding sx={{ py: 0.5 }}>
+            <Tooltip title={t('bookmarks')} placement="right" arrow>
+              <ListItemButton
+                data-testid="lnb-bookmarks"
+                aria-label={t('bookmarks')}
+                selected={isActive('/bookmarks')}
+                onClick={() => { go('/bookmarks'); onMobileClose(); }}
+                sx={{ borderRadius: 1, mx: 1, py: 0.6, color: sidebarTextPrimary, '&:hover': { bgcolor: sidebarHover }, '&.Mui-selected': { color: sidebarTextPrimary, backgroundColor: selectedNavigationBackground, boxShadow: `inset 3px 0 0 ${selectedAccent}`, '&:hover': { backgroundColor: selectedNavigationBackground } } }}
               >
-                Tags
-              </Typography>
-            </Box>
-
-            <Collapse in={tagsOpen} timeout="auto" unmountOnExit>
-              {tags.length === 0 ? (
-                <Typography variant="caption" color="text.disabled" sx={{ px: 2, display: 'block', pb: 1 }}>
-                  Add tags to a PDF to see them here.
-                </Typography>
-              ) : (
-                <List dense disablePadding>
-                  {tags.map((tag) => {
-                    const tagPath = `/tag/${encodeURIComponent(tag.name)}`;
-                    const dragOver = dragOverTag === tag.name;
-                    return (
-                      <ListItem
-                        key={tag.name}
-                        secondaryAction={
-                          <Tooltip title="Delete tag" placement="right" arrow>
-                            <IconButton
-                              size="small"
-                              aria-label="Delete tag"
-                              onClick={(event) => void handleDeleteTag(tag, event)}
-                              sx={{ p: 0.25, opacity: 0.4, '&:hover': { opacity: 1, color: 'error.main' } }}
-                            >
-                              <DeleteIcon sx={{ fontSize: 14 }} />
-                            </IconButton>
-                          </Tooltip>
-                        }
-                        sx={{ pr: 4 }}
-                        disablePadding
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = 'copy';
-                          setDragOverTag(tag.name);
-                        }}
-                        onDragLeave={() => setDragOverTag(null)}
-                        onDrop={(event) => void handleDropOnTag(tag.name, event)}
-                      >
-                        <ListItemButton
-                          selected={location.pathname === tagPath}
-                              onClick={() => { go(tagPath); onMobileClose(); }}
-                          sx={{
-                            borderRadius: 1,
-                            mx: 1,
-                            py: 0.4,
-                            outline: dragOver ? '2px solid' : 'none',
-                            outlineColor: 'secondary.main',
-                            backgroundColor: dragOver ? 'rgba(34, 197, 94, 0.16)' : undefined,
-                            '&.Mui-selected': {
-                              backgroundColor: `${tag.color}29`,
-                              boxShadow: `inset 3px 0 0 ${tag.color}`,
-                              '&:hover': { backgroundColor: 'rgba(34, 197, 94, 0.16)' },
-                            },
-                          }}
-                        >
-                          <ListItemIcon sx={{ minWidth: 28 }} onClick={(event) => event.stopPropagation()}>
-                            <TagColorPicker color={tag.color} onChange={(color) => void tagsApi.updateColor(tag.name, color).then(() => { setTags((current) => current.map((item) => item.name === tag.name ? { ...item, color } : item)); window.dispatchEvent(new Event('tags-changed')); })} />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                                  {tag.name}
-                                </Typography>
-                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.68rem', flexShrink: 0 }}>
-                                  {tag.bookCount}
-                                </Typography>
-                              </Box>
-                            }
-                            disableTypography
-                          />
-                        </ListItemButton>
-                      </ListItem>
-                    );
-                  })}
-                </List>
-              )}
-            </Collapse>
-          </Box>
+                <ListItemIcon sx={{ minWidth: 28 }}><AttachFileIcon sx={{ fontSize: 17, color: sidebarAccent }} /></ListItemIcon>
+                <ListItemText primary={<Typography variant="caption" fontWeight={700}>{t('bookmarks')}</Typography>} />
+                <Typography variant="caption" aria-hidden="true" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem' }}>{bookmarkCount}</Typography>
+              </ListItemButton>
+            </Tooltip>
+          </List>
         </Box>
+        {extraSidebarItems.some((item) => item.placement === 'footer') && (
+          <List dense disablePadding sx={{ flexShrink: 0, py: 0.5, borderTop: '1px solid', borderColor: sidebarDivider }}>
+            {extraSidebarItems.filter((item) => item.placement === 'footer').map((item) => (
+              <ListItemButton
+                key={item.path}
+                data-testid={`lnb-footer-${item.path.replace(/^\//, '').replace(/\//g, '-')}`}
+                selected={isActive(item.path)}
+                onClick={() => { go(item.path); onMobileClose(); }}
+                sx={{ borderRadius: 1, mx: 1, py: 0.65, color: sidebarTextPrimary, '&:hover': { bgcolor: sidebarHover }, '&.Mui-selected': { color: sidebarTextPrimary, backgroundColor: selectedNavigationBackground, boxShadow: `inset 3px 0 0 ${selectedAccent}`, '&:hover': { backgroundColor: selectedNavigationBackground } } }}
+              >
+                <ListItemIcon sx={{ minWidth: 28, color: isActive(item.path) ? selectedAccent : sidebarTextSecondary }}>{item.icon}</ListItemIcon>
+                <ListItemText primary={<Typography variant="caption" fontWeight={700} letterSpacing={0.5}>{sidebarLabel(item)}</Typography>} />
+              </ListItemButton>
+            ))}
+          </List>
+        )}
         {extraSidebarFooter && (
-          <Box sx={{ flexShrink: 0, borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+          <Box sx={{ flexShrink: 0, color: sidebarTextPrimary, borderTop: '1px solid', borderColor: sidebarDivider }}>
             {extraSidebarFooter}
           </Box>
         )}
       </Drawer>
+
+      <Dialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} maxWidth="xs" fullWidth aria-labelledby="pdfit-preferences-title" data-testid="preferences-dialog">
+        <DialogTitle id="pdfit-preferences-title">{t('settings')}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {languagePreference && selectedLanguage && (
+            <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+              <InputLabel id="pdfit-preferences-language-label">{t('language')}</InputLabel>
+              <Select
+                data-testid="preferences-language"
+                labelId="pdfit-preferences-language-label"
+                label={t('language')}
+                value={selectedLanguage}
+                onChange={(event) => languagePreference.model.setLanguage(event.target.value as PdfitLanguage)}
+              >
+                {(Object.entries(languagePreference.labels(selectedLanguage)) as [PdfitLanguage, string][]).map(([option, label]) => <MenuItem key={option} value={option}>{label}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
+          <ToggleButtonGroup
+            data-testid="preferences-color-mode"
+            exclusive
+            fullWidth
+            value={colorMode}
+            onChange={(_, value: 'light' | 'dark' | null) => { if (value) pdfitAppearancePreferenceModel.setMode(value); }}
+            aria-label={`${t('darkMode')} / ${t('lightMode')}`}
+          >
+            <ToggleButton value="dark" sx={{ gap: 1 }}><DarkModeOutlinedIcon fontSize="small" />{t('darkMode')}</ToggleButton>
+            <ToggleButton value="light" sx={{ gap: 1 }}><LightModeOutlinedIcon fontSize="small" />{t('lightMode')}</ToggleButton>
+          </ToggleButtonGroup>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setPreferencesOpen(false)}>{t('close')}</Button></DialogActions>
+      </Dialog>
 
       <Dialog
         open={dialogOpen}
@@ -711,12 +900,12 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Create folder</DialogTitle>
+        <DialogTitle>{t('createFolder')}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             fullWidth
-            label="Folder name"
+            label={t('folderName')}
             value={newFolderName}
             onChange={(event) => setNewFolderName(event.target.value)}
             onKeyDown={(event) => {
@@ -739,21 +928,56 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             }}
             disabled={creating}
           >
-            Cancel
+            {t('cancel')}
           </Button>
           <Button variant="contained" onClick={() => void handleCreate()} disabled={!newFolderName.trim() || creating}>
-            {creating ? 'Creating...' : 'Create'}
+            {creating ? t('creating') : t('create')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={Boolean(renameTarget)}
+        onClose={() => { if (!renaming) setRenameTarget(null); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('renameFolder')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            data-testid="rename-folder-input"
+            label={t('folderName')}
+            value={renameName}
+            onChange={(event) => { setRenameName(event.target.value); setRenameError(null); }}
+            onKeyDown={(event) => { if (event.key === 'Enter') void handleRenameFolder(); }}
+            disabled={renaming}
+            error={Boolean(renameError)}
+            helperText={renameError ?? ''}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameTarget(null)} disabled={renaming}>{t('cancel')}</Button>
+          <Button data-testid="rename-folder-save" variant="contained" onClick={() => void handleRenameFolder()} disabled={!renameName.trim() || renameName.trim() === renameTarget?.name || renaming}>
+            {renaming ? t('renaming') : t('save')}
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>삭제 확인</DialogTitle>
+        <DialogTitle>{t('deleteConfirmation')}</DialogTitle>
         <DialogContent>
-          <Typography>{confirmDelete?.kind === 'folder' ? `Delete folder "${confirmDelete.name}" and all PDFs inside it?` : `Delete tag "${confirmDelete?.name}" from all ${confirmDelete?.count ?? 0} books?`}</Typography>
+          <Typography sx={{ whiteSpace: confirmDelete?.kind === 'all_tags' ? 'pre-line' : 'normal' }}>
+            {confirmDelete?.kind === 'folder'
+              ? t('deleteFolderQuestion', { name: confirmDelete.name })
+              : confirmDelete?.kind === 'all_tags'
+                ? t('deleteAllTagsQuestion', { count: confirmDelete.count ?? 0 })
+                : t('deleteTagQuestion', { name: confirmDelete?.name ?? '', count: confirmDelete?.count ?? 0 })}
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => void confirmDeleteItem()}>Delete</Button>
+          <Button color="error" onClick={() => setConfirmDelete(null)}>{t('cancel')}</Button>
+          <Button color="error" variant="contained" sx={{ bgcolor: "error.dark", "&:hover": { bgcolor: "error.main" } }} onClick={() => void confirmDeleteItem()}>{t('delete')}</Button>
         </DialogActions>
       </Dialog>
     </>

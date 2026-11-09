@@ -1,5 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import type { SettingsStore } from '../services/settingsStore.js';
+import { translateDisplayTexts, type DisplayTranslationLanguage } from '../services/displayTranslation.js';
+
+const DISPLAY_TRANSLATION_LANGUAGES = new Set<DisplayTranslationLanguage>(['en', 'ko', 'zh', 'es', 'hi', 'ar', 'fr', 'pt', 'ru', 'ms', 'bn', 'ja']);
 
 export function createSettingsRouter(store: SettingsStore): Router {
   const router = Router();
@@ -83,6 +86,29 @@ export function createSettingsRouter(store: SettingsStore): Router {
       res.json(await store.getPgVectorConfig());
     } catch (error) {
       res.status(500).json({ error: String(error) });
+    }
+  });
+
+  router.post('/translations', async (req: Request, res: Response) => {
+    const { texts, language } = req.body as { texts?: unknown; language?: unknown };
+    if (!Array.isArray(texts) || texts.length < 1 || texts.length > 50 || texts.some((text) => typeof text !== 'string' || text.length > 200)) {
+      res.status(400).json({ error: 'texts must contain 1-50 strings of at most 200 characters.' });
+      return;
+    }
+    if (typeof language !== 'string' || !DISPLAY_TRANSLATION_LANGUAGES.has(language as DisplayTranslationLanguage)) {
+      res.status(400).json({ error: 'unsupported target language.' });
+      return;
+    }
+
+    try {
+      const server = (await store.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+      if (!server) {
+        res.status(503).json({ error: 'Configure an AI server with an LLM model to translate display names.' });
+        return;
+      }
+      res.json({ translations: await translateDisplayTexts(server, texts as string[], language as DisplayTranslationLanguage) });
+    } catch (error) {
+      res.status(502).json({ error: String(error) });
     }
   });
 

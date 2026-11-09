@@ -1,5 +1,7 @@
 services:
   pdfit:
+    # NAS 독립 실행형은 명시적으로 요청할 때만 15203에서 실행합니다.
+    profiles: ["standalone"]
     init: true
     build:
       context: apps/pdfit
@@ -10,8 +12,13 @@ services:
       BOOKS_ROOT_NAME: ${PDFIT_BOOKS_ROOT_NAME:-PDF library}
       BOOKMARKS_ROOT: /app/data/bookmarks
       MAX_UPLOAD_MB: ${PDFIT_MAX_UPLOAD_MB:-2048}
+      SERVICE_AI_BASE_URL: ${SERVICE_AI_BASE_URL:-}
+      SERVICE_AI_MODEL: ${SERVICE_AI_MODEL:-}
+      SERVICE_AI_API_KEY: ${SERVICE_AI_API_KEY:-}
+      YES24_API_KEY: ${YES24_API_KEY:-}
     ports:
-      - "15201:15201"
+      - "127.0.0.1:${PDFIT_STANDALONE_PORT:-15203}:15201"
+      - "192.168.0.5:${PDFIT_STANDALONE_PORT:-15203}:15201"
     volumes:
       - ./apps/pdfit/docker/volumes/data:/app/data
       - books:/app/data/books
@@ -30,7 +37,10 @@ services:
     environment:
       GOOGLE_CLIENT_ID: ${SERVICE_GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${SERVICE_GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${SERVICE_GOOGLE_REDIRECT_URI:-https://pdfit.neurondev.net/api/auth/callback}
+      GOOGLE_REDIRECT_URI: ${SERVICE_GOOGLE_REDIRECT_URI:-https://pdfit.io/api/auth/callback}
+      LOCAL_ORIGIN: ${SERVICE_LOCAL_ORIGIN:-http://127.0.0.1:15201}
+      # 공개 배포에는 전달하지 않는 루프백 전용 미리보기 로그인입니다.
+      LOCAL_PREVIEW_AUTH_ENABLED: "true"
       MAX_UPLOAD_MB: ${SERVICE_MAX_UPLOAD_MB:-2048}
       BILLING_MOCK_ENABLED: ${BILLING_MOCK_ENABLED:-false}
       PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-production}
@@ -38,10 +48,38 @@ services:
       PADDLE_PRICE_ID: ${PADDLE_PRICE_ID:-}
       PADDLE_API_KEY: ${PADDLE_API_KEY:-}
       PADDLE_WEBHOOK_SECRET: ${PADDLE_WEBHOOK_SECRET:-}
+      SERVICE_AI_BASE_URL: ${SERVICE_AI_BASE_URL:-}
+      SERVICE_AI_MODEL: ${SERVICE_AI_MODEL:-}
+      SERVICE_AI_API_KEY: ${SERVICE_AI_API_KEY:-}
+      YES24_API_KEY: ${YES24_API_KEY:-}
+      SERVICE_SAMPLE_OWNER_USER_ID: ${SERVICE_SAMPLE_OWNER_USER_ID:-}
+      SERVICE_SAMPLE_DRIVE_ID: ${SERVICE_SAMPLE_DRIVE_ID:-}
+      SERVICE_SAMPLE_FOLDER_ID: ${SERVICE_SAMPLE_FOLDER_ID:-}
+      SERVICE_SAMPLE_CLIENT_EMAIL: ${SERVICE_SAMPLE_CLIENT_EMAIL:-}
+      SERVICE_SAMPLE_PRIVATE_KEY: ${SERVICE_SAMPLE_PRIVATE_KEY:-}
+      SERVICE_SAMPLE_CACHE_TTL_SECONDS: ${SERVICE_SAMPLE_CACHE_TTL_SECONDS:-300}
     ports:
+      # 두 로컬 주소 모두 로그인·공용 서재가 있는 동일한 서비스 앱입니다.
+      - "127.0.0.1:15201:15202"
       - "127.0.0.1:15202:15202"
     volumes:
       - service-data:/app/data
+    restart: unless-stopped
+    networks:
+      - service
+      - linker
+
+  service-lan:
+    init: true
+    build:
+      context: apps/service/docker
+      dockerfile: Dockerfile.lan-redirect
+    environment:
+      PUBLIC_ORIGIN: ${SERVICE_PUBLIC_ORIGIN:-https://pdfit.io}
+      SERVER_PORT: 15202
+    ports:
+      # 같은 네트워크의 다른 PC는 로컬 서비스 대신 공개 HTTPS 서비스로 이동합니다.
+      - "192.168.0.5:15202:15202"
     restart: unless-stopped
     networks:
       - service

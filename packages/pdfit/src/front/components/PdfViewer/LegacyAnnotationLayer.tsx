@@ -8,6 +8,7 @@ type Props = {
   surfaceRef: RefObject<HTMLDivElement>;
   viewportRef: RefObject<HTMLDivElement>;
   pages: readonly (PDFPageProxy | null)[];
+  visiblePages: readonly number[];
   annotations: readonly Annotation[];
   documentId: string;
   tool: AnnotationTool;
@@ -22,7 +23,7 @@ const PAGE_SHELL_SELECTOR = '[data-legacy-page-shell="true"]';
 
 /** Projects PDF.js page canvases into the shared annotation surface. */
 export function LegacyAnnotationLayer(props: Props) {
-  const { surfaceRef, viewportRef, pages } = props;
+  const { surfaceRef, viewportRef, pages, visiblePages } = props;
   const [layoutVersion, setLayoutVersion] = useState(0);
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export function LegacyAnnotationLayer(props: Props) {
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [surfaceRef, viewportRef, pages]);
+  }, [surfaceRef, viewportRef, pages, visiblePages]);
 
   const projections = useMemo(() => {
     void layoutVersion;
@@ -60,8 +61,10 @@ export function LegacyAnnotationLayer(props: Props) {
     if (!surface) return new Map<number, AnnotationPageProjection>();
     const surfaceRect = surface.getBoundingClientRect();
     const result = new Map<number, AnnotationPageProjection>();
+    const visiblePageSet = new Set(visiblePages);
     for (const shell of surface.querySelectorAll<HTMLElement>(PAGE_SHELL_SELECTOR)) {
       const pageIndex = Number(shell.dataset.pageIndex);
+      if (!visiblePageSet.has(pageIndex)) continue;
       const page = pages[pageIndex];
       const canvas = shell.querySelector('canvas');
       if (!page || !(canvas instanceof HTMLCanvasElement) || !Number.isInteger(pageIndex)) continue;
@@ -77,7 +80,7 @@ export function LegacyAnnotationLayer(props: Props) {
       });
     }
     return result;
-  }, [layoutVersion, pages, surfaceRef]);
+  }, [layoutVersion, pages, surfaceRef, visiblePages]);
 
-  return <AnnotationLayer controller={null} pageProjections={projections} pageShellSelector={PAGE_SHELL_SELECTOR} annotations={props.annotations} visiblePages={[...projections.keys()]} viewportElement={surfaceRef.current} documentId={props.documentId} tool={props.tool} style={props.style} selectedId={props.selectedId} onSelect={props.onSelect} onChange={props.onChange} onCommit={props.onCommit} />;
+  return <AnnotationLayer controller={null} pageProjections={projections} pageShellSelector={PAGE_SHELL_SELECTOR} annotations={props.annotations} visiblePages={visiblePages} viewportElement={surfaceRef.current} documentId={props.documentId} tool={props.tool} style={props.style} selectedId={props.selectedId} onSelect={props.onSelect} onChange={props.onChange} onCommit={props.onCommit} />;
 }

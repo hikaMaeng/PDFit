@@ -9,7 +9,7 @@
     "build:front": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:front && npm run build:server && node ../../scripts/sync-shared-runtime.mjs apps/pdfit",
-    "deploy": "npm run build && docker compose -f ../../docker-compose.yml rm -sf pdfit && docker compose -f ../../docker-compose.yml up -d --build --force-recreate --remove-orphans pdfit"
+    "deploy": "npm run build && docker compose -f ../../docker-compose.yml --profile standalone rm -sf pdfit && docker compose -f ../../docker-compose.yml --profile standalone up -d --build --force-recreate pdfit"
   },
   "dependencies": {
     "@pdfit/pdfit": "*",

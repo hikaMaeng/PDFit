@@ -13,6 +13,8 @@ import { createWatcher } from '../services/watcher.js';
 import express from 'express';
 import path from 'node:path';
 import type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
+import type { BookTagSuggestionProvider } from '../services/tagSuggestion.js';
+import type { AutomaticTagUsage } from '../routes/tags.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -29,10 +31,12 @@ export interface PdfitCommonRouterAssembly {
 export function createPdfitMetadataRouterMounts(
   metadataStore: MetadataStoreResolver,
   eventBus: EventEmitter,
+  suggestBookTags?: BookTagSuggestionProvider,
+  automaticTagUsage?: AutomaticTagUsage,
 ): PdfitServerRouterMount[] {
   return [
     { path: '/api/progress', router: createProgressRouter(metadataStore) },
-    { path: '/api/tags', router: createTagsRouter(metadataStore) },
+    { path: '/api/tags', router: createTagsRouter(metadataStore, suggestBookTags, automaticTagUsage) },
     { path: '/api/events', router: createEventsRouter(eventBus) },
     { path: '/api/viewer-state', router: createViewerStateRouter(metadataStore) },
     { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore) },
@@ -47,6 +51,7 @@ export function createPdfitCommonRouterAssembly(options: {
   booksRootName?: string;
   watcherEnabled?: boolean;
   maxUploadBytes?: number;
+  suggestBookTags?: BookTagSuggestionProvider;
 }): PdfitCommonRouterAssembly {
   const filesystem = createFilesystemService(options.booksRoot, options.booksRootName);
   filesystem.ensureBooksRoot();
@@ -77,7 +82,7 @@ export function createPdfitCommonRouterAssembly(options: {
         options.maxUploadBytes,
         (event) => watcher.bus.emit('change', event),
       ) },
-      ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus),
+      ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
     ],
   };

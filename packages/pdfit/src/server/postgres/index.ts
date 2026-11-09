@@ -10,6 +10,7 @@ import type {
   TaggedBookRecord,
   ViewerStateRecord,
 } from '../../shared/index.js';
+import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';
 
@@ -63,10 +64,10 @@ export class PostgresMetadataStore implements MetadataStore {
       GROUP BY t.id, t.name
       ORDER BY t.name
     `);
-    return result.rows.map((row) => ({
+    return withDistinctTagColors(result.rows.map((row) => ({
       name: String(row.name), color: String(row.color),
       bookCount: Number(row.book_count),
-    }));
+    })));
   }
 
   async listBooksByTag(tag: string): Promise<TaggedBookRecord[]> {
@@ -162,7 +163,9 @@ export class PostgresMetadataStore implements MetadataStore {
   }
 
   async addTag(folder: string, filename: string, tag: string): Promise<void> {
-    await this.db.query('INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [tag]);
+    const colors = await this.db.query('SELECT color FROM tags');
+    const color = distinctTagColor(tag, colors.rows.map((row) => String(row.color)));
+    await this.db.query('INSERT INTO tags (name, color) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [tag, color]);
     const tagRow = await this.db.query('SELECT id FROM tags WHERE name = $1', [tag]);
     if (!tagRow.rows[0]) throw new Error('Tag was not created.');
     await this.db.query(`
@@ -180,8 +183,28 @@ export class PostgresMetadataStore implements MetadataStore {
     `, [folder, filename, tag]);
   }
 
+  async removeFolderTags(folder: string): Promise<number> {
+    const result = await this.db.query('DELETE FROM book_tags WHERE folder = $1', [folder]);
+    return result.rowCount ?? 0;
+  }
+
   async deleteTag(tag: string): Promise<void> {
     await this.db.query('DELETE FROM tags WHERE name = $1', [tag]);
+  }
+
+  async deleteAllTags(): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM book_tags');
+      await client.query('DELETE FROM tags');
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async updateTagColor(tag: string, color: string): Promise<void> {
@@ -395,7 +418,7 @@ export class PostgresMetadataStore implements MetadataStore {
         folder TEXT NOT NULL,
         filename TEXT NOT NULL,
         page INTEGER NOT NULL DEFAULT 1,
-        scale DOUBLE PRECISION NOT NULL DEFAULT 1.2,
+        scale DOUBLE PRECISION NOT NULL DEFAULT 1,
         fit_mode TEXT NOT NULL DEFAULT 'width',
         view_mode TEXT NOT NULL DEFAULT 'scroll',
         inverted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -404,6 +427,7 @@ export class PostgresMetadataStore implements MetadataStore {
         updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
         PRIMARY KEY (folder, filename)
       );
+      ALTER TABLE viewer_state ALTER COLUMN scale SET DEFAULT 1;
       CREATE TABLE IF NOT EXISTS bookmarks (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         folder TEXT NOT NULL,

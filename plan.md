@@ -189,7 +189,7 @@ npm ci
 
 ```bash
 cd /opt/pdfit/source
-cp env.example .env
+Copy-Item .env.example .env
 chmod 600 .env
 ${EDITOR:-vi} .env
 ```

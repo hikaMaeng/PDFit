@@ -6,6 +6,7 @@
       "inputs": [
         "src/**",
         "assets/**",
+        "public/**",
         "docs/**",
         "package.json",
         "tsconfig*.json",
@@ -21,6 +22,7 @@
       "inputs": [
         "src/front/**",
         "assets/**",
+        "public/**",
         "src/vite-env.d.ts",
         "index.html",
         "vite.config.ts",

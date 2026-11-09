@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tab, Tabs, Typography } from '@mui/material';
-import BookmarkIcon from '@mui/icons-material/Bookmark';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
@@ -9,22 +9,21 @@ import { bookmarkLibraryModel } from '../model/bookmarkModel.js';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import { deleteBookmarkOptimistically } from '../model/optimisticBookmarks.js';
 import { openViewer } from '../viewer/openViewer.js';
+import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
 
 const BOOKMARK_IMAGE_HEIGHT = 150;
-const BOOKMARK_CREATED_AT_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
 function bookTitle(filename: string) {
   return filename.replace(/\.pdf$/i, '');
 }
 
+function TranslatedFolderName({ value }: { value: string }) {
+  return <>{useTranslatedDisplayText(value)}</>;
+}
+
 function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: BookmarkRecord; onOpen: (bookmark: BookmarkRecord) => void; onDelete: (bookmark: BookmarkRecord) => void; deleting: boolean }) {
+  const { language, t } = usePdfitI18n();
   const createdAt = new Date(bookmark.createdAt);
+  const createdAtLabel = new Intl.DateTimeFormat(language, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(createdAt);
 
   return (
     <Box
@@ -47,11 +46,11 @@ function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: Book
           bgcolor: '#101012',
         }}
       >
-        <Box component="img" src={bookmark.imageUrl} alt="" sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+        <Box component="img" src={bookmark.imageUrl} alt="" loading="lazy" decoding="async" sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
         <IconButton
           data-testid="bookmark-card-delete"
-          aria-label="북마크 삭제"
-          title="북마크 삭제"
+          aria-label={t('deleteBookmark')}
+          title={t('deleteBookmark')}
           color="error"
           size="small"
           disabled={deleting}
@@ -64,11 +63,11 @@ function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: Book
       </Box>
       <Box sx={{ display: 'grid', gridTemplateRows: 'repeat(3, 1rem)', gap: 0.35, px: 1, py: 0.75, minWidth: 0 }}>
         <Box data-testid="bookmark-card-title-row" sx={{ display: 'flex', gap: 0.75, alignItems: 'center', minWidth: 0 }}>
-          <Typography variant="caption" noWrap sx={{ flex: 1, minWidth: 0, color: '#f4f4f5', lineHeight: '1rem' }}>{bookTitle(bookmark.filename)}</Typography>
+          <Typography variant="caption" noWrap translate="no" sx={{ flex: 1, minWidth: 0, color: 'text.primary', lineHeight: '1rem' }}>{bookTitle(bookmark.filename)}</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, lineHeight: '1rem' }}>p. {bookmark.pageIndex + 1}</Typography>
         </Box>
         <Typography data-testid="bookmark-card-created-at" component="time" dateTime={createdAt.toISOString()} variant="caption" noWrap sx={{ display: 'block', color: '#71717a', lineHeight: '1rem' }}>
-          {BOOKMARK_CREATED_AT_FORMATTER.format(createdAt)}
+          {createdAtLabel}
         </Typography>
         <Typography data-testid="bookmark-card-comment" variant="caption" noWrap sx={{ display: 'block', minHeight: '1rem', color: '#a1a1aa', lineHeight: '1rem' }}>
           {bookmark.comment ?? ''}
@@ -79,6 +78,7 @@ function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: Book
 }
 
 export default function BookmarkPage() {
+  const { t, ui } = usePdfitI18n();
   useSyncExternalStore(bookmarkLibraryModel.subscribe, bookmarkLibraryModel.getSnapshot, bookmarkLibraryModel.getSnapshot);
   const bookmarks = bookmarkLibraryModel.getAll();
   const [tab, setTab] = useState<'recent' | 'books'>('recent');
@@ -93,7 +93,7 @@ export default function BookmarkPage() {
       bookmarkLibraryModel.replace(await listAllBookmarks());
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '북마크를 불러오지 못했습니다.');
+      setError(caught instanceof Error ? caught.message : ui("북마크를 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -147,57 +147,55 @@ export default function BookmarkPage() {
   return (
     <Box data-testid="bookmark-library-page" sx={{ py: 0.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <BookmarkIcon color="primary" />
-        <Typography variant="h5" fontWeight={700}>북마크</Typography>
+        <AttachFileIcon sx={{ color: (theme) => theme.palette.mode === 'light' ? '#626975' : theme.palette.primary.main }} />
+        <Typography variant="h5" fontWeight={700}>{t('myClips')}</Typography>
         <Typography variant="caption" color="text.secondary">{bookmarks.length}</Typography>
       </Box>
       <Tabs value={tab} onChange={(_, value: 'recent' | 'books') => setTab(value)} sx={{ mb: 2 }}>
-        <Tab value="recent" label="최근" />
-        <Tab value="books" label="책별" />
+        <Tab value="recent" label={t('recent')} />
+        <Tab value="books" label={t('byBook')} />
       </Tabs>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {loading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box> : bookmarks.length === 0 ? (
         <Box sx={{ py: 8, textAlign: 'center' }}>
-          <BookmarkIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-          <Typography color="text.secondary">저장한 북마크가 없습니다.</Typography>
+          <AttachFileIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+          <Typography color="text.secondary">{t('noBookmarks')}</Typography>
+          <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>{t('bookmarkEmptyGuide')}</Typography>
         </Box>
       ) : tab === 'recent' ? gallery(bookmarks) : (
         <Box sx={{ display: 'grid', gap: 3 }}>
           {byBook.map((items) => (
             <Box key={`${items[0].folder}/${items[0].filename}`}>
-              <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ mb: 1 }}>{bookTitle(items[0].filename)}</Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{items[0].folder} · {items.length}</Typography>
+              <Typography variant="subtitle1" fontWeight={700} noWrap translate="no" sx={{ mb: 1 }}>{bookTitle(items[0].filename)}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}><TranslatedFolderName value={items[0].folder} /> · {items.length}</Typography>
               {gallery(items)}
             </Box>
           ))}
         </Box>
       )}
-      <Dialog data-testid="bookmark-preview-dialog" open={Boolean(previewBookmark)} onClose={() => setPreviewBookmark(null)} fullWidth maxWidth="sm">
+      <Dialog data-testid="bookmark-preview-dialog" open={Boolean(previewBookmark)} onClose={() => setPreviewBookmark(null)} transitionDuration={0} fullWidth maxWidth="sm">
         {previewBookmark && <>
-          <DialogTitle>북마크 캡처</DialogTitle>
+          <DialogTitle>{t('bookmarkCapture')}</DialogTitle>
           <DialogContent sx={{ pt: 1 }}>
             <Box data-testid="bookmark-preview-image-frame" sx={{ position: 'relative', border: `2px solid ${previewBookmark.borderColor}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: '#101012' }}>
-              <Box data-testid="bookmark-preview-image" component="img" src={previewBookmark.imageUrl} alt={`${bookTitle(previewBookmark.filename)} ${previewBookmark.pageIndex + 1}페이지 캡처`} sx={{ display: 'block', width: '100%', maxHeight: '58vh', objectFit: 'contain' }} />
+              <Box data-testid="bookmark-preview-image" component="img" src={previewBookmark.imageUrl} alt={ui("{p0} {p1}페이지 캡처", { p0: bookTitle(previewBookmark.filename), p1: previewBookmark.pageIndex + 1 })} decoding="async" sx={{ display: 'block', width: '100%', maxHeight: '58vh', objectFit: 'contain' }} />
               {previewBookmark.fillColor && <Box data-testid="bookmark-preview-color-indicator" sx={{ position: 'absolute', right: 12, bottom: 12, width: 14, height: 14, borderRadius: '50%', bgcolor: previewBookmark.fillColor, border: '1px solid rgba(255,255,255,.8)' }} />}
             </Box>
           </DialogContent>
           <DialogActions sx={{ display: 'block', px: 3, pb: 2.5 }}>
             <Box data-testid="bookmark-preview-details" sx={{ mb: 1.5, minWidth: 0 }}>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
-                <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1, minWidth: 0 }}>{bookTitle(previewBookmark.filename)}</Typography>
+                <Typography variant="body2" fontWeight={600} noWrap translate="no" sx={{ flex: 1, minWidth: 0 }}>{bookTitle(previewBookmark.filename)}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>p. {previewBookmark.pageIndex + 1}</Typography>
               </Box>
               {previewBookmark.comment && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{previewBookmark.comment}</Typography>}
             </Box>
             {deleteError && <Alert severity="error" sx={{ mb: 1.5 }}>{deleteError}</Alert>}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-              <IconButton data-testid="bookmark-preview-delete" aria-label="북마크 삭제" title="북마크 삭제" color="error" onClick={removePreviewBookmark}>
+              <IconButton data-testid="bookmark-preview-delete" aria-label={t('deleteBookmark')} title={t('deleteBookmark')} color="error" onClick={removePreviewBookmark}>
                 <DeleteOutlineIcon />
               </IconButton>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer}>새 창에서 페이지 열기</Button>
-                <Button onClick={() => setPreviewBookmark(null)}>닫기</Button>
-              </Box>
+              <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer}>{t('openPageNewWindow')}</Button>
             </Box>
           </DialogActions>
         </>}

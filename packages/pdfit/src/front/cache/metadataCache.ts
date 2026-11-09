@@ -1,8 +1,11 @@
 import type { FolderInfo, PdfInfo } from '../api/folders.js';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
 import type { ViewerStatePayload } from '../api/viewerState.js';
+import { distinctTagColor, withDistinctTagColors } from '../../shared/tagColor.js';
+import { configureDocumentOpenHistory } from '../model/documentOpenHistory.js';
 
-export const PDFIT_METADATA_CACHE_SCHEMA_VERSION = '1';
+const PDFIT_METADATA_SOURCE_SCHEMA_VERSION = '1';
+export const PDFIT_METADATA_CACHE_SCHEMA_VERSION = '4';
 
 export interface CachedFolderRow {
   driveFolderId: string; parentFolderId: string; name: string; color: string;
@@ -46,10 +49,15 @@ const STORE_DEFINITIONS = {
 
 let options: PdfitMetadataCacheOptions | null = null;
 const hydrationRequests = new Map<string, Promise<void>>();
+const revalidationRequests = new Map<string, Promise<boolean>>();
 
 export function configurePdfitMetadataCache(value?: PdfitMetadataCacheOptions): void {
   options = value ?? null;
+  configureDocumentOpenHistory(value?.scope);
 }
+
+/** Cache keys for per-user client-only metadata; see docs/internals.md. */
+export function pdfitMetadataScope(): string { return options?.scope() ?? ''; }
 
 function databaseName(scope: string): string {
   return `pdfit-metadata-${encodeURIComponent(scope)}`;
@@ -94,7 +102,7 @@ async function isHydrated(scope: string): Promise<boolean> {
 }
 
 async function replaceSnapshot(scope: string, bootstrap: PdfitMetadataBootstrap): Promise<void> {
-  if (bootstrap.schemaVersion !== PDFIT_METADATA_CACHE_SCHEMA_VERSION) throw new Error(`Unsupported metadata cache schema ${bootstrap.schemaVersion}.`);
+  if (bootstrap.schemaVersion !== PDFIT_METADATA_SOURCE_SCHEMA_VERSION) throw new Error(`Unsupported metadata source schema ${bootstrap.schemaVersion}.`);
   const database = await openDatabase(scope);
   const names = Object.keys(STORE_DEFINITIONS);
   try {
@@ -113,7 +121,29 @@ async function replaceSnapshot(scope: string, bootstrap: PdfitMetadataBootstrap)
     const meta = transaction.objectStore('meta');
     meta.clear();
     for (const value of bootstrap.snapshot.system) meta.put(value);
-    meta.put({ key: 'hydration', schemaVersion: bootstrap.schemaVersion, libraryInstanceId: bootstrap.libraryInstanceId, hydratedAt: bootstrap.hydratedAt });
+    meta.put({ key: 'hydration', schemaVersion: PDFIT_METADATA_CACHE_SCHEMA_VERSION, libraryInstanceId: bootstrap.libraryInstanceId, hydratedAt: bootstrap.hydratedAt });
+    await transactionDone(transaction);
+  } finally { database.close(); }
+}
+
+async function replaceLibrarySnapshot(scope: string, bootstrap: PdfitMetadataBootstrap): Promise<void> {
+  if (bootstrap.schemaVersion !== PDFIT_METADATA_SOURCE_SCHEMA_VERSION) throw new Error(`Unsupported metadata source schema ${bootstrap.schemaVersion}.`);
+  const database = await openDatabase(scope);
+  try {
+    const transaction = database.transaction(['meta', 'folders', 'pdfs', 'tags', 'pdfTags', 'syncState'], 'readwrite');
+    const rows = {
+      folders: bootstrap.snapshot.folders,
+      pdfs: bootstrap.snapshot.pdfs,
+      tags: bootstrap.snapshot.tags,
+      pdfTags: bootstrap.snapshot.pdf_tags,
+      syncState: bootstrap.snapshot.sync_state,
+    };
+    for (const [storeName, values] of Object.entries(rows)) {
+      const store = transaction.objectStore(storeName);
+      store.clear();
+      for (const value of values) store.put(value);
+    }
+    transaction.objectStore('meta').put({ key: 'hydration', schemaVersion: PDFIT_METADATA_CACHE_SCHEMA_VERSION, libraryInstanceId: bootstrap.libraryInstanceId, hydratedAt: bootstrap.hydratedAt });
     await transactionDone(transaction);
   } finally { database.close(); }
 }
@@ -167,10 +197,49 @@ async function cachedFile(scope: string, folderName: string, filename: string, d
 type CachedTag = { tagId: string; name: string; color: string; createdAt: string; updatedAt: string; deletedAt: string };
 type CachedRelation = { relationId: string; driveFileId: string; tagId: string; createdAt: string; updatedAt: string; deletedAt: string };
 
+/** Projects a tag page entirely from the hydrated browser snapshot. */
+export async function listCachedBooksByTag(tagName: string): Promise<Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const [tags, relations, pdfs, folders] = await Promise.all([
+    readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
+    readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders'),
+  ]);
+  const activeTags = tags.filter((tag) => !tag.deletedAt);
+  const selected = activeTags.find((tag) => tag.name === tagName);
+  if (!selected) return [];
+  const tagNames = new Map(activeTags.map((tag) => [tag.tagId, tag.name]));
+  const tagsByFile = new Map<string, string[]>();
+  for (const relation of relations) {
+    const name = !relation.deletedAt ? tagNames.get(relation.tagId) : undefined;
+    if (!name) continue;
+    const current = tagsByFile.get(relation.driveFileId) ?? [];
+    current.push(name);
+    tagsByFile.set(relation.driveFileId, current);
+  }
+  const selectedFileIds = new Set(relations.filter((relation) => !relation.deletedAt && relation.tagId === selected.tagId).map((relation) => relation.driveFileId));
+  const folderNames = new Map(folders.filter((folder) => !folder.trashed).map((folder) => [folder.driveFolderId, folder.name]));
+  return pdfs
+    .filter((pdf) => !pdf.trashed && selectedFileIds.has(pdf.driveFileId) && folderNames.has(pdf.parentFolderId))
+    .map((pdf) => ({
+      folder: folderNames.get(pdf.parentFolderId)!, filename: pdf.name, driveFileId: pdf.driveFileId, size: pdf.size,
+      modified_at: pdf.modifiedTime, tags: (tagsByFile.get(pdf.driveFileId) ?? []).sort((left, right) => left.localeCompare(right, 'ko')),
+    }))
+    .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
+}
+
 export async function listCachedTagSummaries(): Promise<Array<{ name: string; bookCount: number; color: string }> | null> {
   const scope = await cachedScope(); if (!scope) return null;
-  const [tags, relations] = await Promise.all([readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags')]);
-  return tags.filter((tag) => !tag.deletedAt).map((tag) => ({ name: tag.name, color: tag.color, bookCount: new Set(relations.filter((row) => !row.deletedAt && row.tagId === tag.tagId).map((row) => row.driveFileId)).size })).filter((tag) => tag.bookCount > 0);
+  const [tags, relations, pdfs, folders] = await Promise.all([
+    readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
+    readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders'),
+  ]);
+  const activeFolderIds = new Set(folders.filter((row) => !row.trashed).map((row) => row.driveFolderId));
+  const activePdfIds = new Set(pdfs.filter((row) => !row.trashed && activeFolderIds.has(row.parentFolderId)).map((row) => row.driveFileId));
+  return withDistinctTagColors(tags.filter((tag) => !tag.deletedAt).map((tag) => ({
+    name: tag.name,
+    color: tag.color,
+    bookCount: new Set(relations.filter((row) => !row.deletedAt && row.tagId === tag.tagId && activePdfIds.has(row.driveFileId)).map((row) => row.driveFileId)).size,
+  })).filter((tag) => tag.bookCount > 0).sort((a, b) => a.name.localeCompare(b.name, 'ko')));
 }
 
 export async function listCachedBookTags(folder: string, filename: string, driveFileId?: string | null): Promise<string[] | null> {
@@ -184,7 +253,7 @@ export async function listCachedBookTags(folder: string, filename: string, drive
 export async function listCachedFolderTags(folder: string): Promise<Record<string, string[]> | null> {
   const scope = await cachedScope(); if (!scope) return null;
   const files = await listCachedFiles(folder) ?? []; const result: Record<string, string[]> = {};
-  for (const file of files) result[file.name] = await listCachedBookTags(folder, file.name) ?? [];
+  for (const file of files) result[file.driveFileId ?? file.name] = await listCachedBookTags(folder, file.name, file.driveFileId) ?? [];
   return result;
 }
 
@@ -194,7 +263,7 @@ export async function mutateCachedTag(folder: string, filename: string, name: st
   await mutateStores(scope, ['tags', 'pdfTags'], async (transaction) => {
     const tags = await requestResult<CachedTag[]>(transaction.objectStore('tags').getAll());
     const existing = tags.find((tag) => tag.name === name); const timestamp = new Date().toISOString();
-    const tag = existing ?? { tagId: crypto.randomUUID(), name, color: '#3b82f6', createdAt: timestamp, updatedAt: timestamp, deletedAt: '' };
+    const tag = existing ?? { tagId: crypto.randomUUID(), name, color: distinctTagColor(name, tags.filter((candidate) => !candidate.deletedAt).map((candidate) => candidate.color)), createdAt: timestamp, updatedAt: timestamp, deletedAt: '' };
     transaction.objectStore('tags').put({ ...tag, deletedAt: '' });
     const relations = await requestResult<CachedRelation[]>(transaction.objectStore('pdfTags').getAll());
     const relation = relations.find((row) => row.driveFileId === file.driveFileId && row.tagId === tag.tagId);
@@ -202,9 +271,46 @@ export async function mutateCachedTag(folder: string, filename: string, name: st
   });
 }
 
+export async function deleteCachedFolderTags(folder: string): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  const files = await listCachedFiles(folder) ?? [];
+  const fileIds = new Set(files.map((file) => file.driveFileId));
+  if (fileIds.size === 0) return;
+  await mutateStores(scope, ['pdfTags'], async (transaction) => {
+    const store = transaction.objectStore('pdfTags');
+    const relations = await requestResult<CachedRelation[]>(store.getAll());
+    const timestamp = new Date().toISOString();
+    for (const relation of relations) {
+      if (fileIds.has(relation.driveFileId) && !relation.deletedAt) {
+        store.put({ ...relation, updatedAt: timestamp, deletedAt: timestamp });
+      }
+    }
+  });
+}
+
 export async function deleteCachedTag(name: string): Promise<void> {
   const scope = await cachedScope(); if (!scope) return;
   await mutateStores(scope, ['tags'], async (transaction) => { const store = transaction.objectStore('tags'); const tags = await requestResult<CachedTag[]>(store.getAll()); const tag = tags.find((row) => row.name === name); if (tag) store.put({ ...tag, deletedAt: new Date().toISOString() }); });
+}
+
+export async function deleteAllCachedTags(): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  await mutateStores(scope, ['tags', 'pdfTags'], async (transaction) => {
+    const timestamp = new Date().toISOString();
+    const tagStore = transaction.objectStore('tags');
+    const relationStore = transaction.objectStore('pdfTags');
+    const [tags, relations] = await Promise.all([
+      requestResult<CachedTag[]>(tagStore.getAll()),
+      requestResult<CachedRelation[]>(relationStore.getAll()),
+    ]);
+    for (const tag of tags) tagStore.put({ ...tag, updatedAt: timestamp, deletedAt: timestamp });
+    for (const relation of relations) relationStore.put({ ...relation, updatedAt: timestamp, deletedAt: timestamp });
+  });
+}
+
+export async function restoreCachedTag(name: string): Promise<void> {
+  const scope = await cachedScope(); if (!scope) return;
+  await mutateStores(scope, ['tags'], async (transaction) => { const store = transaction.objectStore('tags'); const tags = await requestResult<CachedTag[]>(store.getAll()); const tag = tags.find((row) => row.name === name); if (tag) store.put({ ...tag, updatedAt: new Date().toISOString(), deletedAt: '' }); });
 }
 
 export async function updateCachedTagColor(name: string, color: string): Promise<void> {
@@ -253,7 +359,7 @@ export async function listCachedFiles(folderName: string): Promise<PdfInfo[] | n
   const folder = folders.find((row) => !row.trashed && row.name === folderName);
   if (!folder) return [];
   return pdfs.filter((pdf) => !pdf.trashed && pdf.parentFolderId === folder.driveFolderId)
-    .map((pdf) => ({ name: pdf.name, size: pdf.size, modifiedAt: pdf.modifiedTime || pdf.createdTime, driveFileId: pdf.driveFileId }));
+    .map((pdf) => ({ name: pdf.name, size: pdf.size, modifiedAt: pdf.modifiedTime || pdf.createdTime, uploadedAt: pdf.createdTime, driveFileId: pdf.driveFileId }));
 }
 
 async function timedCacheMutation(operation: string, action: (scope: string) => Promise<void>): Promise<void> {
@@ -336,6 +442,7 @@ export async function upsertCachedFile(folderName: string, file: PdfInfo): Promi
     const folder = folders.find((value) => !value.trashed && value.name === folderName);
     if (!folder) throw new Error(`Cached folder ${folderName} does not exist.`);
     const timestamp = new Date().toISOString();
+    const previous = await requestResult<CachedPdfRow | undefined>(transaction.objectStore('pdfs').get(driveFileId));
     transaction.objectStore('pdfs').put({
       driveFileId,
       parentFolderId: folder.driveFolderId,
@@ -344,7 +451,7 @@ export async function upsertCachedFile(folderName: string, file: PdfInfo): Promi
       size: file.size,
       md5Checksum: '',
       driveVersion: '',
-      createdTime: file.modifiedAt,
+      createdTime: previous?.createdTime ?? file.uploadedAt ?? file.modifiedAt,
       modifiedTime: file.modifiedAt,
       trashed: false,
       updatedAt: timestamp,
@@ -408,4 +515,28 @@ export async function invalidatePdfitMetadataCache(): Promise<void> {
 export async function refreshPdfitMetadataCache(): Promise<void> {
   await invalidatePdfitMetadataCache();
   await ensureHydrated();
+}
+
+/** Re-reads the signed-in user's canonical metadata without deleting the local database. */
+export async function revalidatePdfitMetadataCache(canApply: () => Promise<boolean> = async () => true): Promise<boolean> {
+  if (!options || typeof indexedDB === 'undefined') return false;
+  const scope = options.scope();
+  if (!scope) return false;
+  let pending = revalidationRequests.get(scope);
+  if (!pending) {
+    pending = (async () => {
+      if (!await isHydrated(scope)) {
+        await ensureHydrated();
+        return options?.scope() === scope;
+      }
+      const response = await fetch(options?.bootstrapUrl ?? '/api/folders/cache', { cache: 'no-store' });
+      const body = await response.json() as PdfitMetadataBootstrap & { error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'Metadata revalidation failed.');
+      if (options?.scope() !== scope || !await canApply()) return false;
+      await replaceLibrarySnapshot(scope, body);
+      return true;
+    })().finally(() => revalidationRequests.delete(scope));
+    revalidationRequests.set(scope, pending);
+  }
+  return pending;
 }

@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { open, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import multer from 'multer';
-import { Router, type Request, type RequestHandler, type Response } from 'express';
+import { Router, raw, type Request, type RequestHandler, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
 import type { FolderInfo, PdfInfo } from '../services/types.js';
 
@@ -10,6 +10,13 @@ import type { FolderInfo, PdfInfo } from '../services/types.js';
 export interface PdfitRemoteFile extends PdfInfo {
   stream: NodeJS.ReadableStream;
   mimeType?: string;
+}
+
+/** Server-proxied thumbnail for a remote PDF. */
+export interface PdfitRemoteThumbnail {
+  stream: NodeJS.ReadableStream;
+  mimeType: string;
+  size?: number;
 }
 
 /** Browser-facing resumable session issued by a remote content authority. */
@@ -48,6 +55,8 @@ export interface PdfitRemoteLibraryAdapter {
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
   getFileById?(request: Request, driveFileId: string): Promise<PdfInfo>;
   openFileById?(request: Request, driveFileId: string, range?: string): Promise<PdfitRemoteFile>;
+  openThumbnailById?(request: Request, driveFileId: string): Promise<PdfitRemoteThumbnail>;
+  saveThumbnailById?(request: Request, driveFileId: string, mimeType: 'image/jpeg' | 'image/png', data: Buffer): Promise<void>;
   deleteFile(request: Request, folder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
   moveFile(request: Request, fromFolder: string, toFolder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
 }
@@ -96,8 +105,12 @@ async function sendRemoteFile(
   const range = requestedRange ? parsePdfitByteRange(requestedRange, metadata.size) : null;
   if (requestedRange && !range) { res.status(416).setHeader('Content-Range', `bytes */${metadata.size}`).end(); return; }
   const file = await openFile(range?.header);
-  res.setHeader('Content-Type', file.mimeType ?? 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+  res.setHeader('Content-Type', disposition === 'attachment' ? 'application/octet-stream' : file.mimeType ?? 'application/pdf');
+  if (disposition === 'attachment') res.setHeader('X-Content-Type-Options', 'nosniff');
+  const asciiFilename = /^[\x20-\x7e]+$/.test(file.name) && !/["\\;]/.test(file.name) ? file.name : 'document.pdf';
+  res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+  if (disposition === 'attachment') res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Last-Modified', file.modifiedAt);
   if (range) res.status(206).setHeader('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`).setHeader('Content-Length', String(range.end - range.start + 1));
@@ -129,6 +142,22 @@ export function createPdfitRemoteFoldersRouter(
     try { res.json(await adapter.createFolder(req, name)); }
     catch (error) { sendError(res, 400, 'Folder could not be created.', error); }
   });
+  router.head('/by-id/:driveFileId', async (req, res) => {
+    const driveFileId = String(req.params.driveFileId ?? '');
+    if (!DRIVE_FILE_ID.test(driveFileId)) { res.status(400).end(); return; }
+    if (!adapter.getFileById) { res.status(404).end(); return; }
+    try {
+      const metadata = await adapter.getFileById(req, driveFileId);
+      const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+      const asciiFilename = /^[\x20-\x7e]+$/.test(metadata.name) && !/["\\;]/.test(metadata.name) ? metadata.name : 'document.pdf';
+      res.setHeader('Content-Type', disposition === 'attachment' ? 'application/octet-stream' : 'application/pdf');
+      res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(metadata.name)}`);
+      if (disposition === 'attachment') res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Length', String(metadata.size));
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.status(200).end();
+    } catch { res.status(404).end(); }
+  });
   router.get('/by-id/:driveFileId', async (req, res) => {
     const driveFileId = String(req.params.driveFileId ?? '');
     if (!DRIVE_FILE_ID.test(driveFileId)) { res.status(400).json({ error: 'Invalid Drive file ID.' }); return; }
@@ -137,6 +166,27 @@ export function createPdfitRemoteFoldersRouter(
       const metadata = await adapter.getFileById(req, driveFileId);
       await sendRemoteFile(req, res, metadata, (range) => adapter.openFileById!(req, driveFileId, range));
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'File could not be loaded.', error); }
+  });
+  router.get('/by-id/:driveFileId/thumbnail', async (req, res) => {
+    const driveFileId = String(req.params.driveFileId ?? '');
+    if (!DRIVE_FILE_ID.test(driveFileId)) { res.status(400).json({ error: 'Invalid Drive file ID.' }); return; }
+    if (!adapter.openThumbnailById) { res.status(404).json({ error: 'Thumbnail lookup is unavailable.' }); return; }
+    try {
+      const thumbnail = await adapter.openThumbnailById(req, driveFileId);
+      res.setHeader('Content-Type', thumbnail.mimeType);
+      res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
+      if (thumbnail.size) res.setHeader('Content-Length', String(thumbnail.size));
+      thumbnail.stream.pipe(res);
+    } catch (error) { if (!res.headersSent) sendError(res, 404, 'Thumbnail could not be loaded.', error); }
+  });
+  router.put('/by-id/:driveFileId/thumbnail', raw({ type: ['image/jpeg', 'image/png'], limit: '2mb' }), async (req, res) => {
+    const driveFileId = String(req.params.driveFileId ?? '');
+    if (!DRIVE_FILE_ID.test(driveFileId)) { res.status(400).json({ error: 'Invalid Drive file ID.' }); return; }
+    if (!adapter.saveThumbnailById) { res.status(404).json({ error: 'Thumbnail storage is unavailable.' }); return; }
+    const mimeType = req.get('content-type')?.split(';')[0];
+    if ((mimeType !== 'image/jpeg' && mimeType !== 'image/png') || !Buffer.isBuffer(req.body) || req.body.length === 0) { res.status(400).json({ error: 'A JPEG or PNG thumbnail is required.' }); return; }
+    try { await adapter.saveThumbnailById(req, driveFileId, mimeType, req.body); res.status(204).end(); }
+    catch (error) { sendError(res, 502, 'Thumbnail could not be stored.', error); }
   });
   router.post('/:name/uploads/resumable', async (req, res) => {
     if (!adapter.createResumableUploadSession) { res.status(404).json({ error: 'Direct upload is unavailable.' }); return; }

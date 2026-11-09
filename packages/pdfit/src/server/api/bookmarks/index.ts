@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type Router as ExpressRouter } from 'express';
+import { Router, type Request, type RequestHandler, type Response, type Router as ExpressRouter } from 'express';
 import type { CreateBookmarkRequest, UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from '../../routes/metadataStoreResolver.js';
 
@@ -15,16 +15,20 @@ function validRequest(value: unknown): value is CreateBookmarkRequest {
     (body.operationId == null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.operationId));
 }
 
+function asyncRoute(handler: (req: Request, res: Response) => Promise<unknown>): RequestHandler {
+  return (req, res, next) => { void handler(req, res).catch(next); };
+}
+
 export function createBookmarksRouter(storeResolver: MetadataStoreResolver): ExpressRouter {
   const router = Router();
-  router.get('/', async (req: Request, res: Response) => res.json(await (await resolveMetadataStore(storeResolver, req)).listAllBookmarks()));
-  router.get('/:folder/:filename', async (req: Request, res: Response) => res.json(await (await resolveMetadataStore(storeResolver, req)).listBookmarks(req.params.folder, req.params.filename)));
-  router.post('/:folder/:filename', async (req: Request, res: Response) => {
+  router.get('/', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listAllBookmarks())));
+  router.get('/:folder/:filename', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listBookmarks(req.params.folder, req.params.filename, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined))));
+  router.post('/:folder/:filename', asyncRoute(async (req, res) => {
     if (!validRequest(req.body)) return res.status(400).json({ error: 'invalid bookmark' });
     const store = await resolveMetadataStore(storeResolver, req);
-    return res.status(201).json(await store.createBookmark(req.params.folder, req.params.filename, req.body));
-  });
-  router.patch('/:id', async (req: Request, res: Response) => {
+    return res.status(201).json(await store.createBookmark(req.params.folder, req.params.filename, req.body, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined));
+  }));
+  router.patch('/:id', asyncRoute(async (req, res) => {
     const body = req.body as UpdateBookmarkRequest;
     if (body.borderColor !== undefined && !validColor(body.borderColor)) return res.status(400).json({ error: 'invalid border color' });
     if (body.fillColor !== undefined && body.fillColor !== null && !validColor(body.fillColor)) return res.status(400).json({ error: 'invalid fill color' });
@@ -32,7 +36,7 @@ export function createBookmarksRouter(storeResolver: MetadataStoreResolver): Exp
     const store = await resolveMetadataStore(storeResolver, req);
     const result = await store.updateBookmark(req.params.id, body);
     return result ? res.json(result) : res.status(404).json({ error: 'bookmark not found' });
-  });
-  router.delete('/:id', async (req: Request, res: Response) => { await (await resolveMetadataStore(storeResolver, req)).deleteBookmark(req.params.id); return res.status(204).end(); });
+  }));
+  router.delete('/:id', asyncRoute(async (req, res) => { await (await resolveMetadataStore(storeResolver, req)).deleteBookmark(req.params.id); return res.status(204).end(); }));
   return router;
 }

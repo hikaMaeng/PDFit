@@ -1,5 +1,12 @@
-export const PDFIT_LANGUAGES = ['en', 'ko', 'zh', 'es', 'hi', 'ar', 'fr', 'pt'] as const;
+/** OBDILCI V6 (July 2025): internet users L1+L2; Korean and existing Japanese retained. */
+export const PDFIT_LANGUAGES = ['zh', 'en', 'es', 'ar', 'hi', 'ru', 'fr', 'pt', 'ms', 'bn', 'ko', 'ja'] as const;
 export type PdfitLanguage = (typeof PDFIT_LANGUAGES)[number];
+
+/** Autonyms keep the language selector recognizable in every interface language. */
+export const PDFIT_LANGUAGE_LABELS: Record<PdfitLanguage, string> = {
+  zh: '中文', en: 'English', es: 'Español', ar: 'العربية', hi: 'हिन्दी', ru: 'Русский',
+  fr: 'Français', pt: 'Português', ms: 'Bahasa Melayu', bn: 'বাংলা', ko: '한국어', ja: '日本語',
+};
 
 const FALLBACK_LANGUAGE: PdfitLanguage = 'en';
 export const PDFIT_LANGUAGE_STORAGE_KEY = 'pdfit.language';

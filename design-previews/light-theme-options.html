@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDFit 라이트 테마 제안</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 26px; background: #f1f2f0; font-family: "Malgun Gothic", "Noto Sans KR", sans-serif; color: #273029; }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.4px; }
+    .intro { margin: 0 0 22px; font-size: 13px; color: #5a625e; }
+    .grid { display: grid; grid-template-columns: repeat(2, 690px); gap: 22px; }
+    .option { border: 1px solid #d9dfd9; border-radius: 15px; overflow: hidden; background: white; box-shadow: 0 8px 24px #19251b0c; }
+    .label { height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 19px; background: #fff; }
+    .label strong { font-size: 17px; }
+    .label span { color: #626b65; font-size: 12px; }
+    .sample { display: grid; grid-template-columns: 183px 1fr; height: 410px; color: var(--text); }
+    .sidebar { background: var(--side); color: var(--side-text, var(--text)); padding: 13px 11px; border-right: 1px solid var(--line); }
+    .brand { height: 43px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); font-size: 18px; font-weight: 700; }
+    .brand-mark { display: grid; place-items: center; width: 24px; height: 25px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 13px; }
+    .sidebar-heading { margin: 19px 6px 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .nav { height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border-radius: 7px; font-size: 12px; }
+    .nav b { margin-left: auto; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .nav.active { background: var(--selected); color: var(--selected-text, var(--accent-dark)); font-weight: 700; box-shadow: inset 3px 0 var(--accent); }
+    .nav-icon { width: 13px; color: var(--accent); font-size: 13px; text-align: center; }
+    .main { background: var(--canvas); }
+    .title { height: 58px; display: flex; align-items: center; gap: 10px; padding: 0 19px; border-bottom: 1px solid var(--line); font-size: 17px; font-weight: 700; }
+    .folder { color: var(--accent); font-size: 21px; }
+    .count { padding: 3px 6px; border-radius: 4px; background: var(--selected); color: var(--accent-dark); font-size: 10px; font-weight: 400; }
+    .toolbar { height: 47px; display: flex; align-items: center; gap: 17px; padding: 0 19px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--line); }
+    .toolbar em { margin-left: auto; padding: 5px 9px; border: 1px solid var(--accent); border-radius: 5px; color: var(--accent-dark); font-style: normal; }
+    .head { height: 30px; display: grid; grid-template-columns: 1fr 88px 90px; align-items: center; padding: 0 19px; color: var(--muted); font-size: 10px; border-bottom: 1px solid var(--line); }
+    .head span:first-child { padding-left: 29px; }
+    .row { height: 66px; display: grid; grid-template-columns: 1fr 88px 90px; align-items: center; padding: 0 19px; border-bottom: 1px solid var(--line); background: var(--row); font-size: 11px; }
+    .name { display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+    .check { width: 13px; height: 13px; flex: 0 0 auto; border: 1px solid var(--muted); border-radius: 2px; background: #fff; }
+    .filename { text-overflow: ellipsis; overflow: hidden; }
+    .book { color: var(--accent); font-size: 13px; }
+    .dash { color: var(--main-muted, var(--muted)); }
+    .tag { width: fit-content; padding: 3px 6px; border: 1px solid var(--accent); border-radius: 10px; color: var(--accent-dark); font-size: 10px; }
+    .caption { display: flex; gap: 8px; align-items: center; padding: 9px 18px 11px; background: #fff; color: #65706a; font-size: 11px; }
+    .swatch { width: 13px; height: 13px; border-radius: 50%; border: 1px solid #0002; }
+    .sage { --side:#dce8dc; --canvas:#f6f9f4; --row:#fbfdfb; --text:#26362d; --muted:#66796d; --accent:#39785c; --accent-dark:#245d43; --selected:#c9decf; --line:#d6e2d8; }
+    .coral { --side:#f1e0d7; --canvas:#fff8f3; --row:#fffdfb; --text:#3b302d; --muted:#836c64; --accent:#b96b54; --accent-dark:#9b4e3b; --selected:#f6ccc0; --line:#ead8cf; }
+    .mint { --side:#d5e9e3; --canvas:#f5faf8; --row:#ffffff; --text:#243a35; --muted:#648078; --accent:#267d70; --accent-dark:#1b655a; --selected:#bbe0d5; --line:#d2e4df; }
+    .lilac { --side:#e7e0ed; --canvas:#faf8fc; --row:#fefeff; --text:#332c3b; --muted:#776e80; --accent:#79609a; --accent-dark:#604883; --selected:#ddd1e9; --line:#e2dbe9; }
+    .sky { --side:#d9edf7; --canvas:#f4fafc; --row:#ffffff; --text:#203847; --muted:#59798a; --accent:#2f82ad; --accent-dark:#1b6389; --selected:#bcdfef; --line:#d2e5ee; }
+    .blueprint { --side:#d7e4f5; --canvas:#f7f9fd; --row:#ffffff; --text:#24354c; --muted:#607691; --accent:#346eb0; --accent-dark:#24558e; --selected:#bbd3f0; --line:#d7e2ef; }
+    .azure { --side:#cbe7fa; --canvas:#f4faff; --row:#ffffff; --text:#17384f; --muted:#547a96; --accent:#147bbf; --accent-dark:#08649d; --selected:#a7d9f6; --line:#cde5f5; }
+    .navy { --side:#204e79; --side-text:#f7fbff; --canvas:#f4f8fc; --row:#ffffff; --text:#20364b; --muted:#b9d1e3; --main-muted:#647f99; --accent:#63b8ee; --accent-dark:#22699c; --selected:#3a709d; --selected-text:#ffffff; --line:#d4e2ed; }
+    .navy .toolbar, .navy .head { color:#647f99; }
+    .navy .check { border-color:#6d879f; }
+    .navy .count { background:#d3e8f7; color:#20547c; }
+  </style>
+</head>
+<body>
+  <h1 id="page-title">PDFit 라이트 테마 4안</h1>
+  <p class="intro" id="page-intro">사이드바와 본문을 함께 바꾼 미리보기입니다. 실제 적용 전 색상과 대비를 비교해 주세요.</p>
+  <div class="grid" id="grid"></div>
+  <script>
+    const originalOptions = [
+      { id: 'A', name: '세이지 페이퍼', cls: 'sage', note: '차분한 녹색 · 가장 자연스러운 균형', colors: ['#dce8dc','#f6f9f4','#39785c'] },
+      { id: 'B', name: '코랄 크림', cls: 'coral', note: '따뜻한 살구빛 · 베이지보다 생기 있게', colors: ['#f1e0d7','#fff8f3','#b96b54'] },
+      { id: 'C', name: '민트 그린', cls: 'mint', note: '맑은 청록빛 · 선명하지만 차갑지 않게', colors: ['#d5e9e3','#f5faf8','#267d70'] },
+      { id: 'D', name: '라일락 페이퍼', cls: 'lilac', note: '연보라빛 · 부드럽고 차별화된 느낌', colors: ['#e7e0ed','#faf8fc','#79609a'] },
+    ];
+    const blueOptions = [
+      { id: 'A', name: '소프트 스카이', cls: 'sky', note: '밝고 편안한 하늘색 · 추천', colors: ['#d9edf7','#f4fafc','#2f82ad'] },
+      { id: 'B', name: '블루 페이퍼', cls: 'blueprint', note: '조금 더 단정한 파란색', colors: ['#d7e4f5','#f7f9fd','#346eb0'] },
+      { id: 'C', name: '클리어 애저', cls: 'azure', note: '선명하고 경쾌한 파란색', colors: ['#cbe7fa','#f4faff','#147bbf'] },
+      { id: 'D', name: '딥 블루', cls: 'navy', note: '진한 사이드바 · 본문은 밝게', colors: ['#204e79','#f4f8fc','#63b8ee'] },
+    ];
+    const isBlue = new URLSearchParams(location.search).get('palette') === 'blue';
+    const options = isBlue ? blueOptions : originalOptions;
+    if (isBlue) {
+      document.title = 'PDFit 하늘색·파란색 테마 제안';
+      document.querySelector('#page-title').textContent = 'PDFit 하늘색·파란색 테마 4안';
+      document.querySelector('#page-intro').textContent = '차콜·베이지를 빼고, 하늘색에서 진한 파란색까지 같은 화면으로 비교했습니다.';
+    }
+    const rows = [
+      ['코어 코틀린.pdf', '프로그래밍'],
+      ['단위 테스트의 기술.pdf', '소프트웨어'],
+      ['올바른 소프트웨어 설계.pdf', '소프트웨어'],
+      ['누런데브_제조기업_AI교육_제안서.pdf', '제안서'],
+    ];
+    document.querySelector('#grid').innerHTML = options.map(o => `
+      <section class="option" id="option-${o.id}">
+        <div class="label"><strong>${o.id}. ${o.name}</strong><span>${o.note}</span></div>
+        <div class="sample ${o.cls}">
+          <aside class="sidebar">
+            <div class="brand"><span class="brand-mark">P</span> PDFit</div>
+            <div class="sidebar-heading">공용 서재</div>
+            <div class="nav"><span class="nav-icon">◆</span> 소프트웨어 <b>12</b></div>
+            <div class="nav"><span class="nav-icon">◆</span> 인공지능 <b>2</b></div>
+            <div class="nav"><span class="nav-icon">◆</span> 프로그래밍 <b>8</b></div>
+            <div class="sidebar-heading">폴더</div>
+            <div class="nav active"><span class="nav-icon">▣</span> PDFit Library <b>59</b></div>
+            <div class="nav"><span class="nav-icon">▤</span> 보관함 <b>0</b></div>
+          </aside>
+          <main class="main">
+            <div class="title"><span class="folder">▱</span> PDFit Library <span class="count">59개</span></div>
+            <div class="toolbar"><span>☐ &nbsp; 전체 선택</span><span>⌕ &nbsp; 검색</span><em>✦ &nbsp; AI 자동 태그</em></div>
+            <div class="head"><span>이름</span><span>열린시간</span><span>태그</span></div>
+            ${rows.map(r => `<div class="row"><div class="name"><span class="check"></span><span class="filename">${r[0]}</span><span class="book">▣</span></div><span class="dash">—</span><span class="tag">◆ ${r[1]}</span></div>`).join('')}
+          </main>
+        </div>
+        <div class="caption">사이드바 · 본문 · 강조색 ${o.colors.map(c => `<span class="swatch" style="background:${c}"></span><code>${c}</code>`).join('')}</div>
+      </section>`).join('');
+  </script>
+</body>
+</html>

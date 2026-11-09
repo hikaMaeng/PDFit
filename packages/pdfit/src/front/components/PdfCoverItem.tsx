@@ -1,0 +1,345 @@
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Box, Button, Checkbox, Divider, CircularProgress, IconButton, Tooltip, Typography, useTheme } from '@mui/material';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+import HashTagIcon from './HashTagIcon.js';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
+import { isPendingUploadDriveFileId, openViewer, viewerUrl } from '../viewer/openViewer.js';
+import { DRAG_TYPE } from '../layout/LNB.js';
+import TagChip from './TagChip.js';
+import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
+import { bookMetadataApi } from '../api/bookMetadata.js';
+
+type Props = {
+  filename: string;
+  url: string;
+  thumbnailUrl?: string;
+  folder: string;
+  driveFileId?: string;
+  size?: number;
+  modifiedAt?: string;
+  tags: string[];
+  tagColors: Record<string, string>;
+  selected: boolean;
+  hideSelection?: boolean;
+  hideFileActions?: boolean;
+  autoTagging?: boolean;
+  autoTagDisabled?: boolean;
+  onSelectionChange: (folder: string, filename: string, selected: boolean) => void;
+  onTagDelete: (folder: string, filename: string, tag: string) => void;
+  onManageTags: (folder: string, filename: string) => void;
+  onAutoTag?: (folder: string, filename: string) => void;
+  onEditMetadata?: (folder: string, filename: string) => void;
+  onCoverVisible?: (driveFileId: string) => void;
+  onMove: (folder: string, filename: string) => void;
+  onDelete: (folder: string, filename: string) => void;
+};
+
+function formatBytes(bytes?: number): string {
+  if (bytes === undefined) return '';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const COVER_CACHE = 'pdfit-cover-thumbnails-v1';
+const missingDriveThumbnails = new Set<string>();
+const persistedCoverThumbnails = new Set<string>();
+// Google Drive range reads and PDF.js parsing are independent per card. Six
+// low-resolution jobs fill a typical desktop row without flooding the browser.
+const MAX_CONCURRENT_COVER_RENDERS = 6;
+const COVER_RENDER_TIMEOUT_MS = 60_000;
+type CoverJob = { cancelled: boolean; run: () => Promise<void>; resolve: () => void; reject: (error: unknown) => void };
+const coverQueue: CoverJob[] = [];
+let activeCoverRenders = 0;
+
+function pumpCoverQueue(): void {
+  while (activeCoverRenders < MAX_CONCURRENT_COVER_RENDERS && coverQueue.length > 0) {
+    const job = coverQueue.shift()!;
+    if (job.cancelled) { job.resolve(); continue; }
+    activeCoverRenders += 1;
+    void job.run().then(job.resolve, job.reject).finally(() => { activeCoverRenders -= 1; pumpCoverQueue(); });
+  }
+}
+
+function scheduleCoverRender(run: () => Promise<void>, priority = false): { promise: Promise<void>; cancel: () => void } {
+  let job!: CoverJob;
+  const promise = new Promise<void>((resolve, reject) => { job = { cancelled: false, run, resolve, reject }; });
+  if (priority) coverQueue.unshift(job); else coverQueue.push(job);
+  pumpCoverQueue();
+  return { promise, cancel: () => { job.cancelled = true; } };
+}
+
+function coverCacheRequest(url: string, modifiedAt?: string): Request {
+  const key = new URL('/__pdfit_cover__', window.location.origin);
+  key.searchParams.set('source', url);
+  if (modifiedAt) key.searchParams.set('modified', modifiedAt);
+  return new Request(key);
+}
+
+async function drawCachedCover(canvas: HTMLCanvasElement, response: Response): Promise<void> {
+  const bitmap = await createImageBitmap(await response.blob());
+  try {
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.style.aspectRatio = `${bitmap.width} / ${bitmap.height}`;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('Canvas 2D context is unavailable.');
+    context.drawImage(bitmap, 0, 0);
+  } finally { bitmap.close(); }
+}
+
+function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.84));
+}
+
+async function persistCoverThumbnail(url: string, blob: Blob): Promise<void> {
+  if (persistedCoverThumbnails.has(url)) return;
+  persistedCoverThumbnails.add(url);
+  try {
+    const response = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+    if (!response.ok) throw new Error(`Thumbnail persistence failed with ${response.status}.`);
+    missingDriveThumbnails.delete(url);
+  } catch {
+    persistedCoverThumbnails.delete(url);
+  }
+}
+
+function FirstPageThumbnail({ url, thumbnailUrl, title, modifiedAt, driveFileId, onCoverVisible }: { url: string; thumbnailUrl?: string; title: string; modifiedAt?: string; driveFileId?: string; onCoverVisible?: (driveFileId: string) => void }) {
+  const { t, ui } = usePdfitI18n();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const autoLookupStarted = useRef(false);
+  const [visible, setVisible] = useState(false);
+  const [state, setState] = useState<'idle' | 'queued' | 'loading' | 'background' | 'ready' | 'error'>('idle');
+  const [errorReason, setErrorReason] = useState<'timeout' | 'failed'>('failed');
+  const [attempt, setAttempt] = useState(0);
+  const [driveThumbnailFailed, setDriveThumbnailFailed] = useState(() => Boolean(thumbnailUrl && missingDriveThumbnails.has(thumbnailUrl)));
+  const useDriveThumbnail = Boolean(thumbnailUrl && !driveThumbnailFailed);
+
+  useEffect(() => {
+    setState('idle');
+    setDriveThumbnailFailed(Boolean(thumbnailUrl && missingDriveThumbnails.has(thumbnailUrl)));
+    setAttempt(0);
+    setErrorReason('failed');
+  }, [modifiedAt, thumbnailUrl, url]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      // Keep observing after the first intersection. When a user scrolls past
+      // unfinished covers, their queued/range jobs must release slots for the
+      // cards that are actually on screen now.
+      setVisible(entry.isIntersecting);
+      if (entry.isIntersecting) {
+        setState((current) => current === 'ready' ? current : 'queued');
+      }
+    }, { rootMargin: '180px 0px' });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [driveFileId]);
+
+  useEffect(() => {
+    if (!visible || !driveFileId || !onCoverVisible || autoLookupStarted.current) return;
+    autoLookupStarted.current = true;
+    onCoverVisible(driveFileId);
+  }, [driveFileId, onCoverVisible, visible]);
+
+  useEffect(() => {
+    if (state !== 'loading') return;
+    const timer = window.setTimeout(() => setState((current) => current === 'loading' ? 'background' : current), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  useEffect(() => {
+    if (!visible || useDriveThumbnail || !('caches' in window)) return;
+    let cancelled = false;
+    const restore = async () => {
+      const cached = await (await caches.open(COVER_CACHE)).match(coverCacheRequest(url, modifiedAt));
+      const canvas = canvasRef.current;
+      if (!cached || !canvas || cancelled) return;
+      await drawCachedCover(canvas, cached);
+      if (cancelled) return;
+      setState('ready');
+      if (thumbnailUrl) {
+        const jpeg = await canvasBlob(canvas);
+        if (jpeg && !cancelled) void persistCoverThumbnail(thumbnailUrl, jpeg);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, [modifiedAt, thumbnailUrl, url, visible, useDriveThumbnail]);
+
+  useEffect(() => {
+    if (!visible || useDriveThumbnail) return;
+    let cancelled = false;
+    let cancelScheduled: (() => void) | null = null;
+    let destroyDocument: (() => Promise<void>) | null = null;
+    let cancelRender: (() => void) | null = null;
+    let renderTimeout: ReturnType<typeof setTimeout> | null = null;
+    let expired = false;
+    const render = async () => {
+      try {
+        const cacheRequest = coverCacheRequest(url, modifiedAt);
+        if ('caches' in window) {
+          const cached = await (await caches.open(COVER_CACHE)).match(cacheRequest);
+          const canvas = canvasRef.current;
+          if (cached && canvas && !cancelled) {
+            await drawCachedCover(canvas, cached);
+            if (!cancelled) {
+              setState('ready');
+              if (thumbnailUrl) {
+                const jpeg = await canvasBlob(canvas);
+                if (jpeg && !cancelled) void persistCoverThumbnail(thumbnailUrl, jpeg);
+              }
+            }
+            return;
+          }
+        }
+        const scheduled = scheduleCoverRender(async () => {
+          if (cancelled) return;
+          setState('loading');
+          const operation = async () => {
+            const { loadPdfJs } = await import('../pdfjs.js');
+            if (cancelled || expired) return;
+            const pdfjs = await loadPdfJs();
+            if (cancelled || expired) return;
+            const loadingTask = pdfjs.getDocument({ url, rangeChunkSize: 256 * 1024, disableAutoFetch: true, disableStream: false });
+            destroyDocument = () => loadingTask.destroy();
+            const document = await loadingTask.promise;
+            if (cancelled || expired) { await loadingTask.destroy(); return; }
+            const page = await document.getPage(1);
+            if (cancelled || expired) { await loadingTask.destroy(); return; }
+            const baseViewport = page.getViewport({ scale: 1 });
+            const cssWidth = 150;
+            const scale = cssWidth / baseViewport.width;
+            const viewport = page.getViewport({ scale: scale * Math.min(window.devicePixelRatio || 1, 1.25) });
+            const canvas = canvasRef.current;
+            if (!canvas || cancelled || expired) { await loadingTask.destroy(); return; }
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            canvas.style.aspectRatio = `${baseViewport.width} / ${baseViewport.height}`;
+            const context = canvas.getContext('2d', { alpha: false });
+            if (!context) throw new Error('Canvas 2D context is unavailable.');
+            const renderTask = page.render({ canvas, canvasContext: context, viewport, background: 'rgb(255,255,255)' });
+            cancelRender = () => renderTask.cancel();
+            await renderTask.promise;
+            if (!cancelled && !expired) {
+              if ('caches' in window) {
+                const blob = await canvasBlob(canvas);
+                if (blob && !expired) {
+                  await (await caches.open(COVER_CACHE)).put(cacheRequest, new Response(blob, { headers: { 'Content-Type': blob.type } }));
+                  if (thumbnailUrl) void persistCoverThumbnail(thumbnailUrl, blob);
+                }
+              }
+              if (!cancelled && !expired) setState('ready');
+            }
+            await loadingTask.destroy();
+            destroyDocument = null;
+          };
+          const timeout = new Promise<never>((_resolve, reject) => {
+            renderTimeout = setTimeout(() => {
+              expired = true;
+              cancelRender?.();
+              if (destroyDocument) void destroyDocument();
+              reject(new Error('PDF cover render timed out.'));
+            }, COVER_RENDER_TIMEOUT_MS);
+          });
+          try {
+            await Promise.race([operation(), timeout]);
+          } finally {
+            if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }
+          }
+        }, attempt > 0);
+        cancelScheduled = scheduled.cancel;
+        await scheduled.promise;
+      } catch (error) {
+        if (!cancelled && !(error instanceof Error && error.name === 'RenderingCancelledException')) {
+          setErrorReason(error instanceof Error && error.message.includes('timed out') ? 'timeout' : 'failed');
+          setState('error');
+        }
+      }
+    };
+    void render();
+    return () => {
+      cancelled = true;
+      if (renderTimeout) clearTimeout(renderTimeout);
+      cancelScheduled?.();
+      cancelRender?.();
+      if (destroyDocument) void destroyDocument();
+    };
+  }, [attempt, modifiedAt, url, visible, useDriveThumbnail]);
+
+  return <Box ref={hostRef} data-testid="pdf-cover-thumbnail" aria-label={ui("{p0} 첫 페이지 표지", { p0: title })} sx={{ position: 'relative', display: 'grid', placeItems: 'center', width: '100%', aspectRatio: '3 / 4', overflow: 'hidden', bgcolor: 'action.hover' }}>
+    {useDriveThumbnail && visible ? <Box
+      component="img"
+      src={thumbnailUrl}
+      alt=""
+      onLoad={() => setState('ready')}
+      onError={() => { if (thumbnailUrl) missingDriveThumbnails.add(thumbnailUrl); setState((current) => current === 'ready' ? current : 'queued'); setDriveThumbnailFailed(true); }}
+      sx={{ display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#fff', opacity: state === 'ready' ? 1 : 0 }}
+    /> : null}
+    <canvas ref={canvasRef} style={{ display: state === 'ready' && !useDriveThumbnail ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} />
+    {state === 'loading' ? <Box role="status" aria-label={ui("표지 불러오는 중")} sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden', color: 'text.disabled', bgcolor: 'action.hover', '&::after': { content: '\"\"', position: 'absolute', inset: 0, transform: 'translateX(-100%)', background: 'linear-gradient(100deg, transparent 20%, rgba(255,255,255,.09) 50%, transparent 80%)', animation: 'pdfit-cover-shimmer 1.15s ease-in-out infinite' }, '@keyframes pdfit-cover-shimmer': { to: { transform: 'translateX(100%)' } } }}>
+      <PictureAsPdfIcon sx={{ fontSize: 46, opacity: .42 }} />
+      <CircularProgress size={20} thickness={4} sx={{ position: 'absolute', color: 'primary.main' }} />
+    </Box> : null}
+    {(state === 'idle' || state === 'queued' || state === 'background' || state === 'error') ? <Box sx={{ display: 'grid', justifyItems: 'center', gap: .75, px: 1.5, textAlign: 'center' }}>
+      <PictureAsPdfIcon color={state === 'error' ? 'error' : 'disabled'} sx={{ fontSize: 48 }} />
+      {state === 'background' ? <Typography role="status" variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>{t('coverPreparing')}</Typography> : null}
+      {state === 'error' ? <Tooltip title={errorReason === 'timeout' ? t('coverTimeoutReason') : t('coverFailedReason')} arrow><Box sx={{ cursor: 'help' }}><Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.35 }}>{t('coverUnavailable')}</Typography><Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: .25, lineHeight: 1.25 }}>{errorReason === 'timeout' ? t('coverTimeoutLabel') : t('coverFailedLabel')}</Typography></Box></Tooltip> : null}
+    </Box> : null}
+    {state === 'error' ? <Tooltip title={`${errorReason === 'timeout' ? t('coverTimeoutReason') : t('coverFailedReason')} ${t('retry')}`}><IconButton data-testid="retry-cover" aria-label={t('retry')} size="small" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (thumbnailUrl) missingDriveThumbnails.delete(thumbnailUrl); setErrorReason('failed'); setState('queued'); setDriveThumbnailFailed(false); setAttempt((value) => value + 1); }} sx={{ position: 'absolute', right: 8, bottom: 8, color: 'text.secondary', bgcolor: 'background.paper', boxShadow: 1, '&:hover': { bgcolor: 'background.paper', color: 'primary.main' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip> : null}
+  </Box>;
+}
+
+export default function PdfCoverItem(props: Props) {
+  const { language, t, ui } = usePdfitI18n();
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const aiAccentColor = theme.palette.mode === 'light' ? '#b7791f' : '#f59e0b';
+  const pending = isPendingUploadDriveFileId(props.driveFileId);
+  const openedAt = useSyncExternalStore(subscribeDocumentOpenHistory, () => getDocumentOpenedAt({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }), () => null);
+  const openedLabel = formatDocumentOpenedDate(openedAt, language);
+  const open = () => { if (!pending) openViewer({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }); };
+  const viewerHref = viewerUrl({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId });
+
+  return <Box component="article" data-testid="pdf-cover-card" sx={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', border: '1px solid', borderColor: props.selected ? 'primary.main' : 'divider', borderRadius: 1.5, bgcolor: 'background.paper', boxShadow: props.selected ? '0 0 0 1px #3b82f6' : '0 8px 20px rgba(0,0,0,.10)', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light' } }}>
+    <Box component="a" href={viewerHref} draggable={!pending} onDragStart={(event) => { if (pending) return; event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId })); }} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
+      {pending
+        ? <Box data-testid="pending-cover-placeholder" sx={{ display: 'grid', placeItems: 'center', aspectRatio: '3 / 4', bgcolor: 'action.hover' }}><PictureAsPdfIcon color="disabled" sx={{ fontSize: 48 }} /></Box>
+        : <FirstPageThumbnail url={props.url} thumbnailUrl={props.thumbnailUrl} title={props.filename} modifiedAt={props.modifiedAt} driveFileId={props.driveFileId} onCoverVisible={props.onCoverVisible} />}
+    </Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: 1.25, gap: .75 }}>
+      <Box data-testid="pdf-cover-title-row" sx={{ display: 'flex', alignItems: 'flex-start', gap: .5 }}>
+        {!props.hideSelection && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0 }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange(props.folder, props.filename, checked)} />}
+      <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, minHeight: '2.7em', color: 'text.primary', fontWeight: 700, fontSize: '.88rem', lineHeight: 1.35, textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{props.filename}</Typography>
+      </Box>
+      {pending ? <Typography role="status" variant="caption" sx={{ alignSelf: 'flex-start', px: .75, py: .25, border: '1px solid', borderColor: 'warning.main', borderRadius: 99, color: 'warning.dark', bgcolor: 'action.hover', fontWeight: 650 }}>{t('uploadPending')}</Typography> : null}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: .5, minHeight: 20 }}>
+        {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={() => props.onTagDelete(props.folder, props.filename, tag)} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
+      </Box>
+        {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
+      <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" color="text.secondary">{t('openedAt')}: {openedLabel}</Typography>
+      <Typography data-testid="pdf-cover-file-size" variant="caption" color="text.secondary">{formatBytes(props.size)}</Typography>
+      <Box data-testid="pdf-cover-actions" sx={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 'auto', pt: .5, borderTop: '1px solid', borderColor: 'divider', '& .MuiIconButton-root': { p: .25, width: 24, height: 24 }, '& > span': { display: 'inline-flex', flexShrink: 0 } }}>
+        <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', flex: 1, gap: .75, '& > span': { display: 'inline-flex' } }}>
+        {props.onAutoTag ? <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small" disabled={pending || props.autoTagging || props.autoTagDisabled} onClick={() => props.onAutoTag?.(props.folder, props.filename)} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>{props.autoTagging ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon fontSize="small" />}</IconButton></span></Tooltip> : null}
+
+        <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip>
+        </Box>
+        {!props.hideFileActions && <>
+        <Divider data-testid="pdf-cover-action-divider" orientation="vertical" flexItem sx={{ my: .25, borderColor: 'text.secondary', opacity: .7 }} />
+        <Box data-testid="pdf-cover-file-actions" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', flex: 1, gap: .75, '& > span': { display: 'inline-flex' } }}>
+        <Tooltip title={t('moveToFolder')}><span><IconButton aria-label={t('moveToFolder')} size="small" disabled={pending} onClick={() => props.onMove(props.folder, props.filename)}><DriveFileMoveIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title={t('delete')}><span><IconButton aria-label={t('delete')} size="small" color="error" disabled={pending} onClick={() => props.onDelete(props.folder, props.filename)}><DeleteIcon fontSize="small" /></IconButton></span></Tooltip>
+        </Box>
+        </>}
+      </Box>
+    </Box>
+  </Box>;
+}

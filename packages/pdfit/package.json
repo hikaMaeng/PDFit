@@ -24,6 +24,14 @@
       "types": "./dist/front/model/languagePreference.d.ts",
       "default": "./dist/front/model/languagePreference.js"
     },
+    "./front/i18n/uiText": {
+      "types": "./dist/front/i18n/uiText.d.ts",
+      "default": "./dist/front/i18n/uiText.js"
+    },
+    "./front/viewer/openViewer": {
+      "types": "./dist/front/viewer/openViewer.d.ts",
+      "default": "./dist/front/viewer/openViewer.js"
+    },
     "./server": {
       "types": "./dist/server/bootstrap/index.d.ts",
       "default": "./dist/server/bootstrap/index.js"
@@ -48,7 +56,7 @@
     "@emotion/styled": "11.13.0",
     "@mui/icons-material": "5.16.0",
     "@mui/material": "5.16.0",
-    "@pdfgpu/core": "file:vendor/pdfgpu-core-0.1.9.tgz",
+    "@pdfgpu/core": "file:vendor/pdfgpu-core-0.1.9-pdfit.1.tgz",
     "cors": "2.8.5",
     "express": "4.22.2",
     "multer": "2.2.0",

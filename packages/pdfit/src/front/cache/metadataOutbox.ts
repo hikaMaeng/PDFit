@@ -53,3 +53,9 @@ export function flushMetadataOutbox(): Promise<void> {
   })().finally(() => { flushing = null; });
   return flushing;
 }
+
+/** Reports queued writes so a remote snapshot cannot hide unsent local changes. */
+export async function hasPendingMetadataOutbox(): Promise<boolean> {
+  const scope = options?.scope() ?? '';
+  return Boolean(scope && typeof indexedDB !== 'undefined' && (await rows(scope)).length > 0);
+}

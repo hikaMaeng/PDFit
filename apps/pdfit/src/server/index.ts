@@ -2,7 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
-import { createPdfitServer } from '@pdfit/pdfit/server';
+import { createPdfitServer, createTagSuggestionProviderFromEnvironment } from '@pdfit/pdfit/server';
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
 import { createSettingsRouter } from './routes/settings.js';
 import { PostgresSettingsStore } from './services/settingsStore.js';
@@ -55,6 +55,7 @@ const migrated = await migrateSqliteMetadata(path.join(path.dirname(booksRoot), 
 if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
+const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env);
 const app = createPdfitServer({
   metadataStore,
   booksRoot,
@@ -67,6 +68,7 @@ const app = createPdfitServer({
   viewerBasePath: '/viewer',
   viewerIndexFile: path.join('viewer', 'index.html'),
   maxUploadBytes,
+  suggestBookTags,
 });
 
 // Establish the first database connections and load the two initial read

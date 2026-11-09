@@ -1,0 +1,11 @@
+{
+  "engine": "legacy",
+  "page": "3",
+  "initialPageReadyMs": 944,
+  "loadingGaugeVisible": true,
+  "doubleSelected": "true",
+  "continuousSelected": "true",
+  "widthBeforeSidebar": 668,
+  "widthAfterSidebar": 558,
+  "errors": []
+}

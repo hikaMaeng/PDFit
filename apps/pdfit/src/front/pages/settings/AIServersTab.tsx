@@ -35,6 +35,7 @@ import {
   type AiServerType,
   updateAiServer,
 } from '../../api/settings';
+import { usePdfitI18n } from '@pdfit/pdfit/client/service';
 
 interface HeadersEditorProps {
   value: Record<string, string>;
@@ -42,6 +43,7 @@ interface HeadersEditorProps {
 }
 
 function HeadersEditor({ value, onChange }: HeadersEditorProps) {
+  const { t } = usePdfitI18n();
   const pairs = Object.entries(value);
 
   function update(index: number, key: string, nextValue: string) {
@@ -61,21 +63,21 @@ function HeadersEditor({ value, onChange }: HeadersEditorProps) {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-        Additional headers
+        {t('additionalHeaders')}
       </Typography>
       <Stack spacing={1}>
         {pairs.map(([key, entryValue], index) => (
           <Stack key={`${key}-${index}`} direction="row" spacing={1} alignItems="center">
             <TextField
               size="small"
-              placeholder="Header"
+              placeholder={t('header')}
               value={key}
               onChange={(event) => update(index, event.target.value, entryValue)}
               sx={{ flex: 1 }}
             />
             <TextField
               size="small"
-              placeholder="Value"
+              placeholder={t('value')}
               value={entryValue}
               onChange={(event) => update(index, key, event.target.value)}
               sx={{ flex: 2 }}
@@ -86,7 +88,7 @@ function HeadersEditor({ value, onChange }: HeadersEditorProps) {
           </Stack>
         ))}
         <Button size="small" startIcon={<AddIcon />} onClick={add} sx={{ alignSelf: 'flex-start' }}>
-          Add header
+          {t('addHeader')}
         </Button>
       </Stack>
     </Box>
@@ -109,6 +111,7 @@ interface ServerDialogProps {
 }
 
 function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
+  const { t } = usePdfitI18n();
   const [form, setForm] = useState<AiServerInput>(EMPTY_INPUT);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -149,11 +152,11 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      setError('Server name is required.');
+      setError(t('serverNameRequired'));
       return;
     }
     if (!form.url.trim()) {
-      setError('Server URL is required.');
+      setError(t('serverUrlRequired'));
       return;
     }
 
@@ -171,11 +174,11 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{initial ? 'Edit AI server' : 'Add AI server'}</DialogTitle>
+      <DialogTitle>{initial ? t('editAiServer') : t('addAiServer')}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
-            label="Server name"
+            label={t('serverName')}
             value={form.name}
             onChange={(event) => setField('name', event.target.value)}
             fullWidth
@@ -191,7 +194,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             <MenuItem value="lm-studio">LM Studio</MenuItem>
           </Select>
           <TextField
-            label="Server URL"
+            label={t('serverUrl')}
             placeholder="http://localhost:1234/v1"
             value={form.url}
             onChange={(event) => setField('url', event.target.value)}
@@ -206,10 +209,10 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
           <Divider />
 
           <Typography variant="caption" color="text.secondary">
-            Model mapping
+            {t('modelMapping')}
           </Typography>
           <TextField
-            label="Vision model"
+            label={t('visionModel')}
             placeholder="llava:7b"
             value={form.models?.vision ?? ''}
             onChange={(event) => setModel('vision', event.target.value)}
@@ -217,7 +220,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
-            label="LLM model"
+            label={t('llmModel')}
             placeholder="mistral:7b"
             value={form.models?.llm ?? ''}
             onChange={(event) => setModel('llm', event.target.value)}
@@ -225,7 +228,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
-            label="Embedding model"
+            label={t('embeddingModel')}
             placeholder="nomic-embed-text"
             value={form.models?.embedding ?? ''}
             onChange={(event) => setModel('embedding', event.target.value)}
@@ -242,10 +245,10 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
-          Cancel
+          {t('cancel')}
         </Button>
         <Button onClick={() => void handleSave()} variant="contained" disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? t('saving') : t('save')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -253,6 +256,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
 }
 
 export default function AIServersTab() {
+  const { t } = usePdfitI18n();
   const [servers, setServers] = useState<AiServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -298,7 +302,7 @@ export default function AIServersTab() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="subtitle1" fontWeight={600}>
-          AI servers
+          {t('aiServers')}
         </Typography>
         <Button
           variant="contained"
@@ -309,28 +313,28 @@ export default function AIServersTab() {
             setDialogOpen(true);
           }}
         >
-          Add server
+          {t('addServer')}
         </Button>
       </Stack>
 
       {loading ? (
         <Typography color="text.secondary" variant="body2">
-          Loading...
+          {t('loading')}
         </Typography>
       ) : servers.length === 0 ? (
         <Typography color="text.secondary" variant="body2">
-          No AI servers configured yet.
+          {t('noAiServers')}
         </Typography>
       ) : (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Type</TableCell>
+                <TableCell>{t('name')}</TableCell>
+                <TableCell>{t('type')}</TableCell>
                 <TableCell>URL</TableCell>
-                <TableCell>Models</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell>{t('models')}</TableCell>
+                <TableCell align="right">{t('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -355,7 +359,7 @@ export default function AIServersTab() {
                     </Stack>
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Edit">
+                    <Tooltip title={t('edit')}>
                       <IconButton
                         size="small"
                         onClick={() => {
@@ -366,7 +370,7 @@ export default function AIServersTab() {
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('delete')}>
                       <IconButton size="small" color="error" onClick={() => setDeleteId(server.id)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
@@ -386,13 +390,13 @@ export default function AIServersTab() {
         onSave={handleSave}
       />
       <Dialog open={deleteId !== null} onClose={() => setDeleteId(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete AI server</DialogTitle>
+        <DialogTitle>{t('deleteAiServer')}</DialogTitle>
         <DialogContent>
-          <Typography>Delete this AI server?</Typography>
+          <Typography>{t('deleteAiServerQuestion')}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => void handleDelete()}>Delete</Button>
+          <Button onClick={() => setDeleteId(null)}>{t('cancel')}</Button>
+          <Button color="error" variant="contained" onClick={() => void handleDelete()}>{t('delete')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

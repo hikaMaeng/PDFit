@@ -61,7 +61,9 @@ await ensureSmbProxy();
 let result = spawnSync('docker', ['volume', 'inspect', volume], { encoding: 'utf8', windowsHide: true });
 
 if (result.status !== 0 && smbHost) {
-  const mountOptions = `username=${smbUsername},password=${smbPassword},vers=3.0,ro,port=${smbProxyPort}`;
+  // PDFit exposes folder creation, upload, move, and delete operations in the
+  // local UI, so the provisioned library volume must support writes.
+  const mountOptions = `username=${smbUsername},password=${smbPassword},vers=3.0,rw,port=${smbProxyPort}`;
   result = spawnSync('docker', [
     'volume', 'create', '--driver', 'local',
     '--opt', 'type=cifs',

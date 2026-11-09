@@ -1,5 +1,6 @@
+import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, Box, LinearProgress, Typography } from '@mui/material';
+import { Alert, Box } from '@mui/material';
 import {
   createPdfDocumentEngine,
   createPdfGpuViewer,
@@ -14,9 +15,9 @@ import {
   normalizeViewerPage,
   reduceViewerInteraction,
   viewerModeFromParts,
-  viewerModeParts,
 } from '@pdfgpu/core';
 import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
+import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
 import { ViewerToolbar } from './ViewerToolbar.js';
@@ -24,8 +25,11 @@ import { BookmarkSidebar } from './BookmarkSidebar.js';
 import { BookmarkEditorDialog } from './BookmarkEditorDialog.js';
 import { BookmarkOverlayLayer } from './BookmarkOverlayLayer.js';
 import { usePdfBookmarks } from './usePdfBookmarks.js';
-import { AnnotationControls } from './AnnotationControls.js';
+import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from './AnnotationControls.js';
 import { usePdfPan } from './usePdfPan.js';
+import { forwardPageModeWheel } from '../viewerWheel.js';
+import { DEFAULT_VIEWER_ZOOM } from '../PdfViewer/pdfDisplayScale.js';
+import { usePageSwipe } from '../usePageSwipe.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -49,7 +53,7 @@ type Props = {
 
 const EMPTY_STATE: PdfGpuViewerState = {
   backend: 'unsupported',
-  zoom: 1.2,
+  zoom: DEFAULT_VIEWER_ZOOM,
   pageCount: 0,
   provider: 'in-memory',
   engine: 'in-memory',
@@ -93,6 +97,7 @@ export default function PdfGpuViewer({
   onBookmarkUpdated,
   onBookmarkDeleted,
 }: Props) {
+  const { ui } = usePdfitI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
@@ -113,6 +118,15 @@ export default function PdfGpuViewer({
   const getSnapshot = useCallback(() => controller?.getState() ?? EMPTY_STATE, [controller]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const currentPage = state.activePage ?? 1;
+  const activePageIndex = Math.max(0, currentPage - 1);
+  const spreadStartPageIndex = activePageIndex === 0
+    ? 0
+    : activePageIndex % 2 === 1 ? activePageIndex : activePageIndex - 1;
+  const annotationPageIndices = state.scrollMode === 'page'
+    ? state.viewMode === 'spread'
+      ? [spreadStartPageIndex, spreadStartPageIndex + 1].filter((pageIndex) => pageIndex < state.pageCount)
+      : [activePageIndex]
+    : state.visiblePages;
   const displayLoadProgress = interpolatePdfGpuDisplayProgress(state.loadProgress);
   const overlayProjections = controller?.projectOverlays(bookmarks.map((bookmark) => ({
     pageIndex: bookmark.pageIndex,
@@ -128,6 +142,13 @@ export default function PdfGpuViewer({
     const target = normalizeViewerPage(page, state.pageCount, mode);
     controller?.scrollToPage(target - 1);
   }, [controller, state.pageCount, state.scrollMode, state.viewMode]);
+  const pageSwipe = usePageSwipe(
+    viewportRef,
+    state.scrollMode === 'page' && (annotation.tool === 'select' || annotation.tool === 'bookmark'),
+    () => goToPage(currentPage - (state.viewMode === 'spread' ? 2 : 1)),
+    () => goToPage(currentPage + (state.viewMode === 'spread' ? 2 : 1)),
+    state.fitMode === 'page' || state.fitMode === 'height',
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -143,11 +164,11 @@ export default function PdfGpuViewer({
           container: viewport,
           provider,
           providerKind: 'in-memory',
-          initialZoom: initialScale ?? 1.2,
+          initialZoom: initialScale ?? DEFAULT_VIEWER_ZOOM,
           minZoom: 0.25,
           maxZoom: 5,
           viewMode: initialViewMode === 'double' ? 'spread' : 'single',
-          fitMode: initialFitMode ?? 'none',
+          fitMode: initialFitMode === 'height' && initialViewMode === 'double' ? 'page' : initialFitMode ?? 'none',
           scrollMode: initialViewMode === 'scroll' ? 'continuous' : 'page',
           overscanPages: 2,
           pageGap: 16,
@@ -164,6 +185,8 @@ export default function PdfGpuViewer({
         setController(nextController);
         await nextController.load(url);
         if (cancelled) return;
+        if (initialFitMode === 'height' && initialViewMode === 'double') nextController.fitPage();
+        else if (initialFitMode && initialFitMode !== 'none') nextController.setFitMode(initialFitMode);
         setInitError(null);
       } catch (error) {
         if (cancelled) return;
@@ -193,7 +216,7 @@ export default function PdfGpuViewer({
     const legacyState: Omit<ViewerStatePayload, 'uiHidden'> = {
       page: state.activePage,
       scale: state.zoom,
-      fitMode: state.fitMode === 'page' ? 'none' : state.fitMode,
+      fitMode: state.fitMode === 'page' ? state.viewMode === 'spread' ? 'height' : 'none' : state.fitMode,
       viewMode: toLegacyViewMode(state),
       inverted,
       scrollTop: viewportRef.current?.scrollTop ?? 0,
@@ -238,30 +261,65 @@ export default function PdfGpuViewer({
     }
   }, [controller, goToPage, initialPage, initialScrollTop, state.loadPhase]);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!controller || !viewport) return;
+    let previousWidth = viewport.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = viewport.clientWidth;
+      if (nextWidth === previousWidth) return;
+      previousWidth = nextWidth;
+      const current = controller.getState();
+      if (current.fitMode !== 'width' && current.fitMode !== 'page') return;
+      const page = current.activePage ?? 1;
+      controller.setFitMode(current.fitMode);
+      requestAnimationFrame(() => controller.scrollToPage(page - 1));
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [controller]);
+
   const submitPageInput = useCallback((value: string) => {
     const page = Number.parseInt(value, 10);
     if (Number.isFinite(page)) goToPage(page);
     else setPageInput(String(currentPage));
   }, [currentPage, goToPage]);
 
-  const toggleViewMode = useCallback((next: 'scroll' | 'single' | 'double') => {
+  const changePageLayout = useCallback((next: 'single' | 'double') => {
     if (!controller) return;
-    const parts = viewerModeParts(next);
-    controller.setScrollMode(parts.scrollMode);
-    controller.setViewMode(parts.viewMode);
-    // A scroll-mode-only transition does not rebuild @pdfgpu/core's layout.
-    // Reapplying the current fit mode makes page positions match the new mode.
-    controller.setFitMode(controller.getState().fitMode);
+    const current = controller.getState();
+    const page = current.activePage ?? 1;
+    controller.setViewMode(next === 'double' ? 'spread' : 'single');
+    if (next === 'double') {
+      if (current.fitMode === 'height' || current.fitMode === 'page') controller.fitPage();
+      else controller.fitWidth();
+    } else controller.setFitMode(current.fitMode === 'page' ? 'height' : current.fitMode);
+    requestAnimationFrame(() => controller.scrollToPage(page - 1));
+  }, [controller]);
+
+  const fitHeight = useCallback(() => {
+    if (!controller) return;
+    if (controller.getState().viewMode === 'spread') controller.fitPage();
+    else controller.fitHeight();
+  }, [controller]);
+
+  const toggleContinuousScroll = useCallback(() => {
+    if (!controller) return;
+    const current = controller.getState();
+    const page = current.activePage ?? 1;
+    controller.setScrollMode(current.scrollMode === 'continuous' ? 'page' : 'continuous');
+    controller.setFitMode(current.fitMode);
+    requestAnimationFrame(() => controller.scrollToPage(page - 1));
   }, [controller]);
 
   if (initError) {
-    return <Alert severity="warning">고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. ({initError})</Alert>;
+    return <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>;
   }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {!uiHidden && (
-        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onViewModeChange={toggleViewMode} />
+        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} />
       )}
 
       <Box role="status" aria-label="viewer status" sx={{ position: 'absolute', width: '1px', height: '1px', minWidth: '1px', maxWidth: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }}>
@@ -269,21 +327,20 @@ export default function PdfGpuViewer({
       </Box>
       {state.error ? <Alert severity="error">{state.error}</Alert> : null}
       {(state.loading || state.loadPhase === 'rendering') ? (
-        <Box sx={{ position: 'absolute', zIndex: 4, top: 8, left: '50%', transform: 'translateX(-50%)', width: 'min(420px, 70vw)', px: 1.5, py: 1, bgcolor: 'rgba(20, 20, 20, 0.86)', borderRadius: 1 }}>
-          <LinearProgress variant={state.loadProgressDeterminate ? 'determinate' : 'indeterminate'} value={displayLoadProgress} />
-          <Typography data-testid="viewer-load-progress" variant="caption" sx={{ display: 'block', mt: 0.5, textAlign: 'center', color: 'grey.300' }}>{displayLoadProgress}%</Typography>
-        </Box>
+        <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {bookmark.panelOpen && <BookmarkSidebar bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
-        <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onWheel={annotation.tool === 'select' ? pan.wheel : undefined} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
-          <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, filter: inverted ? 'invert(1)' : 'none' }} />
+        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+          <Box data-testid="bookmark-capture-surface" sx={{ width: uiHidden ? '100%' : `calc(100% - ${ANNOTATION_RAIL_WIDTH}px)`, height: '100%', ml: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px`, minWidth: 0, minHeight: 0, position: 'relative', touchAction: state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height') ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onWheel={(event) => { if (state.scrollMode === 'page') forwardPageModeWheel(event, viewportRef.current, true); else if (annotation.tool === 'select') pan.wheel(event); }} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
+            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: state.fitMode === 'height' || state.fitMode === 'page' ? 0 : 3, filter: inverted ? 'invert(1)' : 'none' }} />
+            <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
+            <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
+          </Box>
           {!uiHidden && <AnnotationControls tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
-          <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
-          <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
         </Box>
       </Box>
-      {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? '북마크를 저장하는 중입니다…'}</Box>}
+      {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />
     </Box>
   );

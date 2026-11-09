@@ -4,6 +4,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import StorageIcon from '@mui/icons-material/Storage';
 import AIServersTab from './settings/AIServersTab';
 import PGVectorTab from './settings/PGVectorTab';
+import { usePdfitI18n } from '@pdfit/pdfit/client/service';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -26,20 +27,21 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 }
 
 export default function SettingsPage() {
+  const { t } = usePdfitI18n();
   const [tab, setTab] = useState(0);
 
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} gutterBottom>
-        Settings
+        {t('settings')}
       </Typography>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={tab} onChange={(_event, nextValue: number) => setTab(nextValue)} aria-label="settings tabs">
+        <Tabs value={tab} onChange={(_event, nextValue: number) => setTab(nextValue)} aria-label={t('settings')}>
           <Tab
             icon={<SmartToyIcon fontSize="small" />}
             iconPosition="start"
-            label="AI Servers"
+            label={t('aiServers')}
             id="settings-tab-0"
             aria-controls="settings-tabpanel-0"
           />

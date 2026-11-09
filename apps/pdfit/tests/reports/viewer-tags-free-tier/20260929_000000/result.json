@@ -1,0 +1,120 @@
+{
+  "headerActionsOrder": [
+    "업로드",
+    "새로고침",
+    "폴더 내 모든 태그 해제"
+  ],
+  "headerActionsAboveToolbar": true,
+  "uploadFileChooser": true,
+  "clearFolderTagsConfirmation": true,
+  "clearFolderTagsStandardIcon": true,
+  "clearFolderTagsDocumentWording": true,
+  "freeBulkTagExhaustedNotice": true,
+  "freeBulkTagDisabledAfterClick": true,
+  "freeDisabledColor": "rgb(111, 114, 120)",
+  "freeLightDisabledColor": "rgb(133, 137, 128)",
+  "automaticTagRequests": [
+    "/api/tags/folder/PDFit%20Library/auto"
+  ],
+  "paidAutoTagWorks": true,
+  "sidebarSectionIconsBlue": true,
+  "folderTitleGap": "8px",
+  "tagTitleGap": "8px",
+  "folderAndTagCountStyleMatches": true,
+  "checkboxFilenameGap": "16px",
+  "fixedFolderControls": true,
+  "fixedTagControls": true,
+  "sidebarPositionUnchanged": true,
+  "mobileFixedControls": true,
+  "selectedCountPlainText": "2개 선택됨",
+  "selectionActionLabels": [
+    "폴더 이동",
+    "삭제"
+  ],
+  "folderToolbarTrashRemoved": true,
+  "fileSizeColumnAligned": true,
+  "detailColumnsEqualSpacing": true,
+  "detailColumnsEqualWidth": true,
+  "documentInfoLabel": true,
+  "documentInfoBesideFilename": true,
+  "tagFolderLocationRemoved": true,
+  "folderDocumentInfoDialog": true,
+  "tagDocumentInfoDialog": true,
+  "tagActionsAlignedWithAndWithoutTag": [
+    {
+      "tagX": 1123.8125,
+      "manageX": 1126.8125,
+      "manageRight": 1178.8125,
+      "aiX": 1182.8125,
+      "chipToManageGap": null,
+      "label": "태그관리",
+      "decoration": "underline"
+    },
+    {
+      "tagX": 1123.8125,
+      "manageX": 1126.8125,
+      "manageRight": 1178.8125,
+      "aiX": 1182.8125,
+      "chipToManageGap": 25,
+      "label": "태그관리",
+      "decoration": "underline"
+    }
+  ],
+  "selectionMoveRequests": [
+    {
+      "fromFolder": "PDFit Library",
+      "toFolder": "대상폴더",
+      "filename": "태그 테스트.pdf",
+      "driveFileId": "file-1"
+    },
+    {
+      "fromFolder": "PDFit Library",
+      "toFolder": "대상폴더",
+      "filename": "두번째.pdf",
+      "driveFileId": "file-2"
+    }
+  ],
+  "selectionDeleteRequests": [
+    "/api/folders/%EB%8C%80%EC%83%81%ED%8F%B4%EB%8D%94/files/%ED%83%9C%EA%B7%B8%20%ED%85%8C%EC%8A%A4%ED%8A%B8.pdf",
+    "/api/folders/%EB%8C%80%EC%83%81%ED%8F%B4%EB%8D%94/files/%EB%91%90%EB%B2%88%EC%A7%B8.pdf"
+  ],
+  "freeDialogClassificationDisabled": true,
+  "filenameLabel": true,
+  "createdTagColor": "#92400e",
+  "tagColorCircleBeforeClick": true,
+  "tagColorCircleUpdates": true,
+  "viewerTags": [
+    "기존태그",
+    "새태그",
+    "태그페이지"
+  ],
+  "commonTagChip": true,
+  "checkboxAlwaysVisible": true,
+  "tagHoverOnLabelAndDelete": true,
+  "listHeaders": [
+    "이름",
+    "열린시간",
+    "태그",
+    "파일 크기"
+  ],
+  "openedAt": "2026-09-30T04:04:04.959Z",
+  "pdfIconRemoved": true,
+  "modifiedTextRemoved": true,
+  "tagNavigatesToLnb": true,
+  "coverCheckboxContained": true,
+  "coverCheckboxBottomRight": true,
+  "coverActionsSingleRow": true,
+  "coverActionsEqualSpacing": true,
+  "tagListCheckboxSelection": true,
+  "preferencesModal": true,
+  "languageAndThemePersistAfterReload": true,
+  "sidebarItemIconsRemoved": true,
+  "mobileNoOverflow": true,
+  "sidebarSectionIcons": true,
+  "addedTags": [
+    "새태그",
+    "태그페이지"
+  ],
+  "duplicateNoticeAfterClose": false,
+  "errors": []
+}

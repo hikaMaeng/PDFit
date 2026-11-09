@@ -1,0 +1,26 @@
+{
+  "toolbarOrder": [
+    16,
+    47,
+    96,
+    145,
+    247,
+    1322.40625
+  ],
+  "manualZoom": 137,
+  "continuousToggle": true,
+  "fitWidthMomentary": true,
+  "archiveToggleLabel": true,
+  "archiveSidebarTitle": true,
+  "cursorTool": true,
+  "exportOptions": [
+    "pdf"
+  ],
+  "download": "인공지능 개론.pdf",
+  "nativeSavePicker": {
+    "suggestedName": "인공지능 개론.pdf",
+    "writtenBytes": 193,
+    "closed": true
+  },
+  "errors": []
+}

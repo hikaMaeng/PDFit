@@ -205,6 +205,14 @@ export function createFoldersRouter(
     const folder = sanitizeName(decodeRouteParam(req.params.name));
     const filename = sanitizeName(decodeRouteParam(req.params.filename));
     const filePath = path.resolve(filesystem.getFolderPath(folder), filename);
+    if (req.query.download === '1') {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.download(filePath, filename, (error) => {
+        if (error && !res.headersSent) res.status(404).json({ error: 'File not found.' });
+      });
+      return;
+    }
     res.sendFile(filePath, (error) => {
       if (error) {
         res.status(404).json({ error: 'File not found.' });

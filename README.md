@@ -87,7 +87,10 @@ npm install
 npm run deploy
 ```
 
-Open [http://127.0.0.1:15201](http://127.0.0.1:15201).
+Open [http://127.0.0.1:15201](http://127.0.0.1:15201) to use the real local
+service application. The separate `192.168.0.5:15202` binding redirects to
+`https://pdfit.io`. Local sign-in uses the approved public callback and a
+single-use handoff to return the session to the loopback app.
 
 The repository Compose contract mounts the configured library into `/app/data/books`.
 Set `PDFIT_BOOKMARKS_PATH` in the repository's local `.env` to a writable local
@@ -106,7 +109,7 @@ in PostgreSQL. Deleting a bookmark removes both records and its JPEG asset.
 | Command | Purpose |
 | --- | --- |
 | `npm run build` | Build the shared package and integrated app |
-| `npm run deploy` | Build locally and recreate the Docker service |
+| `npm run deploy` | Build and recreate the authenticated service used by both local and hosted bindings |
 | `npm run verify:repo` | Check repository and Compose contracts |
 | `npm run verify:pdfit` | Verify the integrated app, APIs, Settings, and viewer artifacts |
 | `npm run verify:pdfit:acceptance` | Run the PDFit acceptance matrix |
@@ -117,12 +120,14 @@ Use `npm run deploy` as the Docker entrypoint. The runtime image copies the preb
 ## Architecture at a glance
 
 ```text
-apps/pdfit                  Existing local-library service and viewer on port 15201
+apps/service                Authentication, billing, Drive library, local port 15201 and diagnostic port 15202
         │
-        └── packages/pdfit   Shared React UI, viewer, routes, PostgreSQL adapters
+        └── packages/pdfit   Shared React UI, viewer, routes, and metadata contracts
+
+apps/pdfit                  Opt-in legacy NAS standalone profile on port 15203
 ```
 
-The browser service and dedicated `/viewer` entry share the same app, metadata, data root, and release version.
+Ports 15201 and 15202 serve the same browser build, API process, metadata, and release version. The account footer and logout action therefore cannot drift between local and service deployments.
 
 ## Documentation
 

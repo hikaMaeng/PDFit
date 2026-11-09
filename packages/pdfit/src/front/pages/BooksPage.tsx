@@ -1,12 +1,14 @@
 import React from 'react';
 import { Typography, Box } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import { usePdfitI18n } from '../i18n/usePdfitI18n';
 
 export default function BooksPage() {
+  const { t } = usePdfitI18n();
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} gutterBottom>
-        책 목록
+        {t('bookList')}
       </Typography>
       <Box
         sx={{
@@ -20,7 +22,7 @@ export default function BooksPage() {
         }}
       >
         <FolderOpenIcon sx={{ fontSize: 60, opacity: 0.4 }} />
-        <Typography variant="body1">구글 드라이브 연동 후 PDF 목록이 표시됩니다.</Typography>
+        <Typography variant="body1">{t('connectDriveHint')}</Typography>
       </Box>
     </Box>
   );

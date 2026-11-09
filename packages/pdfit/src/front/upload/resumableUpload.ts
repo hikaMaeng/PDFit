@@ -57,7 +57,19 @@ export async function uploadPdfToResumableSession(sessionUrl: string, file: File
   }
 }
 
+async function hasPdfSignature(file: File): Promise<boolean> {
+  return new TextDecoder('ascii').decode(await file.slice(0, 5).arrayBuffer()) === '%PDF-';
+}
+
+/** Prepares a dropped PDF whose macOS drag source may omit the extension or use a non-standard MIME type. */
+export async function prepareDroppedPdfFile(file: File): Promise<File | null> {
+  if (!(await hasPdfSignature(file))) return null;
+  if (file.name.toLowerCase().endsWith('.pdf')) return file;
+  const basename = file.name.trim() || 'document';
+  return new File([file], `${basename}.pdf`, { type: 'application/pdf', lastModified: file.lastModified });
+}
+
 /** Fast client-side signature guard retained when binary no longer traverses the service. */
 export async function isPdfFile(file: File): Promise<boolean> {
-  return file.name.toLowerCase().endsWith('.pdf') && new TextDecoder('ascii').decode(await file.slice(0, 5).arrayBuffer()) === '%PDF-';
+  return file.name.toLowerCase().endsWith('.pdf') && hasPdfSignature(file);
 }
