@@ -67,5 +67,8 @@ pinned PDFGPU package, source commit, and artifact digest.
   pinned PDFGPU package, source commit, and artifact digest.
 * Release `0.4.4` adds `release-contracts/pdfit/v0.4.4.json`; it keeps the same
   pinned PDFGPU package, source commit, and artifact digest.
+* Release `0.4.5` adds `release-contracts/pdfit/v0.4.5.json`; it keeps the
+  `@pdfgpu/core@0.1.9-pdfit.1` package, source commit, and artifact digest of
+  the updated `v0.4.4` contract.
 * AI automatic tagging sends only the title derived from the filename, the fixed bookstore taxonomy, and existing tag names. Model output is untrusted and restricted to one to three shared taxonomy values. Titles, authors, proper nouns, and arbitrary title tokens must never become generated categories.
 * Folder-wide automatic tagging classifies at most three books concurrently, then persists successful relations in one storage batch. It reports classifier failures without discarding successful results. Empty remote-AI configuration falls back to the deterministic shared title classifier; partially configured remote credentials fail at startup.

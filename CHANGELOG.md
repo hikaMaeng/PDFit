@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.4.5] - 2026-11-09
+
+PDFit 0.4.5 adds the cover (image list) view to the standalone library, merges
+the library, viewer, and tagging work published in `e38a163`, and repairs the
+`npx pdfit` launcher for the new standalone runtime.
+
+### Added
+
+- Cover view for folder and tag pages: a list/cover toggle shows a card grid
+  with each PDF's first page, tags, last-opened time, and size. Local libraries
+  render covers in the browser with PDF.js range reads and keep them in Cache
+  Storage; the choice of view is remembered per browser.
+- Document information, PDF export/download (including iPad Safari), bulk and
+  title-based automatic tagging, tag colors and groups, light themes, language
+  switching, tablet page gestures, and Acrobat-compatible zoom (`e38a163`).
+- `npm run deploy:standalone` to build and recreate only the standalone `pdfit`
+  service.
+
+### Changed
+
+- The standalone app runs under the Compose profile `standalone` on port
+  `15203` (`PDFIT_STANDALONE_PORT`). Port `15201` and `npm run deploy` now belong
+  to the hosted service.
+- `npx pdfit` deploys only the standalone service, binds the chosen folder as
+  the library, detects a private LAN IPv4 address for the LAN port, opens port
+  `15203`, and accepts `--no-open`.
+- Compose reads `PDFIT_LAN_BIND_ADDRESS`, `PDFIT_BOOKS_SOURCE`, and
+  `PDFIT_DATA_PATH`; defaults keep the NAS volume and the existing data folder.
+- The release contract pins `@pdfgpu/core@0.1.9-pdfit.1`.
+
+### Fixed
+
+- A client that aborts a PDF read mid-stream (a closed tab or a cancelled cover
+  render) no longer crashes the server with `ERR_HTTP_HEADERS_SENT`.
+
+### Commit summary since 0.4.4
+
+- `e38a163` — viewer, library, tagging, and deployment tool update.
+- `6f84c1b` — configurable standalone LAN bind and `deploy:standalone`.
+- `ac0afd9` — launcher fix and aborted-read crash fix.
+
 ## [0.4.4] - 2026-08-21
 
 PDFit 0.4.4 improves viewer and library interaction feedback.
