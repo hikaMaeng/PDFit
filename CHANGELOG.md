@@ -34,12 +34,17 @@ the library, viewer, and tagging work published in `e38a163`, and repairs the
 
 - A client that aborts a PDF read mid-stream (a closed tab or a cancelled cover
   render) no longer crashes the server with `ERR_HTTP_HEADERS_SENT`.
+- `npm install <git url>` followed by `npx pdfit` works from an empty folder:
+  the launcher installs build dependencies on first run, the shared package
+  copies its i18n catalogs into `dist`, and `.env` creation skips invalid lines
+  from `.env.example`.
 
 ### Commit summary since 0.4.4
 
 - `e38a163` — viewer, library, tagging, and deployment tool update.
 - `6f84c1b` — configurable standalone LAN bind and `deploy:standalone`.
 - `ac0afd9` — launcher fix and aborted-read crash fix.
+- `2d7a711`, `1083e5e`, `8469b69` — Git-URL install fixes.
 
 ## [0.4.4] - 2026-08-21
 
