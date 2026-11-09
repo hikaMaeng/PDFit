@@ -46,8 +46,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.front.json",
-    "build:front": "tsc -p tsconfig.front.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.front.json && node scripts/copy-assets.mjs",
+    "build:front": "tsc -p tsconfig.front.json && node scripts/copy-assets.mjs",
     "build:server": "tsc -p tsconfig.json",
     "deploy": "npm run build"
   },
