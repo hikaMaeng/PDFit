@@ -11,11 +11,11 @@ npm run verify:pdfit
 Requirements: Node.js 20 or newer with npm, and Docker Desktop (or Docker Engine) with Compose. Install the released launcher from GitHub:
 
 ```bash
-npm install https://github.com/hikaMaeng/PDFit.git#v0.4.0
+npm install https://github.com/hikaMaeng/PDFit.git#v0.4.4
 npx pdfit
 ```
 
-The launcher checks Docker, asks for the host folder containing PDFs, runs the official build/Compose deployment, mounts that folder at `/app/data/books`, and opens `http://127.0.0.1:15201` with the platform browser launcher. It supports Windows, macOS, and Linux. Pass a folder as `npx pdfit /path/to/pdfs` to skip the prompt. Replace `v0.4.0` with another release tag when needed; `npx pdfit --help` shows the syntax.
+The launcher checks Docker, asks for the host folder containing PDFs, runs the official build/Compose deployment, mounts that folder at `/app/data/books`, and opens `http://127.0.0.1:15201` with the platform browser launcher. It supports Windows, macOS, and Linux. Pass a folder as `npx pdfit /path/to/pdfs` to skip the prompt. Replace `v0.4.4` with another release tag when needed; `npx pdfit --help` shows the syntax.
 
 For source development, clone the repository, run `npm install`, and then use `npm run deploy` from the repository root.
 
