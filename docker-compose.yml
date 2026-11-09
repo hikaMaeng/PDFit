@@ -18,7 +18,8 @@ services:
       YES24_API_KEY: ${YES24_API_KEY:-}
     ports:
       - "127.0.0.1:${PDFIT_STANDALONE_PORT:-15203}:15201"
-      - "192.168.0.5:${PDFIT_STANDALONE_PORT:-15203}:15201"
+      # 같은 LAN의 다른 PC용 주소입니다. 호스트마다 IP가 다르므로 .env에서 바꿉니다.
+      - "${PDFIT_LAN_BIND_ADDRESS:-192.168.0.5}:${PDFIT_STANDALONE_PORT:-15203}:15201"
     volumes:
       - ./apps/pdfit/docker/volumes/data:/app/data
       - books:/app/data/books

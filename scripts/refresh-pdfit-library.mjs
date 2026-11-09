@@ -1,4 +1,18 @@
-const baseUrl = process.env.PDFIT_LOCAL_BASE_URL ?? 'http://127.0.0.1:15201';
+import { existsSync, readFileSync } from 'node:fs';
+
+// The standalone `pdfit` service publishes PDFIT_STANDALONE_PORT (default 15203);
+// 15201 belongs to the hosted `service` container in the root Compose file.
+function readEnvFileValue(name) {
+  if (!existsSync('.env')) return undefined;
+  for (const line of readFileSync('.env', 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match?.[1] === name) return match[2];
+  }
+  return undefined;
+}
+
+const standalonePort = process.env.PDFIT_STANDALONE_PORT ?? readEnvFileValue('PDFIT_STANDALONE_PORT') ?? '15203';
+const baseUrl = process.env.PDFIT_LOCAL_BASE_URL ?? `http://127.0.0.1:${standalonePort}`;
 
 async function waitForHealth() {
   for (let attempt = 0; attempt < 60; attempt += 1) {

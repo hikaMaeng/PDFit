@@ -17,6 +17,7 @@
     "build:service": "turbo run build --filter=@pdfit/pdfit --filter=@pdfit/service_domain --filter=service",
     "deploy": "npm run deploy:service",
     "deploy:service": "node apps/service/scripts/deploy.mjs",
+    "deploy:standalone": "node scripts/ensure-env.mjs && node scripts/ensure-docker-library-volume.mjs && npm run build:pdfit && docker compose --profile standalone rm -sf pdfit && docker compose --profile standalone up -d --build --force-recreate pdfit && node scripts/refresh-pdfit-library.mjs",
     "verify:pdfit": "node scripts/verify-pdfit.mjs",
     "verify:pdfit:drag-drop": "node apps/pdfit/tests/drag-drop-upload.mjs",
     "verify:pdfit:large-upload": "node apps/pdfit/tests/large-upload.mjs",

@@ -4,10 +4,12 @@ Run:
 
 * `npm run build`
 * `npm run verify:repo`
-* `npm run deploy`
+* `npm run deploy:standalone`
 * `npm run verify:pdfit`
 * `npm run verify:pdfit:acceptance`
 * `npm run test:pdfgpu`
+
+`apps/pdfit/tests/free-cover-view-deployed-browser.mjs` is a read-only headless check of the cover view against a deployed standalone server (`PDFIT_BASE_URL`, default `http://127.0.0.1:15203`). It asserts that the toggle switches to the grid, that at least `PDFIT_MIN_READY_COVERS` first-page canvases render with non-blank pixels, and that the view choice persists. Set `PDFIT_BROWSER_CHANNEL=chrome` to use an installed Chrome, and `PDFIT_EVIDENCE_DIR` to save a screenshot and JSON.
 
 `verify:pdfit` checks the integrated service/viewer bundles, Settings UI, AI server CRUD, pgvector persistence, and viewer isolation. Acceptance covers library CRUD, upload, tags, progress, viewer state, and SSE behavior.
 
