@@ -1,5 +1,6 @@
 import { PdfitFrontProvider, type PdfitFrontExtension, type PdfitSidebarItem } from '../../front/context.js';
 import type { ThemeOptions } from '@mui/material/styles';
+import type { PdfitMetadataCacheOptions } from '../../front/cache/metadataCache.js';
 
 export type { PdfitSidebarItem };
 export { PdfitFrontProvider };
@@ -11,4 +12,5 @@ export interface PdfitViewerExtension {
   appVersion?: string;
   basename?: string;
   themeOptions?: ThemeOptions;
+  metadataCache?: PdfitMetadataCacheOptions;
 }

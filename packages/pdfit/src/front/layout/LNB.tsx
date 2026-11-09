@@ -350,7 +350,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {extraSidebarItems.map((item) => (
+            {extraSidebarItems.filter((item) => item.placement !== 'primary').map((item) => (
               <Tooltip key={item.path} title={item.label} placement="bottom" arrow>
                 <IconButton
                   size="small"
@@ -411,6 +411,22 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         <Divider />
 
         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          {extraSidebarItems.some((item) => item.placement === 'primary') && (
+            <List dense disablePadding sx={{ pt: 0.75, pb: 0.25 }}>
+              {extraSidebarItems.filter((item) => item.placement === 'primary').map((item) => (
+                <ListItemButton
+                  key={item.path}
+                  data-testid={`lnb-primary-${item.label.toLowerCase()}`}
+                  selected={isActive(item.path)}
+                  onClick={() => { go(item.path); onMobileClose(); }}
+                  sx={{ borderRadius: 1, mx: 1, py: 0.75, '&.Mui-selected': { backgroundColor: '#2a2f36', boxShadow: 'inset 3px 0 0 #3b82f6', '&:hover': { backgroundColor: '#2a2f36' } } }}
+                >
+                  <ListItemIcon sx={{ minWidth: 28, color: isActive(item.path) ? '#60a5fa' : '#9a9aa0' }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={<Typography variant="caption" fontWeight={700} letterSpacing={0.7}>{item.label}</Typography>} />
+                </ListItemButton>
+              ))}
+            </List>
+          )}
           <List dense disablePadding sx={{ py: 0.5 }}>
             <ListItemButton
               data-testid="lnb-bookmarks"

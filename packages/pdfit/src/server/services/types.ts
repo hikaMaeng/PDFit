@@ -4,12 +4,15 @@ export interface FolderInfo {
   createdAt: string;
   isRoot: boolean;
   color: string;
+  driveFolderId?: string;
+  parentFolderId?: string;
 }
 
 export interface PdfInfo {
   name: string;
   size: number;
   modifiedAt: string;
+  driveFileId?: string;
 }
 
 export interface FilesystemService {

@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import express, { type ErrorRequestHandler, type Express, type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { MetadataStore } from '../../shared/index.js';
@@ -9,8 +9,9 @@ import {
 } from './createCommonRouters.js';
 
 export interface PdfitServerOptions {
-  metadataStore: MetadataStore;
-  booksRoot: string;
+  metadataStore?: MetadataStore;
+  booksRoot?: string;
+  bookmarkAssetRoot?: string;
   booksRootName?: string;
   staticDir: string;
   logLabel: string;
@@ -19,6 +20,11 @@ export interface PdfitServerOptions {
   serviceIndexFile?: string;
   viewerIndexFile?: string;
   viewerBasePath?: string;
+  maxUploadBytes?: number;
+  commonRouters?: PdfitServerRouterMount[];
+  configureApp?: (app: Express) => void;
+  defaultMiddlewareEnabled?: boolean;
+  errorHandlers?: ErrorRequestHandler[];
 }
 
 const SILENT_PATTERNS = [
@@ -44,16 +50,24 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
     viewerBasePath = '/viewer',
   } = options;
 
-  const { routers } = createPdfitCommonRouterAssembly({
-    metadataStore,
-    booksRoot,
-    booksRootName,
-    watcherEnabled,
-  });
+  const routers = options.commonRouters ?? (() => {
+    if (!metadataStore || !booksRoot) throw new Error('metadataStore and booksRoot are required for the local PDFit runtime.');
+    return createPdfitCommonRouterAssembly({
+      metadataStore,
+      booksRoot,
+      bookmarkAssetRoot: options.bookmarkAssetRoot,
+      booksRootName,
+      watcherEnabled,
+      maxUploadBytes: options.maxUploadBytes,
+    }).routers;
+  })();
 
   const app = express();
-  app.use(cors());
-  app.use(express.json({ limit: '20mb' }));
+  options.configureApp?.(app);
+  if (options.defaultMiddlewareEnabled ?? true) {
+    app.use(cors());
+    app.use(express.json({ limit: '20mb' }));
+  }
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
@@ -107,5 +121,12 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
     });
   }
 
+  for (const errorHandler of options.errorHandlers ?? []) app.use(errorHandler);
+
   return app;
 }
+
+export { createPdfitMetadataRouterMounts } from './createCommonRouters.js';
+export type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
+export { createPdfitRemoteFoldersRouter, parsePdfitByteRange } from '../routes/remoteFolders.js';
+export type { PdfitRemoteFile, PdfitRemoteFoldersRouterOptions, PdfitRemoteLibraryAdapter, PdfitRemoteRefreshResult, PdfitResumableUploadSession } from '../routes/remoteFolders.js';

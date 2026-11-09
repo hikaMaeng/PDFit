@@ -4,9 +4,10 @@ import BookmarkIcon from '@mui/icons-material/Bookmark';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
-import { deleteBookmark, listAllBookmarks } from '../api/bookmarks.js';
+import { listAllBookmarks } from '../api/bookmarks.js';
 import { bookmarkLibraryModel } from '../model/bookmarkModel.js';
-import { publishBookmarkChange, subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
+import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
+import { deleteBookmarkOptimistically } from '../model/optimisticBookmarks.js';
 import { openViewer } from '../viewer/openViewer.js';
 
 const BOOKMARK_IMAGE_HEIGHT = 150;
@@ -84,7 +85,6 @@ export default function BookmarkPage() {
   const [loading, setLoading] = useState(bookmarks.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [previewBookmark, setPreviewBookmark] = useState<BookmarkRecord | null>(null);
-  const [deletingBookmarkId, setDeletingBookmarkId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -101,7 +101,10 @@ export default function BookmarkPage() {
 
   useEffect(() => {
     void load();
-    const onBookmarkChange = () => void load();
+    const onBookmarkChange = (signal: Parameters<Parameters<typeof subscribeBookmarkChanges>[0]>[0]) => {
+      if (signal.record) bookmarkLibraryModel.upsert(signal.record);
+      else if (signal.id) bookmarkLibraryModel.remove(signal.id);
+    };
     return subscribeBookmarkChanges(onBookmarkChange);
   }, [load]);
 
@@ -114,26 +117,19 @@ export default function BookmarkPage() {
     return [...groups.values()];
   }, [bookmarks]);
 
-  const removeBookmark = useCallback(async (bookmark: BookmarkRecord, onError: (message: string) => void) => {
-    if (deletingBookmarkId) return false;
-    setDeletingBookmarkId(bookmark.id);
-    try {
-      await deleteBookmark(bookmark.id);
-      bookmarkLibraryModel.remove(bookmark.id);
-      if (previewBookmark?.id === bookmark.id) setPreviewBookmark(null);
-      publishBookmarkChange({ folder: bookmark.folder, filename: bookmark.filename, kind: 'deleted' });
-      return true;
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : '북마크를 삭제하지 못했습니다.');
-      return false;
-    } finally {
-      setDeletingBookmarkId(null);
-    }
-  }, [deletingBookmarkId, previewBookmark]);
+  const removeBookmark = useCallback((bookmark: BookmarkRecord, onError: (message: string) => void) => {
+    if (previewBookmark?.id === bookmark.id) setPreviewBookmark(null);
+    deleteBookmarkOptimistically(bookmark, {
+      upsert: (record) => bookmarkLibraryModel.upsert(record),
+      remove: (id) => bookmarkLibraryModel.remove(id),
+      failed: (message) => onError(message),
+    });
+    return true;
+  }, [previewBookmark]);
 
   const gallery = (items: BookmarkRecord[]) => (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 1.25 }}>
-      {items.map((bookmark) => <BookmarkCard key={bookmark.id} bookmark={bookmark} onOpen={setPreviewBookmark} onDelete={(item) => void removeBookmark(item, setError)} deleting={deletingBookmarkId === bookmark.id} />)}
+      {items.map((bookmark) => <BookmarkCard key={bookmark.id} bookmark={bookmark} onOpen={setPreviewBookmark} onDelete={(item) => removeBookmark(item, setError)} deleting={false} />)}
     </Box>
   );
 
@@ -142,13 +138,11 @@ export default function BookmarkPage() {
     openViewer({ folder: previewBookmark.folder, filename: previewBookmark.filename, page: previewBookmark.pageIndex + 1 });
   }, [previewBookmark]);
 
-  const removePreviewBookmark = useCallback(async () => {
+  const removePreviewBookmark = useCallback(() => {
     if (!previewBookmark) return;
     setDeleteError(null);
-    await removeBookmark(previewBookmark, setDeleteError);
+    removeBookmark(previewBookmark, setDeleteError);
   }, [previewBookmark, removeBookmark]);
-
-  const deletingPreviewBookmark = deletingBookmarkId === previewBookmark?.id;
 
   return (
     <Box data-testid="bookmark-library-page" sx={{ py: 0.5 }}>
@@ -197,12 +191,12 @@ export default function BookmarkPage() {
             </Box>
             {deleteError && <Alert severity="error" sx={{ mb: 1.5 }}>{deleteError}</Alert>}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-              <IconButton data-testid="bookmark-preview-delete" aria-label="북마크 삭제" title="북마크 삭제" color="error" onClick={() => void removePreviewBookmark()} disabled={deletingPreviewBookmark}>
-                {deletingPreviewBookmark ? <CircularProgress size={20} /> : <DeleteOutlineIcon />}
+              <IconButton data-testid="bookmark-preview-delete" aria-label="북마크 삭제" title="북마크 삭제" color="error" onClick={removePreviewBookmark}>
+                <DeleteOutlineIcon />
               </IconButton>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer} disabled={deletingPreviewBookmark}>새 창에서 페이지 열기</Button>
-                <Button onClick={() => setPreviewBookmark(null)} disabled={deletingPreviewBookmark}>닫기</Button>
+                <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer}>새 창에서 페이지 열기</Button>
+                <Button onClick={() => setPreviewBookmark(null)}>닫기</Button>
               </Box>
             </Box>
           </DialogActions>

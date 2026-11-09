@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.4] - 2026-08-21
+
+PDFit 0.4.4 improves viewer and library interaction feedback.
+
+- Start PDF viewing with neither width fit nor height fit selected.
+- Keep viewer headers and controls visible during reading interactions.
+- Restrict PDF detail navigation and its pointer cursor to the filename only.
+- Show tag dialogs immediately and apply tag changes optimistically with
+  pending, success, failure, and rollback feedback.
+
 ## [0.4.3] - 2026-08-11
 
 PDFit 0.4.3 makes bookmark synchronization bidirectional and establishes a

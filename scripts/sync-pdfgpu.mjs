@@ -11,7 +11,9 @@ const manifestPath = join(targetDir, 'pdfgpu-build.json');
 const expectedVersion = process.env.PDFGPU_VERSION ?? '0.1.9';
 const sourceSpec = `file:vendor/pdfgpu-core-${expectedVersion}.tgz`;
 const releaseTarball = `pdfgpu-core-${expectedVersion}.tgz`;
-const refresh = process.env.PDFGPU_REFRESH !== '0';
+// Release verification consumes the committed byte-for-byte artifact. Explicitly opt in
+// to repacking because npm tar metadata is not stable across environments.
+const refresh = process.env.PDFGPU_REFRESH === '1';
 const allowDirty = process.env.PDFGPU_ALLOW_DIRTY === '1';
 
 function run(command, args, cwd) {
@@ -48,7 +50,7 @@ function git(cwd, args) {
 
 function validateArtifact(manifest) {
   if (!existsSync(manifestPath)) {
-    throw new Error('pdfgpu build manifest is missing; run npm run sync:pdfgpu');
+    throw new Error('pdfgpu build manifest is missing; run with PDFGPU_REFRESH=1 to create it');
   }
   if (manifest.packageVersion !== expectedVersion || manifest.sourceSpec !== sourceSpec) {
     throw new Error(`pdfgpu source mismatch: expected ${sourceSpec}@${expectedVersion}`);

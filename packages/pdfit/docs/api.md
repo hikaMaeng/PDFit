@@ -9,8 +9,16 @@ Extension fields:
 * `appName`
 * `appVersion`
 * `extraRoutes`
-* `extraSidebarItems`
+* `extraSidebarItems`: `{ label, icon, path, placement? }` items. `placement:
+  'primary'` renders a full-width navigation row above Bookmarks; omitted or
+  `header` renders the existing compact header icon.
 * `themeOptions`
+* `metadataCache`: optional `{ scope, bootstrapUrl }` adapter for account-scoped
+  IndexedDB hydration and folder/PDF list reads
+
+When the adapter is configured, tag, progress, viewer-state, and bookmark reads use the
+same cache. Tag changes update IndexedDB before the service request; progress and viewer
+state remote writes use a 750 ms debounce.
 
 ## Client Viewer
 
@@ -30,6 +38,8 @@ Extension fields:
 * `appVersion`
 * `basename`
 * `themeOptions`
+* `metadataCache`: optional `{ scope, bootstrapUrl }` adapter shared with the service
+  entry so a dedicated viewer can resolve account-scoped IndexedDB state
 
 ## Client Shared
 
@@ -59,6 +69,25 @@ Options:
 * `viewerBasePath`
 
 App-owned routers use the `extraRouters` option as `{ path, router }` mounts.
+
+The server bootstrap also accepts `commonRouters`, `configureApp`, and
+`defaultMiddlewareEnabled` so authenticated hosted runtimes reuse PDFit's
+logging, health, static service/viewer entries, and API fallback.
+
+`createPdfitMetadataRouterMounts(storeResolver, eventBus)` builds the canonical
+progress, tags, viewer-state, bookmarks, and SSE routes. The resolver may
+return an account-scoped `MetadataStore` for each request.
+
+`createPdfitRemoteFoldersRouter(adapter, options)` owns folder/file HTTP
+validation, multipart upload handling, byte ranges, and response contracts;
+the adapter owns only remote storage operations. An adapter may implement
+`getFileById` and `openFileById` to expose `GET /by-id/:driveFileId`; common code
+validates the identifier and Range response while the adapter verifies ownership.
+
+Adapters may also implement `createResumableUploadSession` and
+`completeResumableUpload`. The common router then exposes metadata-only session and
+completion routes while the browser uploads PDF chunks directly to the returned remote
+session. Adapters without those methods retain the multipart compatibility endpoint.
 
 ## PostgreSQL
 

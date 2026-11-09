@@ -6,6 +6,8 @@ import { PdfitFrontProvider } from '../../shared/runtime.js';
 import { pdfitBaseTheme } from '../../shared/theme.js';
 import PdfitServiceAppRoutes from '../../service/common/App.js';
 import { PDFIT_LANGUAGES, pdfitLanguagePreferenceModel, type PdfitLanguage } from '../../../front/model/languagePreference.js';
+import { configurePdfitMetadataCache, refreshPdfitMetadataCache } from '../../../front/cache/metadataCache.js';
+import { configureMetadataOutbox } from '../../../front/cache/metadataOutbox.js';
 
 export type { PdfitServiceExtension, PdfitSidebarItem } from '../../shared/runtime.js';
 export type { PdfitLanguage } from '../../../front/model/languagePreference.js';
@@ -26,7 +28,11 @@ export function createPdfitServiceApp(extension: PdfitServiceExtension = {}) {
     navigationGuard: extension.navigationGuard,
     languagePreference: extension.languagePreference ?? defaultLanguagePreference,
     themeOptions: extension.themeOptions,
+    metadataCache: extension.metadataCache,
   };
+
+  configurePdfitMetadataCache(config.metadataCache);
+  configureMetadataOutbox(config.metadataCache ? { scope: config.metadataCache.scope, onFlushed: refreshPdfitMetadataCache } : undefined);
 
   const theme = createTheme(pdfitBaseTheme, config.themeOptions ?? {});
 

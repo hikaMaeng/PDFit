@@ -22,10 +22,27 @@ function readBooksRoot(value: string | undefined): string {
   return path.resolve(process.cwd(), value);
 }
 
+function readBookmarksRoot(value: string | undefined): string {
+  if (!value) {
+    throw new Error('BOOKMARKS_ROOT is required.');
+  }
+  return path.resolve(process.cwd(), value);
+}
+
+function readMaxUploadBytes(value: string | undefined): number {
+  const megabytes = Number(value ?? '2048');
+  if (!Number.isInteger(megabytes) || megabytes < 1 || megabytes > 10240) {
+    throw new Error('MAX_UPLOAD_MB must be an integer between 1 and 10240.');
+  }
+  return megabytes * 1024 * 1024;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = readPort(process.env.SERVER_PORT);
 const booksRoot = readBooksRoot(process.env.BOOKS_ROOT);
+const bookmarksRoot = readBookmarksRoot(process.env.BOOKMARKS_ROOT);
 const booksRootName = process.env.BOOKS_ROOT_NAME ?? '이북';
+const maxUploadBytes = readMaxUploadBytes(process.env.MAX_UPLOAD_MB);
 const pool = new Pool({
   host: process.env.PGHOST ?? '127.0.0.1',
   port: Number(process.env.PGPORT ?? '5432'),
@@ -33,7 +50,7 @@ const pool = new Pool({
   user: process.env.PGUSER ?? 'books',
   password: process.env.PGPASSWORD ?? 'books',
 });
-const metadataStore = await createPostgresMetadataStore(pool, path.resolve(path.dirname(booksRoot), 'bookmarks'));
+const metadataStore = await createPostgresMetadataStore(pool, bookmarksRoot);
 const migrated = await migrateSqliteMetadata(path.join(path.dirname(booksRoot), 'app.db'), pool);
 if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
@@ -41,6 +58,7 @@ await settingsStore.ensureSchema();
 const app = createPdfitServer({
   metadataStore,
   booksRoot,
+  bookmarkAssetRoot: bookmarksRoot,
   booksRootName,
   staticDir: path.resolve(__dirname, '..'),
   logLabel: 'pdfit',
@@ -48,6 +66,7 @@ const app = createPdfitServer({
   watcherEnabled: true,
   viewerBasePath: '/viewer',
   viewerIndexFile: path.join('viewer', 'index.html'),
+  maxUploadBytes,
 });
 
 // Establish the first database connections and load the two initial read

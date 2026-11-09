@@ -14,6 +14,21 @@ Shared package changes are verified through:
 * PostgreSQL/pgvector extension, shared metadata CRUD, and Settings CRUD checks
   against the deployed integrated container
 
+Folder multi-delete browser coverage selects two uniquely named PDF rows,
+checks the selected-count confirmation, deletes them, and verifies both the UI
+and file API no longer expose either PDF. It also verifies select-all and
+selection clearing without deleting the library's existing files.
+
+Home navigation coverage must compare the **라이브러리 열기** href with the
+folder API row marked `isRoot`, then activate it and verify the matching folder
+page. Root folder names are runtime data and must never be hard-coded.
+
+Folder selection layout coverage verifies that each row checkbox is horizontally
+after the row delete button and that toggling it still updates the selected-delete
+count without overlapping the filename or action controls.
+The row action group must also center the tag, move, delete, and selection
+controls on one vertical axis across multiple visible rows.
+
 `npm run sync:pdfgpu` builds the sibling `@pdfgpu/core`, packs it, verifies its
 source commit and SHA-256 manifest, and relinks the local PDFit dependency.
 The independent core suite runs in `F:\dev\pdfgpu`; PDFit integration tests then
@@ -36,8 +51,16 @@ GPU viewer browser contract:
   `bookmark-page-overlay`, `bookmark-card`, `bookmark-card-go-to-page`, and `bookmark-editor`
 
 Bookmark interaction coverage must assert a visible drag preview, a POST-created
-overlay without reload, PATCH persistence through the editor, comment tooltip,
+overlay without opening the bookmark sidebar or reloading, PATCH persistence through the editor, comment tooltip,
 and a changed overlay bounding box after zoom.
+It must also assert that the toolbar bookmark control only toggles the sidebar
+and that a newly created bookmark's delete affordance fades from emphasized to
+resting opacity. Successful capture must show its confirmation message; rejected
+capture must never fail silently.
+Remote-backed viewer verification must cover capture while the page is still in
+preview quality and confirm that detail readiness resumes the pending capture.
+The F05 acceptance case forces the PDF.js fallback with `?engine=legacy` and
+verifies its bookmark icon, closed-sidebar capture, overlay, panel, and deletion.
 It must also assert that the card's page-jump icon navigates to that bookmark's
 page without opening the editor.
 The bookmark-library new-window flow must first persist a different viewer page,
@@ -72,3 +95,7 @@ and captures top/middle browser screenshots under `test/YYYYMMDD/<run>/`.
 The performance scenario must load a real PDF, assert page shells and canvas
 output, exercise zoom/fit/view-mode controls, and record whether the backend is
 `webgpu` or the supported 2D fallback.
+
+Hosted IndexedDB changes require a real browser engine. The service browser fixture uses
+mock authentication and a mock Spreadsheet snapshot to verify first hydration, reload
+without another request, and reconstruction after database deletion without Google API calls.

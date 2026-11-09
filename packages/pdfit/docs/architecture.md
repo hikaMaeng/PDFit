@@ -9,6 +9,7 @@
 | `src/front/model/windowSync.ts` | Shared cross-window transport, message envelope, and topic router. | `src/front/model/windowSync.ts#subscribeWindowSyncMessage` |
 | `src/front/model/languagePreference.ts` | Shared browser-language detection, persisted preference, document direction, and external-store model. | `src/front/model/languagePreference.ts#pdfitLanguagePreferenceModel` |
 | `src/server` | Express route factories, filesystem services, and PostgreSQL adapter. | `src/server/bootstrap/index.ts#createPdfitServer` |
+| `src/server/routes/remoteFolders.ts` | Shared remote-storage folder/file HTTP contract. | `createPdfitRemoteFoldersRouter` |
 | `src/shared` | Runtime-neutral metadata and application types. | `src/shared/index.ts` |
 
 Client:
@@ -32,6 +33,7 @@ Server:
 * `server/api/*`: folders, tags, progress, viewer-state, events router factories
 * `server/bootstrap/*`: common router assembly and `createPdfitServer(options)`
 * `server/postgres`: shared PostgreSQL metadata store
+* `server/routes/metadataStoreResolver.ts`: request-scoped account adapter for the same metadata routers
 
 Contracts:
 
@@ -59,6 +61,19 @@ Cross-window bookmark change path:
 `front/model/windowSync.ts#publishWindowSyncMessage` envelope -> local router plus
 `BroadcastChannel`/`localStorage` transport -> topic subscribers -> service gallery/LNB and matching
 viewer authoritative bookmark API reload.
+
+Hosted metadata read path:
+
+`apps/service` cache configuration -> `front/cache/metadataCache.ts` -> account-scoped
+IndexedDB -> folder/PDF UI. A missing cache calls the configured bootstrap endpoint once,
+atomically replaces all cache stores, and then serves normal folder navigation locally.
+The integrated local app does not configure this adapter and retains its HTTP behavior.
+
+Hosted metadata mutation path:
+
+UI mutation -> account-scoped IndexedDB -> service metadata API -> Spreadsheet. Progress
+and viewer state coalesce rapid writes with a short debounce. Bookmark image persistence
+completes through the hosted Drive adapter before the returned metadata is cached.
 
 Bookmark library path:
 

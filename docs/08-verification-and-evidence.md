@@ -21,3 +21,7 @@ commands.
 Browser evidence belongs under `test/YYYYMMDD/<run>/`. Integrated app plans and reports belong under `apps/pdfit/tests/plans/` and `apps/pdfit/tests/reports/`.
 
 The report must state the URL, whether the run was smoke or scenario based, Docker service health, artifact paths, and any host bind limitation. A healthy container alone does not prove that a mapped SMB library is visible inside Docker.
+`sync:pdfgpu` verifies and uses the committed pinned tarball by default. Maintainers
+must set `PDFGPU_REFRESH=1` only when intentionally rebuilding that artifact from the
+clean sibling source repository; the resulting release contract hash must then be
+reviewed explicitly.

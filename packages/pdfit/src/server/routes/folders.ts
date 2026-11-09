@@ -3,11 +3,17 @@ import multer from 'multer';
 import { Router, type Request, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
 import type { FilesystemService } from '../services/types.js';
-import type { BookRecord } from '../../shared/index.js';
+import type { BookRecord, MetadataStore } from '../../shared/index.js';
 
 type ReqWithParams = { params: Record<string, string> };
 
-function createUpload(filesystem: FilesystemService, getFolderName: (req: ReqWithParams) => string) {
+const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+function createUpload(
+  filesystem: FilesystemService,
+  getFolderName: (req: ReqWithParams) => string,
+  maxUploadBytes: number,
+) {
   return multer({
     storage: multer.diskStorage({
       destination: (req, _file, callback) => {
@@ -22,7 +28,7 @@ function createUpload(filesystem: FilesystemService, getFolderName: (req: ReqWit
     fileFilter: (_req, file, callback) => {
       callback(null, path.extname(file.originalname).toLowerCase() === '.pdf');
     },
-    limits: { fileSize: 200 * 1024 * 1024 },
+    limits: { fileSize: maxUploadBytes },
   });
 }
 
@@ -47,9 +53,12 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
+  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'>,
+  maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
+  notifyChange?: (event: 'folders-changed' | 'tags-changed') => void,
 ): Router {
   const router = Router();
-  const upload = createUpload(filesystem, (req) => req.params.name);
+  const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
 
   router.post('/refresh', async (_req: Request, res: Response) => {
     try {
@@ -103,7 +112,7 @@ export function createFoldersRouter(
   router.patch('/:name/color', async (req: Request, res: Response) => {
     const { color } = req.body as { color?: string };
     if (!/^#[0-9a-f]{6}$/i.test(color ?? '')) { res.status(400).json({ error: 'Invalid folder color.' }); return; }
-    try { await updateFolderColor?.(req.params.name, color!.toLowerCase()); res.json({ ok: true }); }
+    try { await updateFolderColor?.(req.params.name, color!.toLowerCase()); notifyChange?.('folders-changed'); res.json({ ok: true }); }
     catch (error) { res.status(400).json({ error: String(error) }); }
   });
 
@@ -117,6 +126,7 @@ export function createFoldersRouter(
     try {
       const safeName = sanitizeName(name.trim());
       filesystem.createFolder(safeName);
+      notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
       res.status(400).json({ error: String(error) });
@@ -133,15 +143,19 @@ export function createFoldersRouter(
     try {
       const safeName = sanitizeName(newName.trim());
       filesystem.renameFolder(req.params.name, safeName);
+      notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
       res.status(400).json({ error: String(error) });
     }
   });
 
-  router.delete('/:name', (req: Request, res: Response) => {
+  router.delete('/:name', async (req: Request, res: Response) => {
     try {
       filesystem.deleteFolder(req.params.name);
+      await metadataMutation?.purgeFolder(req.params.name);
+      notifyChange?.('folders-changed');
+      notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
       res.status(400).json({ error: String(error) });
@@ -162,15 +176,28 @@ export function createFoldersRouter(
   router.post(
     '/:name/files',
     (req: Request, res: Response, next) => {
-      upload.array('files')(req as Request, res as Response, next);
+      upload.array('files')(req as Request, res as Response, (error) => {
+        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+          const limitMb = Math.floor(maxUploadBytes / (1024 * 1024));
+          res.status(413).json({ error: `파일당 최대 업로드 용량은 ${limitMb}MB입니다.` });
+          return;
+        }
+        next(error);
+      });
     },
-    (req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       const files = (req.files as Express.Multer.File[]) ?? [];
       if (files.length === 0) {
         res.status(400).json({ error: 'No PDF files selected.' });
         return;
       }
-      res.json(files.map((file) => ({ name: file.filename, size: file.size })));
+      try {
+        await refresh?.();
+        notifyChange?.('folders-changed');
+        res.json(files.map((file) => ({ name: file.filename, size: file.size })));
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
     },
   );
 
@@ -185,16 +212,21 @@ export function createFoldersRouter(
     });
   });
 
-  router.delete('/:name/files/:filename', (req: Request, res: Response) => {
+  router.delete('/:name/files/:filename', async (req: Request, res: Response) => {
     try {
-      filesystem.deleteFile(decodeRouteParam(req.params.name), sanitizeName(decodeRouteParam(req.params.filename)));
+      const folder = decodeRouteParam(req.params.name);
+      const filename = sanitizeName(decodeRouteParam(req.params.filename));
+      filesystem.deleteFile(folder, filename);
+      await metadataMutation?.purgeFile(folder, filename);
+      notifyChange?.('folders-changed');
+      notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
       res.status(400).json({ error: String(error) });
     }
   });
 
-  router.post('/move', (req: Request, res: Response) => {
+  router.post('/move', async (req: Request, res: Response) => {
     const { fromFolder, toFolder, filename } = req.body as {
       fromFolder?: string;
       toFolder?: string;
@@ -208,6 +240,10 @@ export function createFoldersRouter(
 
     try {
       filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
+      await refresh?.();
+      await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
+      notifyChange?.('folders-changed');
+      notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
       res.status(400).json({ error: String(error) });

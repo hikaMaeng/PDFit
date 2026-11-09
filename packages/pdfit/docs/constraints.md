@@ -6,8 +6,18 @@
 * Do not let viewer composition import service layout, LNB, home, folder, or tag routes.
 * Do not let common server bootstrap import app-owned settings storage.
 * Keep app composition on `client/service`, `client/viewer`, `client/shared`, `server`, and `server/postgres`.
+* Hosted variants must use `createPdfitServer`,
+  `createPdfitMetadataRouterMounts`, and `createPdfitRemoteFoldersRouter`.
+  Storage, authentication, and billing belong in adapters; HTTP validation and
+  API response contracts must not be copied into an app module.
 * Consumer: `apps/pdfit` service entrypoint. Invariants: `pdfit.language` wins over browser detection, unsupported or absent browser language resolves to English, and the selector updates the same external model before and after authentication.
 * Treat `front/*` as compatibility-only during migration; new app code must not target it.
+* IndexedDB is an optional cache, never metadata authority. Its database name is scoped by
+  authenticated account, and deleting it triggers remote hydration.
+* Local PDFit composition must not enable the hosted IndexedDB metadata adapter.
+* Hosted metadata writes use an account-scoped IndexedDB outbox. Progress and viewer-state
+  rows coalesce to the latest state; network/5xx failures remain queued, while terminal 4xx
+  responses are removed and trigger authoritative cache hydration.
 * `PdfGpuViewer` owns the PDFium controller/resource lifecycle; React reads its
   stable external snapshot through `useSyncExternalStore` and must not mirror
   viewer state into `useState`.
@@ -52,4 +62,6 @@ feature-specific transport listeners or duplicate `BroadcastChannel`/`localStora
 * Release `0.4.2` adds `release-contracts/pdfit/v0.4.2.json`; it keeps the same
 pinned PDFGPU package, source commit, and artifact digest.
 * Release `0.4.3` adds `release-contracts/pdfit/v0.4.3.json`; it keeps the same
+  pinned PDFGPU package, source commit, and artifact digest.
+* Release `0.4.4` adds `release-contracts/pdfit/v0.4.4.json`; it keeps the same
   pinned PDFGPU package, source commit, and artifact digest.

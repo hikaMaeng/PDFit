@@ -4,7 +4,7 @@ import {
   Box, Typography, List,
   CircularProgress, Alert, Chip, IconButton, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
-  MenuItem, Select, FormControl, InputLabel, TextField, Autocomplete,
+  MenuItem, Select, FormControl, InputLabel, TextField, Autocomplete, Snackbar,
 } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
@@ -22,6 +22,11 @@ interface TagDialogState {
   currentTags: string[];
 }
 
+interface TagNotice {
+  message: string;
+  severity: 'info' | 'success' | 'error';
+}
+
 export default function TagPage() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
@@ -32,6 +37,7 @@ export default function TagPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tagColor, setTagColor] = useState('#22c55e');
+  const [tagColors, setTagColors] = useState<Record<string, string>>({});
 
   /** `${folder}/${filename}` → 태그 목록 */
   const [bookTags, setBookTags] = useState<Record<string, string[]>>({});
@@ -48,6 +54,8 @@ export default function TagPage() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tagLoading, setTagLoading] = useState(false);
+  const [tagMutation, setTagMutation] = useState<string | null>(null);
+  const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
 
   // ─── 초기 로드 ────────────────────────────────────────────
   const loadBooks = useCallback(async () => {
@@ -57,6 +65,7 @@ export default function TagPage() {
     try {
       const [data, summaries] = await Promise.all([tagsApi.listBooks(tagName), tagsApi.listSummary()]);
       setTagColor(summaries.find((item) => item.name === tagName)?.color ?? '#22c55e');
+      setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       setBooks(data);
       setBookTags(Object.fromEntries(data.map((book) => [
         `${book.folder}/${book.filename}`, book.tags,
@@ -72,6 +81,7 @@ export default function TagPage() {
 
   useEffect(() => {
     const refreshColor = () => void tagsApi.listSummary().then((items) => {
+      setTagColors(Object.fromEntries(items.map((item) => [item.name, item.color])));
       const color = items.find((item) => item.name === tagName)?.color;
       if (color) setTagColor(color);
     });
@@ -137,72 +147,114 @@ export default function TagPage() {
   // ─── 태그 다이얼로그 ──────────────────────────────────────
   const openTagDialog = useCallback(async (folder: string, filename: string) => {
     const key = `${folder}/${filename}`;
+    setTagDialog({ folder, file: filename, currentTags: bookTags[key] ?? [] });
     setTagLoading(true);
     setTagInput('');
     try {
-      const [currentTags, globalTags] = await Promise.all([
+      const [currentTags, globalTags, summaries] = await Promise.all([
         tagsApi.listForBook(folder, filename),
         tagsApi.list(),
+        tagsApi.listSummary(),
       ]);
       setTagDialog({ folder, file: filename, currentTags });
       setAllTags(globalTags);
+      setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       setBookTags((prev) => ({ ...prev, [key]: currentTags }));
     } catch {
       setError('태그 로드 실패');
     } finally {
       setTagLoading(false);
     }
-  }, []);
+  }, [bookTags]);
 
   const handleAddTag = async (tag: string) => {
-    if (!tagDialog || !tag.trim()) return;
+    if (!tagDialog || !tag.trim() || tagMutation) return;
     const trimmed = tag.trim();
-    if (tagDialog.currentTags.includes(trimmed)) return;
-    try {
-      await tagsApi.addTag(tagDialog.folder, tagDialog.file, trimmed);
-      const key = `${tagDialog.folder}/${tagDialog.file}`;
-      setTagDialog((prev) => prev ? { ...prev, currentTags: [...prev.currentTags, trimmed] } : prev);
-      setBookTags((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), trimmed] }));
-      setAllTags((prev) => prev.includes(trimmed) ? prev : [...prev, trimmed].sort());
+    if (tagDialog.currentTags.includes(trimmed)) {
       setTagInput('');
-      folderLibraryModel.get(tagDialog.folder).addTag(tagDialog.file, trimmed);
+      setTagNotice({ message: `"${trimmed}"은(는) 이미 추가된 태그입니다.`, severity: 'info' });
+      return;
+    }
+    const { folder, file } = tagDialog;
+    const key = `${folder}/${file}`;
+    setTagMutation(trimmed);
+    setTagNotice({ message: `"${trimmed}" 태그를 추가하는 중입니다…`, severity: 'info' });
+    setTagDialog((prev) => prev ? { ...prev, currentTags: [...prev.currentTags, trimmed] } : prev);
+    setBookTags((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), trimmed] }));
+    setAllTags((prev) => prev.includes(trimmed) ? prev : [...prev, trimmed].sort());
+    setTagInput('');
+    folderLibraryModel.get(folder).addTag(file, trimmed);
+    try {
+      await tagsApi.addTag(folder, file, trimmed);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${trimmed}" 태그가 추가되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 추가 실패');
+      await tagsApi.restoreCachedRelation(folder, file, trimmed, false);
+      setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((item) => item !== trimmed) } : prev);
+      setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((item) => item !== trimmed) }));
+      folderLibraryModel.get(folder).removeTag(file, trimmed);
+      const message = e instanceof Error ? e.message : '태그 추가 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 추가하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
   };
 
   const handleRemoveTag = async (tag: string) => {
-    if (!tagDialog) return;
-    const key = `${tagDialog.folder}/${tagDialog.file}`;
+    if (!tagDialog || tagMutation) return;
+    const { folder, file } = tagDialog;
+    const key = `${folder}/${file}`;
+    const removedBook = books.find((book) => book.folder === folder && book.filename === file);
+    setTagMutation(tag);
+    setTagNotice({ message: `"${tag}" 태그를 삭제하는 중입니다…`, severity: 'info' });
+    setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((item) => item !== tag) } : prev);
+    setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((item) => item !== tag) }));
+    if (tag === tagName) setBooks((prev) => prev.filter((book) => !(book.folder === folder && book.filename === file)));
+    folderLibraryModel.get(folder).removeTag(file, tag);
     try {
-      await tagsApi.removeTag(tagDialog.folder, tagDialog.file, tag);
-      setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((t) => t !== tag) } : prev);
-      setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((t) => t !== tag) }));
-      if (tag === tagName) {
-        setBooks((prev) => prev.filter((b) => !(b.folder === tagDialog.folder && b.filename === tagDialog.file)));
-      }
-      folderLibraryModel.get(tagDialog.folder).removeTag(tagDialog.file, tag);
+      await tagsApi.removeTag(folder, file, tag);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${tag}" 태그가 삭제되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 삭제 실패');
+      await tagsApi.restoreCachedRelation(folder, file, tag, true);
+      setTagDialog((prev) => prev && !prev.currentTags.includes(tag) ? { ...prev, currentTags: [...prev.currentTags, tag] } : prev);
+      setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).includes(tag) ? (prev[key] ?? []) : [...(prev[key] ?? []), tag] }));
+      if (tag === tagName && removedBook) setBooks((prev) => prev.some((book) => book.folder === folder && book.filename === file) ? prev : [...prev, removedBook]);
+      folderLibraryModel.get(folder).addTag(file, tag);
+      const message = e instanceof Error ? e.message : '태그 삭제 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 삭제하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
   };
 
   const handleInlineRemoveTag = useCallback(async (folder: string, filename: string, tag: string) => {
+    if (tagMutation) return;
     const key = `${folder}/${filename}`;
+    const removedBook = books.find((book) => book.folder === folder && book.filename === filename);
+    setTagMutation(tag);
+    setTagNotice({ message: `"${tag}" 태그를 삭제하는 중입니다…`, severity: 'info' });
+    setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((item) => item !== tag) }));
+    if (tag === tagName) setBooks((prev) => prev.filter((book) => !(book.folder === folder && book.filename === filename)));
+    folderLibraryModel.get(folder).removeTag(filename, tag);
     try {
       await tagsApi.removeTag(folder, filename, tag);
-      setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((t) => t !== tag) }));
-      if (tag === tagName) {
-        setBooks((prev) => prev.filter((b) => !(b.folder === folder && b.filename === filename)));
-      }
-      folderLibraryModel.get(folder).removeTag(filename, tag);
       window.dispatchEvent(new Event('tags-changed'));
+      setTagNotice({ message: `"${tag}" 태그가 삭제되었습니다.`, severity: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : '태그 삭제 실패');
+      await tagsApi.restoreCachedRelation(folder, filename, tag, true);
+      setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).includes(tag) ? (prev[key] ?? []) : [...(prev[key] ?? []), tag] }));
+      if (tag === tagName && removedBook) setBooks((prev) => prev.some((book) => book.folder === folder && book.filename === filename) ? prev : [...prev, removedBook]);
+      folderLibraryModel.get(folder).addTag(filename, tag);
+      const message = e instanceof Error ? e.message : '태그 삭제 실패';
+      setError(message);
+      setTagNotice({ message: `태그를 삭제하지 못했습니다. ${message}`, severity: 'error' });
+    } finally {
+      setTagMutation(null);
     }
-  }, [tagName]);
+  }, [books, tagMutation, tagName]);
 
   const openFolder = useCallback((folder: string, event: React.MouseEvent) => {
     event.preventDefault();
@@ -300,7 +352,7 @@ export default function TagPage() {
       {/* 태그 관리 다이얼로그 */}
       <Dialog
         open={!!tagDialog}
-        onClose={() => { setTagDialog(null); setTagInput(''); }}
+        onClose={() => { if (!tagMutation) { setTagDialog(null); setTagInput(''); } }}
         maxWidth="xs"
         fullWidth
       >
@@ -330,18 +382,24 @@ export default function TagPage() {
                       label={tag}
                       size="small"
                       variant="outlined"
-                      sx={{ borderColor: tag === tagName ? tagColor : undefined, color: tag === tagName ? tagColor : undefined }}
-                      onDelete={() => handleRemoveTag(tag)}
+                      sx={{
+                        borderColor: tagColors[tag] ?? '#22c55e',
+                        color: tagColors[tag] ?? '#22c55e',
+                        '& .MuiChip-deleteIcon': { color: tagColors[tag] ?? '#22c55e' },
+                      }}
+                      disabled={tagMutation !== null}
+                      onDelete={() => void handleRemoveTag(tag)}
                     />
                   ))
                 )}
               </Box>
               <Autocomplete
                 freeSolo
+                disabled={tagMutation !== null}
                 options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))}
                 inputValue={tagInput}
                 onInputChange={(_e, val) => setTagInput(val)}
-                onChange={(_e, val) => { if (val) handleAddTag(val); }}
+                onChange={(_e, val) => { if (val) void handleAddTag(val); }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -356,9 +414,19 @@ export default function TagPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setTagDialog(null); setTagInput(''); }}>닫기</Button>
+          <Button disabled={tagMutation !== null} onClick={() => { setTagDialog(null); setTagInput(''); }}>닫기</Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={tagNotice !== null}
+        autoHideDuration={tagNotice?.severity === 'info' ? null : 2600}
+        onClose={(_event, reason) => { if (reason !== 'clickaway') setTagNotice(null); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={tagNotice?.severity ?? 'info'} variant="filled" onClose={() => setTagNotice(null)}>
+          {tagNotice?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

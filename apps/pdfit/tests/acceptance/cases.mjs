@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fetchJson } from './lib/runtime.mjs';
 import { createPageNumberPdf } from './lib/pdf-fixtures.mjs';
 
@@ -94,8 +94,25 @@ async function dragByText(page, sourceText, targetText) {
   }, { sourceText, targetText });
 }
 
-async function uploadPdfFiles(page, files) {
-  await page.locator('input[type="file"]').setInputFiles(files);
+async function dropPdfFiles(page, files) {
+  const payload = await Promise.all(files.map(async (filePath) => ({
+    name: path.basename(filePath),
+    base64: (await readFile(filePath)).toString('base64'),
+  })));
+  const dataTransfer = await page.evaluateHandle((items) => {
+    const transfer = new DataTransfer();
+    for (const item of items) {
+      const bytes = Uint8Array.from(atob(item.base64), (character) => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], item.name, { type: 'application/pdf' }));
+    }
+    return transfer;
+  }, payload);
+  const dropZone = page.getByTestId('folder-drop-zone');
+  await dropZone.dispatchEvent('dragenter', { dataTransfer });
+  await page.getByTestId('pdf-drop-overlay').waitFor({ state: 'visible' });
+  await dropZone.dispatchEvent('dragover', { dataTransfer });
+  await dropZone.dispatchEvent('drop', { dataTransfer });
+  await dataTransfer.dispose();
 }
 
 async function tempPdf(root, browser, dirName, fileName, pages, label) {
@@ -134,7 +151,7 @@ export const A02 = {
   seed: seed(),
   run: async ({ page, baseUrl }) => {
     await openHome(page);
-    await assert.equal(await page.getByText('Settings').count(), 1);
+    await assert.equal(await page.getByRole('button', { name: 'Settings' }).count(), 1);
     const response = await page.request.get(`${baseUrl}/api/settings/ai-servers`);
     assert.equal(response.status(), 200);
   },
@@ -147,9 +164,8 @@ export const A03 = {
   seed: seed(),
   run: async ({ page, baseUrl }) => {
     await openHome(page);
-    await assert.deepEqual(await fetchJson(`${baseUrl}/api/folders`), []);
+    await assert.deepEqual((await fetchJson(`${baseUrl}/api/folders`)).filter((folder) => !folder.isRoot), []);
     await assert.deepEqual(await fetchJson(`${baseUrl}/api/tags`), []);
-    await waitText(page, 'Create a folder to start adding PDFs.');
     assert.equal(await page.locator('main a[href*="/viewer/"]').count(), 0);
   },
 };
@@ -180,11 +196,11 @@ export const B02 = {
   run: async ({ page }) => {
     await openFolder(page, 'delete-me');
     await waitText(page, 'PDF 0');
-    await acceptDialog(page);
-    await Promise.all([
-      page.waitForURL(/\/$/),
-      iconButton(page, 'DeleteIcon').click(),
-    ]);
+    await page.locator('main button:not([disabled])').filter({
+      has: page.locator('svg[data-testid="DeleteIcon"]'),
+    }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click();
+    await page.waitForURL(/\/$/);
     await waitText(page, 'PDFit');
   },
 };
@@ -211,7 +227,7 @@ export const B03 = {
 export const B04 = {
   id: 'B04',
   group: 'B',
-  title: 'PDF upload UI',
+  title: 'PDF drag-and-drop upload UI',
   seed: seed({
     folders: [{ name: 'uploads', files: [] }],
   }),
@@ -219,8 +235,7 @@ export const B04 = {
     await openFolder(page, 'uploads');
     const f1 = await tempPdf(root, browser, 'b04', 'page-1.pdf', 1, 'Upload One');
     const f2 = await tempPdf(root, browser, 'b04', 'page-3.pdf', 3, 'Upload Three');
-    await iconButton(page, 'UploadFileIcon').click();
-    await uploadPdfFiles(page, [f1, f2]);
+    await dropPdfFiles(page, [f1, f2]);
     await waitText(page, 'page-1.pdf');
     await waitText(page, 'page-3.pdf');
     await waitText(page, 'PDF 2');
@@ -236,7 +251,18 @@ export const B05 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openFolder(page, 'viewer-link');
-    const popup = await popupFromLink(page, 'sample.pdf');
+    const viewerLink = page.locator('a[href*="/viewer/"]', { hasText: 'sample.pdf' }).first();
+    assert.equal(await viewerLink.evaluate((element) => getComputedStyle(element).cursor), 'pointer');
+    const metadata = page.getByText(/MB · 수정:/).first();
+    assert.notEqual(await metadata.evaluate((element) => getComputedStyle(element).cursor), 'pointer');
+    const pageCountBeforeMetadataClick = page.context().pages().length;
+    await metadata.click();
+    await page.waitForTimeout(150);
+    assert.equal(page.context().pages().length, pageCountBeforeMetadataClick);
+    const popupPromise = page.context().waitForEvent('page');
+    await viewerLink.click();
+    const popup = await popupPromise;
+    await popup.waitForLoadState('domcontentloaded');
     await popup.waitForURL(/\/viewer\/viewer-link\/sample\.pdf/);
     await waitText(popup, 'sample.pdf');
     const response = await page.request.get(`${baseUrl}/api/folders/viewer-link/files/sample.pdf`);
@@ -318,15 +344,24 @@ export const C01 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openFolder(page, 'tag-folder');
-    await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tag: 'alpha' }),
+    await page.route('**/api/tags/book/tag-folder/tag.pdf*', async (route) => {
+      if (route.request().method() === 'POST' || route.request().method() === 'DELETE') {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      await route.continue();
     });
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '태그 관리' }).click();
+    await page.getByLabel('태그 추가').fill('alpha');
+    await page.getByLabel('태그 추가').press('Enter');
+    await waitText(page, '"alpha" 태그를 추가하는 중입니다…');
     await waitText(page, 'alpha');
+    await waitText(page, '"alpha" 태그가 추가되었습니다.');
     const tags = await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`);
     assert.deepEqual(tags, ['alpha']);
+    await page.locator('.MuiChip-root').filter({ hasText: 'alpha' }).locator('.MuiChip-deleteIcon').click();
+    await waitText(page, '"alpha" 태그를 삭제하는 중입니다…');
+    await waitText(page, '"alpha" 태그가 삭제되었습니다.');
+    assert.deepEqual(await fetchJson(`${baseUrl}/api/tags/book/tag-folder/tag.pdf`), []);
   },
 };
 
@@ -502,7 +537,7 @@ export const D04 = {
 export const D05 = {
   id: 'D05',
   group: 'D',
-  title: 'Viewer UI hide and show',
+  title: 'Viewer UI remains visible during reading interactions',
   seed: seed({
     folders: [{ name: 'viewer-ui', files: [{ name: 'ui.pdf', pages: 1 }] }],
   }),
@@ -510,10 +545,12 @@ export const D05 = {
     await openViewer(page, 'viewer-ui', 'ui.pdf');
     await page.keyboard.press('Space');
     await page.waitForTimeout(150);
-    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 0);
-    await page.keyboard.press('Space');
+    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 1);
+    const mainBox = await page.getByRole('main').boundingBox();
+    assert.notEqual(mainBox, null);
+    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(150);
-    await waitText(page, 'ui.pdf');
+    assert.equal(await page.locator(`svg[data-testid="NavigateBeforeIcon"]`).count(), 1);
   },
 };
 
@@ -526,7 +563,7 @@ export const E01 = {
     viewerStates: [{
       page: 3,
       scale: 1.5,
-      fitMode: 'none',
+      fitMode: 'width',
       viewMode: 'single',
       inverted: true,
       uiHidden: true,
@@ -537,15 +574,22 @@ export const E01 = {
   }),
   run: async ({ page, baseUrl }) => {
     await openViewer(page, 'viewer-state', 'state.pdf');
-    await page.waitForTimeout(1200);
-    const state = await fetchJson(`${baseUrl}/api/viewer-state/viewer-state/state.pdf`);
+    let state = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      state = await fetchJson(`${baseUrl}/api/viewer-state/viewer-state/state.pdf`);
+      if (state?.fitMode === 'none' && state.uiHidden === false) break;
+      await page.waitForTimeout(250);
+    }
+    assert.notEqual(state, null);
     assert.equal(state.page, 3);
-    assert.equal(state.scale, 1.5);
+    assert.equal(state.scale, 1.2);
     assert.equal(state.fitMode, 'none');
     assert.equal(state.viewMode, 'single');
     assert.equal(state.inverted, true);
-    assert.equal(state.uiHidden, true);
-    await assert.equal(await page.locator('svg[data-testid="NavigateBeforeIcon"]').count(), 0);
+    assert.equal(state.uiHidden, false);
+    assert.equal(await page.locator('svg[data-testid="NavigateBeforeIcon"]').count(), 1);
+    assert.equal(await iconButton(page, 'FitScreenIcon').getAttribute('class').then((value) => value?.includes('MuiIconButton-colorPrimary') ?? false), false);
+    assert.equal(await iconButton(page, 'HeightIcon').getAttribute('class').then((value) => value?.includes('MuiIconButton-colorPrimary') ?? false), false);
   },
 };
 
@@ -578,7 +622,11 @@ export const E03 = {
     folders: [{ name: 'sse', files: [{ name: 'sse.pdf', pages: 1 }] }],
   }),
   run: async ({ page, baseUrl }) => {
+    const eventStreamReady = page.waitForResponse((response) => (
+      response.url().endsWith('/api/events') && response.status() === 200
+    ));
     await openHome(page);
+    await eventStreamReady;
     await fetchJson(`${baseUrl}/api/folders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -613,7 +661,8 @@ export const E05 = {
   }),
   run: async ({ baseUrl }) => {
     await fetchJson(`${baseUrl}/api/folders/purge-folder`, { method: 'DELETE' });
-    assert.deepEqual(await fetchJson(`${baseUrl}/api/folders`), []);
+    const folders = await fetchJson(`${baseUrl}/api/folders`);
+    assert.deepEqual(folders.filter((folder) => !folder.isRoot), []);
   },
 };
 
@@ -736,14 +785,13 @@ export const F03 = {
     await page.mouse.click(mainBox.x + mainBox.width / 6, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 캡처' }).click();
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 1);
+    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
     await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 캡처' }).click();
-    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
-    await page.waitForTimeout(120);
-    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);
     await page.keyboard.press('Space');
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
@@ -761,12 +809,84 @@ export const F03 = {
     assert.equal(state.inverted, true);
     assert.equal(state.uiHidden, false);
 
-    await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
-    await page.waitForTimeout(1000);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(600);
-    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 0);
+    assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
     assert.match(await page.locator('canvas').first().evaluate((element) => getComputedStyle(element).filter), /invert/i);
+  },
+};
+
+export const F04 = {
+  id: 'F04',
+  group: 'F',
+  title: 'Always-available bookmark capture and fresh delete affordance',
+  seed: seed({
+    folders: [{ name: 'viewer-bookmark-always', files: [{ name: 'bookmark-always.pdf', pages: 2 }] }],
+  }),
+  run: async ({ page }) => {
+    await openViewer(page, 'viewer-bookmark-always', 'bookmark-always.pdf');
+    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
+
+    const canvas = page.locator('canvas').first();
+    const canvasBox = await canvas.boundingBox();
+    assert.notEqual(canvasBox, null);
+    const start = { x: canvasBox.x + canvasBox.width * 0.2, y: canvasBox.y + canvasBox.height * 0.2 };
+    const end = { x: start.x + 16, y: start.y + 16 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 5 });
+    await page.getByTestId('bookmark-drag-preview').waitFor({ state: 'visible' });
+    const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
+    await page.mouse.up();
+    assert.equal((await createdResponse).ok(), true);
+    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
+
+    const overlay = page.getByTestId('bookmark-page-overlay').first();
+    await overlay.waitFor({ state: 'visible' });
+    const deleteButton = overlay.getByTestId('bookmark-overlay-delete');
+    assert.ok(Number(await deleteButton.evaluate((element) => getComputedStyle(element).opacity)) > 0.9);
+    await page.waitForFunction((element) => Number(getComputedStyle(element).opacity) < 0.6, await deleteButton.elementHandle(), { timeout: 7000 });
+
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByTestId('bookmark-card').count(), 1);
+    await deleteButton.click();
+    await overlay.waitFor({ state: 'detached' });
+  },
+};
+
+export const F05 = {
+  id: 'F05',
+  group: 'F',
+  title: 'Legacy fallback bookmark capture and sidebar control',
+  seed: seed({
+    folders: [{ name: 'viewer-bookmark-legacy', files: [{ name: 'bookmark-legacy.pdf', pages: 2 }] }],
+  }),
+  run: async ({ page }) => {
+    await page.goto('/viewer/viewer-bookmark-legacy/bookmark-legacy.pdf?engine=legacy', { waitUntil: 'domcontentloaded' });
+    await waitText(page, 'bookmark-legacy.pdf');
+    const canvas = page.locator('[data-pdf-page] canvas').first();
+    await canvas.waitFor({ state: 'visible' });
+    await page.getByTestId('legacy-bookmark-sidebar-toggle').waitFor({ state: 'visible' });
+
+    const canvasBox = await canvas.boundingBox();
+    assert.notEqual(canvasBox, null);
+    const start = { x: canvasBox.x + 30, y: canvasBox.y + 30 };
+    const end = { x: start.x + 20, y: start.y + 20 };
+    const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 4 });
+    await page.getByTestId('legacy-bookmark-drag-preview').waitFor({ state: 'visible' });
+    await page.mouse.up();
+    assert.equal((await createdResponse).ok(), true);
+    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'visible' });
+
+    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
+    assert.equal(await page.getByTestId('legacy-bookmark-card').count(), 1);
+    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
+    await page.getByTestId('legacy-bookmark-delete').click();
+    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'detached' });
   },
 };
 
@@ -776,5 +896,5 @@ export const CASES = [
   C01, C02, C03, C04,
   D01, D02, D03, D04, D05,
   E01, E02, E03, E04, E05, E06,
-  F01, F02, F03,
+  F01, F02, F03, F04, F05,
 ];

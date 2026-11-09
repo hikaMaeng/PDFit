@@ -1,38 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Divider,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  IconButton,
-  LinearProgress,
-  Slider,
-  Switch,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import ZoomInIcon from '@mui/icons-material/ZoomIn';
-import ZoomOutIcon from '@mui/icons-material/ZoomOut';
-import ViewStreamIcon from '@mui/icons-material/ViewStream';
-import CropPortraitIcon from '@mui/icons-material/CropPortrait';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import FitScreenIcon from '@mui/icons-material/FitScreen';
-import HeightIcon from '@mui/icons-material/Height';
-import InvertColorsIcon from '@mui/icons-material/InvertColors';
-import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { Alert, Box, LinearProgress, Typography } from '@mui/material';
 import {
   createPdfDocumentEngine,
   createPdfGpuViewer,
@@ -50,6 +17,15 @@ import {
   viewerModeParts,
 } from '@pdfgpu/core';
 import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
+import { AnnotationLayer } from './AnnotationLayer.js';
+import { usePdfAnnotations } from './usePdfAnnotations.js';
+import { ViewerToolbar } from './ViewerToolbar.js';
+import { BookmarkSidebar } from './BookmarkSidebar.js';
+import { BookmarkEditorDialog } from './BookmarkEditorDialog.js';
+import { BookmarkOverlayLayer } from './BookmarkOverlayLayer.js';
+import { usePdfBookmarks } from './usePdfBookmarks.js';
+import { AnnotationControls } from './AnnotationControls.js';
+import { usePdfPan } from './usePdfPan.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -66,12 +42,10 @@ type Props = {
   onUnavailable?: () => void;
   uiHidden?: boolean;
   bookmarks?: BookmarkRecord[];
-  onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<void>;
+  onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
 };
-
-const BOOKMARK_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#a855f7'];
 
 const EMPTY_STATE: PdfGpuViewerState = {
   backend: 'unsupported',
@@ -122,15 +96,11 @@ export default function PdfGpuViewer({
   const viewportRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
+  const annotation = usePdfAnnotations(url);
+  const bookmark = usePdfBookmarks({ enabled: annotation.tool === 'bookmark', controller, onCaptured: onBookmarkCaptured, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
+  const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
-  const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
-  const captureStartRef = useRef<{ x: number; y: number } | null>(null);
-  const [captureDrag, setCaptureDrag] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
-  const [captureBusy, setCaptureBusy] = useState(false);
-  const [editingBookmark, setEditingBookmark] = useState<BookmarkRecord | null>(null);
-  const [bookmarkDraft, setBookmarkDraft] = useState<UpdateBookmarkRequest>({});
-  const [deletingBookmarkId, setDeletingBookmarkId] = useState<string | null>(null);
   const initialViewAppliedRef = useRef<{
     controller: PdfGpuViewerController;
     page: number | null | undefined;
@@ -198,6 +168,7 @@ export default function PdfGpuViewer({
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : 'WebGPU PDF viewer initialization failed';
+        console.error('[pdfit] PDFGPU viewer unavailable; using PDF.js fallback', { message, documentUrl: url });
         setInitError(message);
         onUnavailable?.();
       }
@@ -215,6 +186,10 @@ export default function PdfGpuViewer({
   useEffect(() => {
     if (!state.activePage) return;
     setPageInput(String(state.activePage));
+  }, [state.activePage]);
+
+  useEffect(() => {
+    if (!state.activePage) return;
     const legacyState: Omit<ViewerStatePayload, 'uiHidden'> = {
       page: state.activePage,
       scale: state.zoom,
@@ -263,72 +238,20 @@ export default function PdfGpuViewer({
     }
   }, [controller, goToPage, initialPage, initialScrollTop, state.loadPhase]);
 
-  const submitPageInput = useCallback(() => {
-    const page = Number.parseInt(pageInput, 10);
+  const submitPageInput = useCallback((value: string) => {
+    const page = Number.parseInt(value, 10);
     if (Number.isFinite(page)) goToPage(page);
     else setPageInput(String(currentPage));
-  }, [currentPage, goToPage, pageInput]);
+  }, [currentPage, goToPage]);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!bookmarkPanelOpen || event.button !== 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const start = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    captureStartRef.current = start;
-    setCaptureDrag({ start, end: start });
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, [bookmarkPanelOpen]);
-
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const start = captureStartRef.current;
-    if (!start) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setCaptureDrag({ start, end: { x: event.clientX - rect.left, y: event.clientY - rect.top } });
-  }, []);
-
-  const handlePointerUp = useCallback(async (event: React.PointerEvent<HTMLDivElement>) => {
-    const start = captureStartRef.current;
-    captureStartRef.current = null;
-    setCaptureDrag(null);
-    if (!start || !controller) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setCaptureBusy(true);
-    try {
-      const capture = await controller.captureRegion(start, { x: event.clientX - rect.left, y: event.clientY - rect.top });
-      await onBookmarkCaptured?.(capture);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bookmark capture failed';
-      if (message.includes('high-resolution')) window.dispatchEvent(new CustomEvent('pdfit-snackbar', { detail: 'High-resolution capture is loading…' }));
-    } finally {
-      setCaptureBusy(false);
-    }
-  }, [controller, onBookmarkCaptured]);
-
-  const openBookmarkEditor = useCallback((bookmark: BookmarkRecord) => {
-    setEditingBookmark(bookmark);
-    setBookmarkDraft({ borderColor: bookmark.borderColor, fillColor: bookmark.fillColor, fillOpacity: bookmark.fillOpacity, comment: bookmark.comment });
-  }, []);
-
-  const saveBookmarkEditor = useCallback(async () => {
-    if (!editingBookmark || !onBookmarkUpdated) return;
-    await onBookmarkUpdated(editingBookmark.id, bookmarkDraft);
-    setEditingBookmark(null);
-  }, [bookmarkDraft, editingBookmark, onBookmarkUpdated]);
-
-  const deleteBookmarkItem = useCallback(async (id: string) => {
-    if (!onBookmarkDeleted || deletingBookmarkId) return;
-    setDeletingBookmarkId(id);
-    try {
-      await onBookmarkDeleted(id);
-    } finally {
-      setDeletingBookmarkId(null);
-    }
-  }, [deletingBookmarkId, onBookmarkDeleted]);
-
-  const toggleViewMode = useCallback((_event: React.MouseEvent<HTMLElement>, next: 'scroll' | 'single' | 'double' | null) => {
-    if (!next || !controller) return;
+  const toggleViewMode = useCallback((next: 'scroll' | 'single' | 'double') => {
+    if (!controller) return;
     const parts = viewerModeParts(next);
     controller.setScrollMode(parts.scrollMode);
     controller.setViewMode(parts.viewMode);
+    // A scroll-mode-only transition does not rebuild @pdfgpu/core's layout.
+    // Reapplying the current fit mode makes page positions match the new mode.
+    controller.setFitMode(controller.getState().fitMode);
   }, [controller]);
 
   if (initError) {
@@ -338,34 +261,7 @@ export default function PdfGpuViewer({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {!uiHidden && (
-        <Box
-          role="toolbar"
-          aria-label="viewer controls"
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 2, py: 0.5, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}
-        >
-          <Tooltip title="이전 페이지" arrow><span><IconButton size="small" aria-label="이전 페이지" title="이전 페이지" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}><NavigateBeforeIcon fontSize="small" /></IconButton></span></Tooltip>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <TextField size="small" value={pageInput} onChange={(event) => setPageInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitPageInput(); }} onBlur={submitPageInput} inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': 'page number' }} />
-            <Typography variant="caption" color="text.secondary">/ {state.pageCount}</Typography>
-          </Box>
-          <Tooltip title="다음 페이지" arrow><span><IconButton size="small" aria-label="다음 페이지" title="다음 페이지" onClick={() => goToPage(currentPage + 1)} disabled={!state.pageCount || currentPage >= state.pageCount}><NavigateNextIcon fontSize="small" /></IconButton></span></Tooltip>
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-          <Tooltip title="축소" arrow><span><IconButton size="small" onClick={() => controller?.zoomOut()}><ZoomOutIcon fontSize="small" /></IconButton></span></Tooltip>
-          <Typography variant="caption" sx={{ minWidth: 40, textAlign: 'center', color: 'text.secondary' }}>{Math.round(state.zoom * 100)}%</Typography>
-          <Tooltip title="확대" arrow><span><IconButton aria-label="확대" size="small" onClick={() => controller?.zoomIn()}><ZoomInIcon fontSize="small" /></IconButton></span></Tooltip>
-          <Tooltip title="가로 너비 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitWidth()} color={state.fitMode === 'width' ? 'primary' : 'default'}><FitScreenIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="세로 높이 맞춤" arrow><IconButton size="small" onClick={() => controller?.fitHeight()} color={state.fitMode === 'height' ? 'primary' : 'default'}><HeightIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="색상 반전" arrow><IconButton size="small" onClick={onToggleInverted} color={inverted ? 'primary' : 'default'}><InvertColorsIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="북마크 캡처" arrow><IconButton aria-label="북마크 캡처" title="북마크 캡처" size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}><BookmarkAddIcon fontSize="small" /></IconButton></Tooltip>
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-          <ToggleButtonGroup size="small" value={state.scrollMode === 'continuous' ? 'scroll' : state.viewMode === 'spread' ? 'double' : 'single'} exclusive onChange={toggleViewMode} sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}>
-            <ToggleButton value="scroll"><Tooltip title="연속 스크롤" arrow><ViewStreamIcon fontSize="small" /></Tooltip></ToggleButton>
-            <ToggleButton value="single"><Tooltip title="한 페이지 보기" arrow><CropPortraitIcon fontSize="small" /></Tooltip></ToggleButton>
-            <ToggleButton value="double"><Tooltip title="두 페이지 보기" arrow><MenuBookIcon fontSize="small" /></Tooltip></ToggleButton>
-          </ToggleButtonGroup>
-          <Box sx={{ flex: 1 }} />
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>Space: UI 숨기기</Typography>
-        </Box>
+        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onViewModeChange={toggleViewMode} />
       )}
 
       <Box role="status" aria-label="viewer status" sx={{ position: 'absolute', width: '1px', height: '1px', minWidth: '1px', maxWidth: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }}>
@@ -379,72 +275,16 @@ export default function PdfGpuViewer({
         </Box>
       ) : null}
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {bookmarkPanelOpen && (
-          <Box component="aside" aria-label="Book bookmarks" sx={{ width: 220, flexShrink: 0, overflowY: 'auto', bgcolor: '#242426', borderRight: '1px solid rgba(255,255,255,.08)', p: 1 }}>
-            <Typography variant="caption" sx={{ display: 'block', color: 'grey.400', px: 0.5, pb: 0.75 }}>Book bookmarks</Typography>
-            {bookmarks.length === 0 ? <Typography variant="caption" color="grey.600" sx={{ px: 0.5 }}>Drag on a page to capture.</Typography> : bookmarks.map((bookmark) => (
-              <Box data-testid="bookmark-card" component="article" role="button" tabIndex={0} key={bookmark.id} onClick={() => openBookmarkEditor(bookmark)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openBookmarkEditor(bookmark); } }} sx={{ display: 'block', width: '100%', mb: 1, p: 0, textAlign: 'left', cursor: 'pointer', border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: '#303034' }}>
-                <Box sx={{ height: 92, bgcolor: bookmark.fillColor ?? '#161618', position: 'relative' }}>
-                  <Box component="img" src={bookmark.imageUrl} alt="" sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#161618' }} />
-                  {bookmark.fillColor && <Box sx={{ position: 'absolute', inset: 0, bgcolor: bookmark.fillColor, opacity: bookmark.fillOpacity, pointerEvents: 'none' }} />}
-                  <IconButton data-testid="viewer-bookmark-card-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, opacity: 0.4, bgcolor: 'rgba(10,10,12,.72)', '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.92)' } }}>
-                    {deletingBookmarkId === bookmark.id ? <CircularProgress size={16} /> : <DeleteOutlineIcon sx={{ fontSize: 18 }} />}
-                  </IconButton>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.75, py: 0.5 }}>
-                  {bookmark.fillColor && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: bookmark.fillColor, flexShrink: 0 }} />}
-                  <Typography variant="caption" noWrap sx={{ flex: 1, color: 'grey.200' }}>p. {bookmark.pageIndex + 1}</Typography>
-                  <Tooltip title="북마크 페이지로 이동" arrow>
-                    <IconButton data-testid="bookmark-card-go-to-page" aria-label="북마크 페이지로 이동" size="small" onClick={(event) => { event.stopPropagation(); goToPage(bookmark.pageIndex + 1); }} sx={{ p: 0.25, color: 'grey.300', '&:hover': { color: 'primary.main', bgcolor: 'rgba(255,255,255,.08)' } }}>
-                      <ArrowForwardIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-                {bookmark.comment && <Typography variant="caption" noWrap sx={{ display: 'block', px: 0.75, pb: 0.5, color: 'grey.400' }}>{bookmark.comment}</Typography>}
-              </Box>
-            ))}
-          </Box>
-        )}
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-          <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, px: 2, filter: inverted ? 'invert(1)' : 'none' }} />
-          <Box data-testid="bookmark-overlay-layer" sx={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
-            {overlayProjections.map((overlay, index) => {
-              const bookmark = visibleOverlayBookmarks[index];
-              return (
-              <Tooltip key={`${overlay.pageIndex}-${index}`} title={overlay.comment ?? ''} disableHoverListener={!overlay.comment}>
-                <Box data-testid="bookmark-page-overlay" sx={{ position: 'absolute', left: overlay.left, top: overlay.top, width: overlay.width, height: overlay.height, boxSizing: 'border-box', border: `2px solid ${overlay.borderColor}`, pointerEvents: bookmark ? 'auto' : overlay.comment ? 'auto' : 'none', zIndex: 2 }}>
-                  {overlay.fillColor && <Box sx={{ position: 'absolute', inset: 0, bgcolor: overlay.fillColor, opacity: overlay.fillOpacity ?? 0.2, pointerEvents: 'none' }} />}
-                  {bookmark && <IconButton data-testid="bookmark-overlay-delete" aria-label="북마크 삭제" title="북마크 삭제" size="small" color="error" disabled={deletingBookmarkId === bookmark.id} onClick={(event) => { event.stopPropagation(); void deleteBookmarkItem(bookmark.id); }} sx={{ position: 'absolute', top: 2, right: 2, p: 0.2, opacity: 0.4, bgcolor: 'rgba(10,10,12,.55)', zIndex: 3, '&:hover': { opacity: 0.9, bgcolor: 'rgba(10,10,12,.82)' } }}>
-                    {deletingBookmarkId === bookmark.id ? <CircularProgress size={16} /> : <DeleteOutlineIcon sx={{ fontSize: 18 }} />}
-                  </IconButton>}
-                </Box>
-              </Tooltip>
-            );
-            })}
-            {bookmarkPanelOpen && <Box data-testid="bookmark-capture-surface" data-viewer-center-toggle-ignore="true" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => void handlePointerUp(event)} onPointerCancel={() => { captureStartRef.current = null; setCaptureDrag(null); }} sx={{ position: 'absolute', inset: 0, zIndex: 1, cursor: 'crosshair', pointerEvents: 'auto' }}>
-              {captureDrag && <Box data-testid="bookmark-drag-preview" sx={{ position: 'absolute', left: Math.min(captureDrag.start.x, captureDrag.end.x), top: Math.min(captureDrag.start.y, captureDrag.end.y), width: Math.abs(captureDrag.end.x - captureDrag.start.x), height: Math.abs(captureDrag.end.y - captureDrag.start.y), boxSizing: 'border-box', border: '2px dashed #f59e0b', bgcolor: 'rgba(245, 158, 11, 0.18)' }} />}
-            </Box>}
-          </Box>
+        {bookmark.panelOpen && <BookmarkSidebar bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
+        <Box data-testid="bookmark-capture-surface" sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onWheel={annotation.tool === 'select' ? pan.wheel : undefined} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
+          <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: '#3a3a3a', py: 3, filter: inverted ? 'invert(1)' : 'none' }} />
+          {!uiHidden && <AnnotationControls tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+          <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={state.visiblePages} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
+          <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
         </Box>
       </Box>
-      {captureBusy && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: 'rgba(30,30,30,.9)', color: 'grey.200', fontSize: 12 }}>High-resolution capture loading…</Box>}
-      <Dialog data-testid="bookmark-editor" open={Boolean(editingBookmark)} onClose={() => setEditingBookmark(null)} fullWidth maxWidth="xs">
-        <DialogTitle>북마크 수정</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
-          <Box>
-            <Typography variant="body2" sx={{ mb: 1 }}>외곽선 색상</Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>{BOOKMARK_COLORS.map((color) => <Box data-testid={`bookmark-border-color-${color.slice(1)}`} component="button" type="button" key={color} onClick={() => setBookmarkDraft((draft) => ({ ...draft, borderColor: color }))} sx={{ width: 26, height: 26, borderRadius: '50%', border: bookmarkDraft.borderColor === color ? '3px solid #111' : '1px solid #ddd', bgcolor: color, cursor: 'pointer' }} />)}</Box>
-          </Box>
-          <FormControlLabel control={<Switch checked={Boolean(bookmarkDraft.fillColor)} onChange={(_, checked) => setBookmarkDraft((draft) => ({ ...draft, fillColor: checked ? draft.fillColor ?? '#f59e0b' : null }))} />} label="내부 칠색상" />
-          {bookmarkDraft.fillColor && <Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>{BOOKMARK_COLORS.map((color) => <Box data-testid={`bookmark-fill-color-${color.slice(1)}`} component="button" type="button" key={color} onClick={() => setBookmarkDraft((draft) => ({ ...draft, fillColor: color }))} sx={{ width: 26, height: 26, borderRadius: '50%', border: bookmarkDraft.fillColor === color ? '3px solid #111' : '1px solid #ddd', bgcolor: color, cursor: 'pointer' }} />)}</Box>
-            <Typography variant="body2">칠 투명도</Typography>
-            <Slider value={bookmarkDraft.fillOpacity ?? 0.2} min={0} max={1} step={0.05} valueLabelDisplay="auto" onChange={(_, value) => setBookmarkDraft((draft) => ({ ...draft, fillOpacity: value as number }))} />
-          </Box>}
-          <TextField label="코멘트" value={bookmarkDraft.comment ?? ''} onChange={(event) => setBookmarkDraft((draft) => ({ ...draft, comment: event.target.value || null }))} multiline minRows={3} />
-        </DialogContent>
-        <DialogActions><Button onClick={() => setEditingBookmark(null)}>취소</Button><Button variant="contained" onClick={() => void saveBookmarkEditor()}>저장</Button></DialogActions>
-      </Dialog>
+      {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? '북마크를 저장하는 중입니다…'}</Box>}
+      <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />
     </Box>
   );
 }

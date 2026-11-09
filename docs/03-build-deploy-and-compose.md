@@ -3,6 +3,7 @@
 | Surface | Path | Service | Port |
 | --- | --- | --- | --- |
 | Integrated app | `apps/pdfit/dist` | `pdfit` | `15201` |
+| Hosted service | `apps/service/dist` | `service` | `15202` |
 
 ## Commands
 
@@ -10,6 +11,8 @@
 | --- | --- |
 | `npm run build` | Build the shared package and integrated app |
 | `npm run deploy` | Build locally, recreate `pdfit`, and verify health |
+| `npm run deploy:service` | Build locally and recreate the hosted `service` container |
+| `npm run verify:service-parity` | Check hosted-service alignment with the Docker PDFit release |
 | `npm run verify:repo` | Repository and Compose contract checks |
 | `npm run verify:pdfit` | Integrated artifact, UI, Settings API, and viewer checks |
 

@@ -69,12 +69,66 @@ API remains the shared source of truth.
 
 `front/components/PdfGpuViewer/index.tsx` keeps the persistent bookmark list in
 `front/model/bookmarkModel.ts`; a drag rectangle and edit draft are transient UI
-state only. The adapter passes PDF-point absolute rectangles to
+state only. Region capture is always available on the page surface; the toolbar
+bookmark control is always rendered as a labeled `북마크` button and changes
+only the visibility of the bookmark sidebar. A newly
+created bookmark temporarily emphasizes its delete affordance before fading to
+the normal resting opacity. The UI and PDFGPU capture engine share an 8-pixel
+minimum drag threshold, and capture success or failure is always surfaced in the
+viewer. If a remote/Drive-backed page is still rendering its detail raster, the
+capture waits for detail readiness and retries once instead of dropping the
+gesture before the metadata request. The adapter passes PDF-point absolute rectangles to
 `PdfGpuViewerController.projectOverlays()`. PDFGPU normalizes them using each
 manifest page's point size and returns projections for visible pages only.
+If PDFGPU initialization fails, the shared PDF.js fallback keeps the same icon-only
+bookmark sidebar control, always-on region capture, overlays, deletion, and API
+callbacks. `?engine=legacy` selects that path explicitly for deterministic browser
+verification.
 The React overlay is a sibling of the PDFGPU-owned viewport because the core
 controller owns and replaces the viewport's child DOM.
 
 Bookmark assets are served from the current sibling `books/bookmarks` directory
 with the historical `data/bookmarks` directory as a read-only fallback. New
 captures are stored only at the current location.
+
+## Hosted IndexedDB cache
+
+The optional browser cache owns `meta`, `folders`, `pdfs`, `tags`, `pdfTags`,
+`bookmarks`, `progress`, `viewerStates`, and `syncState`. A schema-versioned hydration
+marker makes subsequent service loads read locally. Cache replacement uses one read-write
+transaction so the UI never observes a partially hydrated snapshot.
+
+PDF list projections retain each row's `driveFileId`. Folder navigation places that ID
+in the viewer URL, and the viewer chooses `/api/folders/by-id/:driveFileId` for PDF bytes.
+The folder/name URL remains a compatibility fallback only when no ID is available. The
+hosted adapter can therefore serve repeated PDF Range reads without rebuilding a Drive
+snapshot or searching by mutable names.
+
+## Direct resumable upload
+
+The hosted client first validates the `%PDF-` signature, requests a metadata-only remote
+session, and uploads sequential 8 MiB chunks from `File` slices. A network interruption
+causes an empty status PUT; the next offset always comes from the remote `Range` response.
+One expired session may be recreated. Multiple selected files share aggregate progress and
+the IndexedDB snapshot is invalidated only after every completed file has been verified by
+the service. Local adapters continue using the multipart endpoint.
+
+## Hosted incremental refresh
+
+The common browser refresh contract remains `POST /api/folders/refresh`; hosted storage
+implements it with a Spreadsheet `changePageToken`. After the server applies all Drive
+change pages, the browser invalidates and atomically rehydrates IndexedDB. Local filesystem
+refresh behavior is unchanged.
+
+## Hosted metadata outbox
+
+Hosted tag, bookmark, progress, and viewer-state mutations are written to the separate
+`pdfit-metadata-outbox-{account}` IndexedDB before their HTTP request begins. A successful
+response removes the exact operation; a terminal 4xx response also removes it and restores
+the authoritative cache. Network and 5xx failures remain durable for startup/online retry.
+Coalescing keys retain only the latest progress, viewer state, tag relation, color, or edit
+intent. Bookmark creation instead retains its UUID operation ID so a repeated request maps
+to the same service-side bookmark and Drive image identities.
+
+The outbox is a narrow partial-failure bridge, not a general reconciliation engine. It does
+not scan Drive for orphan images or delete remotely unreferenced data.

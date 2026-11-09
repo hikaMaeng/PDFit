@@ -2,11 +2,13 @@ import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeOptions } from '@mui/material/styles';
 import type { PdfitLanguage, PdfitLanguagePreferenceModel } from './model/languagePreference.js';
+import type { PdfitMetadataCacheOptions } from './cache/metadataCache.js';
 
 export interface PdfitSidebarItem {
   label: string;
   icon: ReactNode;
   path: string;
+  placement?: 'header' | 'primary';
 }
 
 export interface PdfitFrontExtension {
@@ -23,6 +25,7 @@ export interface PdfitFrontExtension {
     selectorLabel: (language: PdfitLanguage) => string;
     menuLabel: (language: PdfitLanguage) => string;
   };
+  metadataCache?: PdfitMetadataCacheOptions;
 }
 
 export interface PdfitFrontRuntimeConfig {
@@ -34,6 +37,7 @@ export interface PdfitFrontRuntimeConfig {
   navigationGuard?: (path: string) => string;
   themeOptions?: ThemeOptions;
   languagePreference?: PdfitFrontExtension['languagePreference'];
+  metadataCache?: PdfitMetadataCacheOptions;
 }
 
 const PdfitFrontContext = createContext<PdfitFrontRuntimeConfig>({

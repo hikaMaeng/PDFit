@@ -1,8 +1,48 @@
-import React, { Suspense } from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
+import React, { Component, Suspense, type ErrorInfo, type ReactNode } from 'react';
+import { Box, Button, CircularProgress, IconButton, Stack, Typography } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Outlet } from 'react-router-dom';
 import LNB from './LNB';
+
+class RouteContentBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('PDFit route rendering failed.', error, info);
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <Stack minHeight="60vh" alignItems="center" justifyContent="center" spacing={2} textAlign="center">
+          <Typography variant="h6">화면을 불러오지 못했습니다.</Typography>
+          <Typography color="text.secondary">페이지를 새로고침한 뒤 다시 시도해 주세요.</Typography>
+          <Button variant="contained" onClick={() => window.location.reload()}>
+            새로고침
+          </Button>
+        </Stack>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function RouteLoadingState() {
+  return (
+    <Stack minHeight="60vh" alignItems="center" justifyContent="center" spacing={2}>
+      <CircularProgress size={32} />
+      <Typography color="text.secondary">화면을 불러오는 중입니다.</Typography>
+    </Stack>
+  );
+}
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -30,9 +70,11 @@ export default function Layout() {
           <Typography variant="subtitle1" fontWeight={700}>PDFit</Typography>
         </Box>
         <Box sx={{ width: '100%', maxWidth: 1680, mx: 'auto' }}>
-          <Suspense fallback={null}>
-            <Outlet />
-          </Suspense>
+          <RouteContentBoundary>
+            <Suspense fallback={<RouteLoadingState />}>
+              <Outlet />
+            </Suspense>
+          </RouteContentBoundary>
         </Box>
       </Box>
     </Box>

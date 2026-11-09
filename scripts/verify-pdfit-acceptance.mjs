@@ -4,8 +4,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = process.cwd();
-const baseUrl = getArgValue('--base-url') ?? 'http://127.0.0.1:15201';
-const reportPath = getArgValue('--report') ?? defaultReportPath();
+const baseUrl = getArgValue('--base-url') ?? process.env.PDFIT_ACCEPTANCE_BASE_URL ?? 'http://127.0.0.1:15201';
+const reportPath = getArgValue('--report') ?? process.env.PDFIT_ACCEPTANCE_REPORT_PATH ?? defaultReportPath();
 const caseFilter = getArgValue('--case');
 const groupFilter = getArgValue('--group');
 
