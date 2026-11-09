@@ -39,7 +39,7 @@ npm install https://github.com/hikaMaeng/PDFit.git#v0.4.4
 npx pdfit
 ```
 
-The command asks for the PDF library root. Pass it as an argument to skip the prompt, for example `npx pdfit /path/to/pdfs`; the path may be Windows, macOS, or Linux. The launcher runs the official Docker deployment and mounts that folder at `/app/data/books`. Use `npx pdfit --help` for the command syntax.
+The command asks for the PDF library root. Pass it as an argument to skip the prompt, for example `npx pdfit /path/to/pdfs`; the path may be Windows, macOS, or Linux. The launcher runs `npm run deploy:standalone`, binds that folder at `/app/data/books`, and opens `http://127.0.0.1:15203`. Use `npx pdfit --help` for the command syntax.
 
 ### Repository development
 
@@ -47,5 +47,5 @@ The command asks for the PDF library root. Pass it as an argument to skip the pr
 git clone https://github.com/hikaMaeng/PDFit.git
 cd PDFit
 npm install
-npm run deploy
+npm run deploy:standalone
 ```

@@ -10,6 +10,24 @@ if (existsSync('.env')) {
   }
 }
 
+// `npx pdfit` binds a host folder instead of an external Docker volume.
+const booksSource = process.env.PDFIT_BOOKS_SOURCE;
+if (booksSource && booksSource !== 'books') {
+  const { statSync, readdirSync } = await import('node:fs');
+  let isDirectory = false;
+  try { isDirectory = statSync(booksSource).isDirectory(); } catch { isDirectory = false; }
+  if (!isDirectory) {
+    console.error(`[pdfit] PDFIT_BOOKS_SOURCE is not a directory: ${booksSource}`);
+    process.exit(1);
+  }
+  const countPdfs = (directory) => readdirSync(directory, { withFileTypes: true }).reduce((total, entry) => {
+    if (entry.isDirectory()) return total + countPdfs(`${directory}/${entry.name}`);
+    return total + (entry.isFile() && entry.name.toLowerCase().endsWith('.pdf') ? 1 : 0);
+  }, 0);
+  console.log(`[pdfit] Host library folder ready: ${booksSource} (${countPdfs(booksSource)} PDFs)`);
+  process.exit(0);
+}
+
 const volume = process.env.PDFIT_BOOKS_VOLUME ?? 'linker-models';
 const subpath = process.env.PDFIT_BOOKS_SUBPATH ?? 'bside/이북';
 const smbHost = process.env.PDFIT_SMB_HOST;

@@ -44,10 +44,18 @@ try {
     .map((canvas) => {
       const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       const colors = new Set();
-      for (let offset = 0; offset < data.length; offset += 4 * 97) colors.add(`${data[offset] >> 4}-${data[offset + 1] >> 4}-${data[offset + 2] >> 4}`);
-      return { width: canvas.width, height: canvas.height, sampledColors: colors.size };
+      let nonWhite = 0;
+      let samples = 0;
+      for (let offset = 0; offset < data.length; offset += 4 * 97) {
+        samples += 1;
+        colors.add(`${data[offset] >> 4}-${data[offset + 1] >> 4}-${data[offset + 2] >> 4}`);
+        if (data[offset] < 240 || data[offset + 1] < 240 || data[offset + 2] < 240) nonWhite += 1;
+      }
+      const center = ((canvas.height >> 1) * canvas.width + (canvas.width >> 1)) * 4;
+      return { width: canvas.width, height: canvas.height, sampledColors: colors.size, nonWhiteRatio: Number((nonWhite / samples).toFixed(3)), centerRgb: [data[center], data[center + 1], data[center + 2]] };
     }));
-  assert.ok(covers.every((cover) => cover.sampledColors > 1), 'rendered covers must not be blank canvases');
+  // An undrawn canvas stays white; a single-colour page is still a rendered cover.
+  assert.ok(covers.every((cover) => cover.nonWhiteRatio > 0), 'rendered covers must contain drawn (non-white) pixels');
 
   const firstCard = (await grid.getByTestId('pdf-cover-card').first().innerText()).replace(/\n+/g, ' | ');
   const storedView = await page.evaluate(() => localStorage.getItem('pdfit.library.view'));

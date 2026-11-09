@@ -35,6 +35,20 @@ Compose uses the module-owned `apps/pdfit/docker/Dockerfile` for `pdfit`.
 The `pdfit` service binds `127.0.0.1` and `PDFIT_LAN_BIND_ADDRESS` (default
 `192.168.0.5`). Docker refuses to start when that address is not assigned to the
 host, so set it in the local `.env` to this host's IPv4 address (see `ipconfig`).
+`npx pdfit` uses that value when set and otherwise detects the host's first
+private IPv4 address.
+
+## Path variables
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `PDFIT_BOOKS_SOURCE` | `books` (external volume `PDFIT_BOOKS_VOLUME`) | A host folder path bind-mounts that folder at `/app/data/books`; `npx pdfit` sets it |
+| `PDFIT_DATA_PATH` | `./apps/pdfit/docker/volumes/data` | Host folder for `/app/data` (PostgreSQL and backups) |
+| `PDFIT_BOOKMARKS_PATH` | `./apps/pdfit/docker/volumes/data/bookmarks` | Host folder for bookmark JPEGs |
+
+Two Compose projects must never share one `PDFIT_DATA_PATH`: both containers would
+start PostgreSQL on the same data directory. Use a separate path and
+`COMPOSE_PROJECT_NAME` for test instances.
 
 ## Library volume
 

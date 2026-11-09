@@ -59,11 +59,11 @@ The launcher then asks for the root folder of your PDF library. You can also pro
 npx pdfit /path/to/pdfs
 ```
 
-On Windows, use a Windows path such as `D:\\Books` or `S:\\pdf-library`. On macOS and Linux, use a path such as `/Users/me/Books` or `/mnt/library`. Docker mounts the selected host folder at `/app/data/books`; PDFit does not copy, upload, or delete your PDF files.
+On Windows, use a Windows path such as `D:\\Books` or `S:\\pdf-library`. On macOS and Linux, use a path such as `/Users/me/Books` or `/mnt/library`. Docker mounts the selected host folder at `/app/data/books`; PDFit does not copy, upload, or delete your PDF files. The launcher starts only the standalone `pdfit` service (`npm run deploy:standalone`) on port `15203` (`PDFIT_STANDALONE_PORT`), and also binds this PC's private LAN IPv4 address on the same port (detected automatically, or set with `PDFIT_LAN_BIND_ADDRESS`). Add `--no-open` to skip opening the browser.
 
 After the launcher starts the Docker service:
 
-1. Open [http://127.0.0.1:15201](http://127.0.0.1:15201) in your browser.
+1. Open [http://127.0.0.1:15203](http://127.0.0.1:15203) in your browser.
 2. Select **Refresh** in the library sidebar when you want PDFit to scan the mounted folder.
 3. Browse folders, assign tags, and open a PDF to use the WebGPU/PDFium reader.
 4. Use the **Bookmarks** section for visual page captures and saved reading notes.
@@ -84,10 +84,14 @@ For development or local source changes, clone the repository and install its np
 git clone --branch v0.4.4 https://github.com/hikaMaeng/PDFit.git
 cd PDFit
 npm install
-npm run deploy
+npm run deploy:standalone
 ```
 
-Open [http://127.0.0.1:15201](http://127.0.0.1:15201) to use the real local
+`npm run deploy:standalone` builds and starts the standalone NAS app on
+[http://127.0.0.1:15203](http://127.0.0.1:15203). Maintainers with the private
+hosted-service modules use `npm run deploy` instead.
+
+With `npm run deploy`, open [http://127.0.0.1:15201](http://127.0.0.1:15201) to use the real local
 service application. The separate `192.168.0.5:15202` binding redirects to
 `https://pdfit.io`. Local sign-in uses the approved public callback and a
 single-use handoff to return the session to the loopback app.

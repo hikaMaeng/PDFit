@@ -21,8 +21,10 @@ services:
       # 같은 LAN의 다른 PC용 주소입니다. 호스트마다 IP가 다르므로 .env에서 바꿉니다.
       - "${PDFIT_LAN_BIND_ADDRESS:-192.168.0.5}:${PDFIT_STANDALONE_PORT:-15203}:15201"
     volumes:
-      - ./apps/pdfit/docker/volumes/data:/app/data
-      - books:/app/data/books
+      # PostgreSQL(pgvector)과 북마크가 이 경로에 남습니다. 컨테이너를 지워도 유지됩니다.
+      - ${PDFIT_DATA_PATH:-./apps/pdfit/docker/volumes/data}:/app/data
+      # 기본은 외부 Docker 볼륨(NAS/CIFS)입니다. `npx pdfit`는 호스트 폴더 경로를 넣어 바인드합니다.
+      - ${PDFIT_BOOKS_SOURCE:-books}:/app/data/books
       - ${PDFIT_BOOKMARKS_PATH:-./apps/pdfit/docker/volumes/data/bookmarks}:/app/data/bookmarks
     restart: unless-stopped
     networks:

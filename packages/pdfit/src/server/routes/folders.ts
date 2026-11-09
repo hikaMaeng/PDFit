@@ -214,7 +214,11 @@ export function createFoldersRouter(
       return;
     }
     res.sendFile(filePath, (error) => {
-      if (error) {
+      // A client that aborts a range read (PDF.js cancelling an off-screen cover,
+      // or a closed tab) reports an error after headers were sent. Responding
+      // again would throw ERR_HTTP_HEADERS_SENT outside any handler and crash
+      // the whole server process.
+      if (error && !res.headersSent) {
         res.status(404).json({ error: 'File not found.' });
       }
     });

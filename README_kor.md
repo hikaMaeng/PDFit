@@ -53,11 +53,11 @@ npx pdfit
 npx pdfit /path/to/pdfs
 ```
 
-Windows에서는 `D:\\Books`, `S:\\pdf-library`와 같은 경로를 사용하고, macOS/Linux에서는 `/Users/me/Books`, `/mnt/library`와 같은 경로를 사용합니다. Docker는 선택한 호스트 폴더를 컨테이너의 `/app/data/books`에 연결하며, PDF 파일을 복사·업로드·삭제하지 않습니다.
+Windows에서는 `D:\\Books`, `S:\\pdf-library`와 같은 경로를 사용하고, macOS/Linux에서는 `/Users/me/Books`, `/mnt/library`와 같은 경로를 사용합니다. Docker는 선택한 호스트 폴더를 컨테이너의 `/app/data/books`에 연결하며, PDF 파일을 복사·업로드·삭제하지 않습니다. 런처는 독립 실행형 `pdfit` 서비스만 시작하며(`npm run deploy:standalone`), 포트는 `15203`(`PDFIT_STANDALONE_PORT`)입니다. 같은 포트로 이 PC의 사설 LAN IPv4 주소에도 연결합니다(자동 감지, 또는 `PDFIT_LAN_BIND_ADDRESS`로 지정). 브라우저를 열지 않으려면 `--no-open`을 붙입니다.
 
 런처가 Docker 서비스를 시작하면 다음 순서로 사용합니다.
 
-1. 브라우저에서 [http://127.0.0.1:15201](http://127.0.0.1:15201)을 엽니다.
+1. 브라우저에서 [http://127.0.0.1:15203](http://127.0.0.1:15203)을 엽니다.
 2. 라이브러리 사이드바의 **Refresh**를 눌러 연결된 폴더를 스캔합니다.
 3. 폴더와 태그로 문서를 정리하고 PDF를 열어 WebGPU/PDFium 뷰어로 읽습니다.
 4. **Bookmarks**에서 시각적 북마크와 독서 메모를 확인합니다.
@@ -78,17 +78,18 @@ npx pdfit --help
 git clone --branch v0.4.4 https://github.com/hikaMaeng/PDFit.git
 cd PDFit
 npm install
-npm run deploy
+npm run deploy:standalone
 ```
 
-그 다음 [http://127.0.0.1:15201](http://127.0.0.1:15201)을 엽니다.
+그 다음 [http://127.0.0.1:15203](http://127.0.0.1:15203)을 엽니다. 비공개 호스팅 서비스 모듈이 있는 관리자 환경에서는 `npm run deploy`로 15201의 서비스 앱을 배포합니다.
 
 ## 개발 명령
 
 | 명령 | 용도 |
 | --- | --- |
 | `npm run build` | 공유 패키지와 통합 앱 빌드 |
-| `npm run deploy` | 로컬 빌드 후 Docker 서비스 재생성 |
+| `npm run deploy:standalone` | 독립 실행형 앱 빌드 후 `pdfit` 컨테이너만 재생성 |
+| `npm run deploy` | 호스팅 서비스 빌드 후 `service` 컨테이너 재생성(비공개 모듈 필요) |
 | `npm run verify:repo` | 저장소와 Compose 계약 검사 |
 | `npm run verify:pdfit` | 통합 앱, API, Settings, 뷰어 산출물 검사 |
 | `npm run verify:pdfit:acceptance` | PDFit acceptance matrix 실행 |
