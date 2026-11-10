@@ -76,6 +76,28 @@ try {
   check('한글 결과 제목이 모두 검색어를 포함', javaNames.every((name) => titleOf(name).includes('자바')));
   check('검색어가 제목 중간에 있는 책도 포함', javaNames.some((name) => !titleOf(name).startsWith('자바')));
 
+  // 4-1) 초성 검색: 검색어가 자모(ㄱ~ㅎ)일 때 제목의 초성과 부분 일치. 기대값은 NFD 첫 자모로 따로 계산한다(서버 구현과 독립).
+  const initialsOf = (title) => [...title.normalize('NFC').toLowerCase().replace(/\s+/g, '')].map((char) => {
+    const code = char.codePointAt(0);
+    return code >= 0xac00 && code <= 0xd7a3 ? 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'[char.normalize('NFD').codePointAt(0) - 0x1100] : char;
+  }).join('');
+  check('검색창 안내에 초성 가능 표시', ((await input.getAttribute('placeholder')) ?? '').includes('초성'));
+  await input.fill('ㅇㅂ');
+  await input.press('Enter');
+  await page.waitForURL(/\/search\?q=/);
+  await page.getByTestId('search-result-count').filter({ hasText: 'ㅇㅂ' }).waitFor();
+  const initialsExpected = await api('ㅇㅂ');
+  const initialsNames = await rows.evaluateAll((links) => links.map((a) => a.textContent.trim()));
+  check('초성 검색 결과 건수가 API와 같음', initialsNames.length === Math.min(initialsExpected.total, initialsExpected.books.length) && initialsExpected.total > 0, `${initialsNames.length} vs ${initialsExpected.total}`);
+  check('초성 결과 제목은 모두 초성에 ㅇㅂ를 포함(독립 계산)', initialsNames.every((name) => initialsOf(titleOf(name)).includes('ㅇㅂ') || titleOf(name).toLowerCase().includes('ㅇㅂ')));
+  // 누락 검사: 폴더 파일 목록(검색 API와 별개 경로)에서 전체 파일명을 받아 같은 규칙으로 기대 건수를 센다.
+  const everyBook = await (await fetch(`${baseUrl}/api/search/books?q=${encodeURIComponent('ㅇ')}&limit=2000`)).json();
+  const folderList = await (await fetch(`${baseUrl}/api/folders`)).json();
+  const allFiles = (await Promise.all(folderList.map(async (folder) => (await (await fetch(`${baseUrl}/api/folders/${encodeURIComponent(folder.name)}/files`)).json()).map((file) => `${folder.name}/${file.name}`)))).flat();
+  const expectedCount = allFiles.filter((file) => { const title = titleOf(file.slice(file.indexOf('/') + 1)); return initialsOf(title).includes('ㅇ') || title.toLowerCase().includes('ㅇ'); }).length;
+  check('초성 한 글자 검색 건수가 폴더 파일 목록 기준 기대값과 같음(누락·초과 없음)', everyBook.total === expectedCount && everyBook.books.length === expectedCount, `api ${everyBook.total}/${everyBook.books.length} expected ${expectedCount} of ${allFiles.length}`);
+  await page.screenshot({ path: path.join(output, '02b-results-initials.png') });
+
   // 5) 제목 이외(폴더 이름)는 대상이 아님 — 폴더명 '이북'은 제목에 없는 한 결과에 나오면 안 된다
   const folderQuery = await api('이북');
   check('폴더명만 일치하는 책은 검색되지 않음(API)', folderQuery.books.every((book) => titleOf(book.filename).includes('이북')));
@@ -83,7 +105,7 @@ try {
   // 6) 표지 보기 전환 — 읽기 전용(관리 버튼 없음)
   await page.getByRole('button', { name: '표지 보기' }).click();
   await page.getByTestId('pdf-cover-grid').waitFor();
-  check('표지 보기 카드 수가 결과 수와 같음', (await page.getByTestId('pdf-cover-title-row').count()) === javaNames.length);
+  check('표지 보기 카드 수가 결과 수와 같음', (await page.getByTestId('pdf-cover-title-row').count()) === initialsNames.length);
   check('표지 카드에 이동·삭제 버튼이 없음', (await page.getByTestId('pdf-cover-file-actions').locator('button').count()) === 0);
   await page.screenshot({ path: path.join(output, '03-results-covers.png') });
   await page.evaluate(() => localStorage.setItem('pdfit.library.view', 'list'));

@@ -547,7 +547,7 @@ image that enables background tasks should start Node the same way.
 
 LNB 상단(앱 이름 헤더 바로 아래, 스크롤 영역 밖)에 검색창과 검색 버튼이 고정되어 있다. `role="search"` 폼이며 테스트 훅은 `lnb-search`, `lnb-search-input`, `lnb-search-submit`, `lnb-search-clear`다. 입력이 비어 있으면 버튼은 비활성이고 Enter·버튼 모두 `/search?q=<검색어>`로 이동한다. 모바일 드로어는 제출 후 닫힌다. `/search`에서는 입력값이 주소의 `q`와 동기화되고, 다른 페이지에서는 입력 중이던 값을 유지한다.
 
-검색 대상은 책 제목(확장자 제외 파일명)뿐이며 부분 문자열, 대소문자 무시, NFC 정규화 기준이다. 조회는 파일 시스템이 아니라 DB다(서버는 `books` 테이블, 호스팅 런타임은 IndexedDB 스냅샷). 규칙은 `docs/api.md`의 Title search endpoint 참고.
+검색 대상은 책 제목(확장자 제외 파일명)뿐이며 부분 문자열, 대소문자 무시, NFC 정규화 기준이다. 검색어가 초성(ㅇㅂ 등)이면 `books.title_choseong`(한글 음절을 초성으로 바꾸고 공백을 뺀 값)과 제목을 동시에 찾는다. 안내 문구는 한국어에서 `책 제목 검색 (초성 가능)`이다. 조회는 파일 시스템이 아니라 DB다(서버는 `books` 테이블, 호스팅 런타임은 IndexedDB 스냅샷). 규칙은 `docs/api.md`의 Title search endpoint 참고.
 
 `front/pages/SearchPage.tsx`는 별도 결과 페이지다. 헤더에 건수(`search-result-count`), 목록/표지 보기 전환, 행마다 폴더 위치 버튼과 태그를 보여 주며 폴더·태그 변경 이벤트에서 같은 검색어로 다시 조회한다. 결과 상한(500)에서 잘리면 `search-results-limited`로 전체 건수를 알린다. 이동·삭제·태그 관리는 제공하지 않는 읽기 전용이라 `PdfCoverItem`의 `onTagDelete`, `onManageTags`, `onMove`, `onDelete`를 선택값으로 바꿨고, 없으면 해당 버튼을 그리지 않는다.
 

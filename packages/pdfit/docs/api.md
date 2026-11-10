@@ -143,8 +143,11 @@ The shared tags router in [`src/server/routes/tags.ts`](../src/server/routes/tag
 
 * Scope: the title only, i.e. the filename without `.pdf`. Folder names and tags are not searched.
 * Match: one substring of the trimmed query, case-insensitive. Both sides are normalized to NFC so a macOS-style NFD filename matches an NFC query. The query is compared with `position()`, so `%` and `_` are literal characters.
+* Initials: `books.title_choseong` holds the title with every Hangul syllable replaced by its initial consonant, whitespace removed and the rest lowercased (`이것이 자바다.pdf` → `ㅇㄱㅇㅈㅂㄷ`, `Do it!SQL 입문.pdf` → `doit!sqlㅇㅁ`). A book matches when the query is a substring of the title **or** of this field. The query is compared with that field after lowercasing and removing whitespace but without converting syllables, so `ㅈㅂ` finds `자바` and `정보`, while `자바` does not match `정보`.
 * `q` is required and at most 200 characters; otherwise `400`. A metadata store without `searchBooksByTitle` answers `501`.
 * Response: `{ query, total, books }`. `books` are `{ folder, filename, size, modified_at, tags }` ordered by filename then folder and capped at `limit` (default 500, at most 2000); `total` is the uncapped match count.
+
+`title_choseong` is derived by `titleChoseong()` in [`src/shared/choseong.ts`](../src/shared/choseong.ts). Every write to `books` goes through `PostgresMetadataStore.syncBooks` (folder refresh, file add/upload, watcher), which computes it for each row and rewrites it on conflict, so it cannot drift from `filename`. The column is nullable: `ensureSchema()` adds it (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) and then `backfillTitleChoseong()` fills every row where it is `NULL` in batches of 1000, which covers existing records and rows that `ensureSchema` seeds from `book_tags`. A new writer to `books` must set the field too.
 
 The route is part of `createPdfitMetadataRouterMounts`, so the hosted runtime mounts it too. A hosted store answers from the browser's hydrated IndexedDB snapshot instead (`searchCachedBooksByTitle` in `front/cache/metadataCache.ts`, same rules), and `front/api/search.ts` picks whichever exists.
 

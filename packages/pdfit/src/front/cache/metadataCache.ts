@@ -2,6 +2,7 @@ import type { FolderInfo, PdfInfo } from '../api/folders.js';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
 import type { ViewerStatePayload } from '../api/viewerState.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/tagColor.js';
+import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import { configureDocumentOpenHistory } from '../model/documentOpenHistory.js';
 
 /** Metadata source (hosted Spreadsheet) schema this cache accepts; must equal the service's spreadsheet schema version. */
@@ -248,10 +249,11 @@ export async function listCachedUntaggedBooks(): Promise<Array<{ folder: string;
     .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
 }
 
-/** 서버 `searchBooksByTitle`과 같은 규칙(제목=`.pdf` 제외 파일명, NFC·대소문자 무시 부분 문자열)을 하이드레이트된 DB 스냅샷에 적용한다. */
+/** 서버 `searchBooksByTitle`과 같은 규칙(제목=`.pdf` 제외 파일명, NFC·대소문자 무시 부분 문자열, 초성 필드 동시 검색)을 하이드레이트된 DB 스냅샷에 적용한다. */
 export async function searchCachedBooksByTitle(query: string): Promise<{ total: number; books: Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> } | null> {
   const scope = await cachedScope(); if (!scope) return null;
   const needle = query.normalize('NFC').trim().toLowerCase();
+  const choseongNeedle = compactSearchText(query);
   if (!needle) return { total: 0, books: [] };
   const [tags, relations, pdfs, folders] = await Promise.all([
     readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
@@ -266,7 +268,7 @@ export async function searchCachedBooksByTitle(query: string): Promise<{ total: 
   }
   const folderNames = new Map(folders.filter((folder) => !folder.trashed).map((folder) => [folder.driveFolderId, folder.name]));
   const books = pdfs
-    .filter((pdf) => !pdf.trashed && folderNames.has(pdf.parentFolderId) && pdf.name.normalize('NFC').replace(/\.pdf$/i, '').toLowerCase().includes(needle))
+    .filter((pdf) => !pdf.trashed && folderNames.has(pdf.parentFolderId) && (pdf.name.normalize('NFC').replace(/\.pdf$/i, '').toLowerCase().includes(needle) || titleChoseong(pdf.name).includes(choseongNeedle)))
     .map((pdf) => ({
       folder: folderNames.get(pdf.parentFolderId)!, filename: pdf.name, driveFileId: pdf.driveFileId, size: pdf.size,
       modified_at: pdf.modifiedTime, tags: (tagsByFile.get(pdf.driveFileId) ?? []).sort((left, right) => left.localeCompare(right, 'ko')),

@@ -42,7 +42,7 @@ const rows = {
   cancel: ['Cancel', '취소', '取消', 'Cancelar', 'रद्द करें', 'إلغاء', 'Annuler', 'Cancelar'],
   searchPdfs: ['Search PDF files', '검색', '搜索 PDF 文件', 'Buscar archivos PDF', 'PDF फ़ाइलें खोजें', 'البحث في ملفات PDF', 'Rechercher des fichiers PDF', 'Pesquisar arquivos PDF'],
   closeSearch: ['Close search', '검색 닫기', '关闭搜索', 'Cerrar búsqueda', 'खोज बंद करें', 'إغلاق البحث', 'Fermer la recherche', 'Fechar pesquisa'],
-  searchBooksPlaceholder: ['Search book titles', '책 제목 검색', '搜索书名', 'Buscar títulos de libros', 'पुस्तक शीर्षक खोजें', 'البحث في عناوين الكتب', 'Rechercher un titre', 'Pesquisar títulos'],
+  searchBooksPlaceholder: ['Search book titles', '책 제목 검색 (초성 가능)', '搜索书名', 'Buscar títulos de libros', 'पुस्तक शीर्षक खोजें', 'البحث في عناوين الكتب', 'Rechercher un titre', 'Pesquisar títulos'],
   searchButton: ['Search', '검색', '搜索', 'Buscar', 'खोजें', 'بحث', 'Rechercher', 'Pesquisar'],
   searchResultsTitle: ['Search results', '검색 결과', '搜索结果', 'Resultados de búsqueda', 'खोज परिणाम', 'نتائج البحث', 'Résultats de recherche', 'Resultados da pesquisa'],
   searchResultsSummary: ['{count} matches for "{query}"', '"{query}" 검색 결과 {count}건', '“{query}”共 {count} 条结果', '{count} resultados para «{query}»', '“{query}” के लिए {count} परिणाम', '{count} نتيجة لـ «{query}»', '{count} résultats pour « {query} »', '{count} resultados para "{query}"'],

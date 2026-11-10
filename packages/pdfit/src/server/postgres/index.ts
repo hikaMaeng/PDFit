@@ -12,6 +12,7 @@ import type {
   ViewerStateRecord,
 } from '../../shared/index.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
+import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';
 
@@ -116,6 +117,8 @@ export class PostgresMetadataStore implements MetadataStore {
     if (!needle) return { total: 0, books: [] };
     // 파일 시스템이 아니라 `books` 테이블(동기화된 DB)을 조회한다. 부분 문자열 비교는 LIKE 이스케이프가
     // 필요 없는 position()으로 하고, NFD 파일명(macOS)도 맞도록 양쪽을 NFC로 정규화한다.
+    // 제목과 초성 필드(title_choseong)를 동시에 찾는다. 초성 필드는 공백을 뺀 값이라 검색어도 같게 정리해
+    // 변환 없이 그대로 비교한다("자바" 같은 완성형 검색어는 초성 필드에 일치하지 않는다).
     const result = await this.db.query(`
       SELECT b.folder, b.filename, b.size, b.modified_at,
         COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags,
@@ -124,10 +127,11 @@ export class PostgresMetadataStore implements MetadataStore {
       LEFT JOIN book_tags bt ON bt.folder = b.folder AND bt.filename = b.filename
       LEFT JOIN tags t ON t.id = bt.tag_id
       WHERE position(lower(normalize($1::text, NFC)) IN lower(normalize(regexp_replace(b.filename, '\\.pdf$', '', 'i'), NFC))) > 0
+        OR position($3::text IN b.title_choseong) > 0
       GROUP BY b.folder, b.filename, b.size, b.modified_at
       ORDER BY b.filename, b.folder
       LIMIT $2
-    `, [needle, Math.max(1, Math.min(limit, 2000))]);
+    `, [needle, Math.max(1, Math.min(limit, 2000)), compactSearchText(needle)]);
     return {
       total: result.rows[0] ? Number(result.rows[0].total) : 0,
       books: result.rows.map((row) => ({
@@ -173,14 +177,33 @@ export class PostgresMetadataStore implements MetadataStore {
     // One server round-trip for the complete filesystem snapshot. The old
     // implementation issued one INSERT per PDF, which made startup/refresh
     // hold the event loop while a network-backed library was being indexed.
+    // 폴더 새로고침·파일 추가·감시기 갱신은 모두 이 함수로 `books`를 쓴다. 초성 검색 필드(title_choseong)는
+    // 여기서 항상 함께 만들어 넣고, 이미 있는 행도 갱신해 필드가 제목과 어긋나지 않게 한다.
     await this.db.query(`
-      INSERT INTO books (folder, filename, size, modified_at)
-      SELECT folder, filename, size, modified_at
+      INSERT INTO books (folder, filename, size, modified_at, title_choseong)
+      SELECT folder, filename, size, modified_at, title_choseong
       FROM jsonb_to_recordset($1::jsonb)
-        AS snapshot(folder TEXT, filename TEXT, size BIGINT, modified_at TEXT)
+        AS snapshot(folder TEXT, filename TEXT, size BIGINT, modified_at TEXT, title_choseong TEXT)
       ON CONFLICT (folder, filename)
-      DO UPDATE SET size = EXCLUDED.size, modified_at = EXCLUDED.modified_at
-    `, [JSON.stringify(books)]);
+      DO UPDATE SET size = EXCLUDED.size, modified_at = EXCLUDED.modified_at, title_choseong = EXCLUDED.title_choseong
+    `, [JSON.stringify(books.map((book) => ({ ...book, title_choseong: titleChoseong(book.filename) })))]);
+  }
+
+  /**
+   * `title_choseong`이 아직 NULL인 모든 `books` 행(기존 레코드, book_tags에서 보충된 행)에 초성 필드를 채운다.
+   * 스키마 준비 때마다 실행하며, 채울 행이 없으면 조회 한 번으로 끝난다.
+   */
+  private async backfillTitleChoseong(): Promise<void> {
+    const batchSize = 1000;
+    for (;;) {
+      const pending = await this.db.query('SELECT folder, filename FROM books WHERE title_choseong IS NULL LIMIT $1', [batchSize]);
+      if (pending.rows.length === 0) return;
+      await this.db.query(`
+        UPDATE books b SET title_choseong = u.title_choseong
+        FROM jsonb_to_recordset($1::jsonb) AS u(folder TEXT, filename TEXT, title_choseong TEXT)
+        WHERE b.folder = u.folder AND b.filename = u.filename
+      `, [JSON.stringify(pending.rows.map((row) => ({ folder: String(row.folder), filename: String(row.filename), title_choseong: titleChoseong(String(row.filename)) })))]);
+    }
   }
 
   async listFolderTags(folder: string): Promise<Record<string, string[]>> {
@@ -430,6 +453,7 @@ export class PostgresMetadataStore implements MetadataStore {
         PRIMARY KEY (folder, filename)
       );
       CREATE INDEX IF NOT EXISTS idx_books_folder ON books (folder);
+      ALTER TABLE books ADD COLUMN IF NOT EXISTS title_choseong TEXT;
       CREATE TABLE IF NOT EXISTS schema_migrations (
         id TEXT PRIMARY KEY,
         applied_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
@@ -523,6 +547,8 @@ export class PostgresMetadataStore implements MetadataStore {
       );
       CREATE INDEX IF NOT EXISTS idx_annotations_document_page ON annotations (document_id, page_index, created_at);
     `);
+    // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
+    await this.backfillTitleChoseong();
   }
 }
 
