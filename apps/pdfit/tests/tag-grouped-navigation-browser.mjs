@@ -114,13 +114,14 @@ await page.screenshot({ path: path.join(output, 'desktop.png'), fullPage: true }
 const tagRows = page.locator('.pdfit-tag-row');
 const tagCount = await tagRows.count();
 assert.equal(tagCount, tags.length, '태그가 누락되거나 중복 렌더링됨');
-const names = await tagRows.locator('.MuiListItemText-root').evaluateAll((items) => items.map((item) => item.textContent?.replace(/\d+$/, '').trim()));
+const names = await tagRows.locator('.MuiListItemText-root').evaluateAll((items) => items.map((item) => item.textContent?.replace(/^#\s*/, '').replace(/\d+$/, '').trim()));
 assert.equal(names.length, new Set(names).size, `중복 태그 발견: ${names.join(', ')}`);
+// 사이드바 태그는 이름의 유니코드 코드 순(숫자 < 대문자 < 소문자 < 한글)이다.
 assert.deepEqual(names, [
-  '소프트웨어', '운영체제', '웹 개발', '인공지능', '프로그래밍', 'UI·UX',
-  '경제·경영', '마케팅', '창업', '투자·재테크',
-  '글쓰기', '디자인', '심리학', '과학', '자기계발',
+  'UI·UX', '경제·경영', '과학', '글쓰기', '디자인', '마케팅', '소프트웨어',
+  '심리학', '운영체제', '웹 개발', '인공지능', '자기계발', '창업', '투자·재테크', '프로그래밍',
 ]);
+assert.deepEqual(names, [...names].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)), '태그가 유니코드 순으로 정렬되지 않음');
 assert.equal(await page.locator('[data-tag-group]').count(), 0, '그룹 소제목용 래퍼가 남아 있음');
 const totalTagAssignments = tags.reduce((total, tag) => total + tag.bookCount, 0);
 assert.equal(
@@ -244,7 +245,7 @@ assert.equal(folderAutoTagRequests, 2, '취소 후 남은 미분류 PDF에 대�
 if (await completedNotice.count()) await completedNotice.getByRole('button').click();
 assert.equal(await page.locator('.pdfit-pdf-row').count(), 2, '같은 제목의 PDF가 한 행으로 합쳐짐');
 assert.equal(await page.locator('.pdfit-pdf-row').getByText('소프트웨어×', { exact: true }).count(), 2, '같은 제목 PDF의 태그가 각각 표시되지 않음');
-assert.match(await tagRows.nth(0).textContent(), /소프트웨어2/, '같은 태그를 가진 중복 제목 PDF 2권이 태그 수에 반영되지 않음');
+assert.match(await tagRows.filter({ hasText: '소프트웨어' }).first().textContent(), /소프트웨어2/, '같은 태그를 가진 중복 제목 PDF 2권이 태그 수에 반영되지 않음');
 await page.mouse.move(700, 20);
 const firstRow = page.locator('.pdfit-pdf-row').first();
 assert.equal(await firstRow.getByTestId('pdf-ai-auto-tag').evaluate((element) => getComputedStyle(element).color), 'rgb(245, 158, 11)', 'PDF 행 AI 태그 아이콘이 골드 색상이 아님');

@@ -51,7 +51,6 @@ import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
 import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
-import { BOOKSTORE_TAG_GROUPS, bookstoreTagGroupFor, type BookstoreTagGroupId } from '../../shared/tagTaxonomy.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
 import { synchronizeLibraryMetadata } from '../model/libraryMetadataSync.js';
 
@@ -127,15 +126,11 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ kind: 'folder' | 'tag' | 'all_tags'; name: string; count?: number } | null>(null);
 
-  const orderedTags = useMemo(() => {
-    const groups = new Map<BookstoreTagGroupId, TagSummary[]>();
-    for (const tag of tags) {
-      const groupId = bookstoreTagGroupFor(tag.name);
-      groups.set(groupId, [...(groups.get(groupId) ?? []), tag]);
-    }
-    return [...BOOKSTORE_TAG_GROUPS.map((group) => group.id), 'documents' as const, 'other' as const]
-      .flatMap((id) => groups.get(id) ?? []);
-  }, [tags]);
+  // 태그는 이름의 유니코드(UTF-16 코드 유닛) 순으로 정렬한다. 로케일 비교나 분류 그룹 순서는 쓰지 않는다.
+  const orderedTags = useMemo(
+    () => [...tags].sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)),
+    [tags],
+  );
   const totalTagAssignments = useMemo(
     () => tags.reduce((total, tag) => total + tag.bookCount, 0),
     [tags],
