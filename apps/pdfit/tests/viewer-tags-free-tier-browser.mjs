@@ -328,8 +328,9 @@ try {
   await coverCheckbox.waitFor({ state: 'visible' });
   const [cardBox, checkboxBox] = await Promise.all([cover.boundingBox(), coverCheckbox.boundingBox()]);
   assert.ok(cardBox && checkboxBox && checkboxBox.x >= cardBox.x && checkboxBox.y >= cardBox.y && checkboxBox.x + checkboxBox.width <= cardBox.x + cardBox.width && checkboxBox.y + checkboxBox.height <= cardBox.y + cardBox.height, '표지 체크박스가 카드 밖에서 잘림');
-  const footerBox = await cover.getByTestId('pdf-cover-actions').boundingBox();
-  assert.ok(footerBox && checkboxBox.y >= footerBox.y && checkboxBox.x + checkboxBox.width >= footerBox.x + footerBox.width - 1, '표지 체크박스가 하단 우측에 배치되지 않음');
+  const [mediaBox, titleBandBox, footerBox] = await Promise.all([cover.getByTestId('pdf-cover-media').boundingBox(), cover.getByTestId('pdf-cover-title-row').boundingBox(), cover.getByTestId('pdf-cover-actions').boundingBox()]);
+  assert.ok(titleBandBox && footerBox && checkboxBox.y >= titleBandBox.y && checkboxBox.y + checkboxBox.height <= mediaBox.y + mediaBox.height + 1, '표지 체크박스가 썸네일 하단 제목 띠 안에 있지 않음');
+  assert.ok(footerBox.y >= mediaBox.y + mediaBox.height - 1, '표지 버튼이 썸네일 밑에 있지 않음');
   await coverCheckbox.getByRole('checkbox').check();
   await coverCheckbox.getByRole('checkbox').uncheck();
   await page.mouse.move(1400, 850);
@@ -339,8 +340,8 @@ try {
   await page.waitForTimeout(200);
   const [mobileCard, mobileCheckbox] = await Promise.all([cover.boundingBox(), coverCheckbox.boundingBox()]);
   assert.ok(mobileCard && mobileCheckbox && mobileCheckbox.x + mobileCheckbox.width <= mobileCard.x + mobileCard.width && mobileCheckbox.y + mobileCheckbox.height <= mobileCard.y + mobileCard.height, '모바일 표지 체크박스 잘림');
-  const mobileFooter = await cover.getByTestId('pdf-cover-actions').boundingBox();
-  assert.ok(mobileFooter && mobileCheckbox.y >= mobileFooter.y && mobileCheckbox.x + mobileCheckbox.width >= mobileFooter.x + mobileFooter.width - 1, '모바일 표지 체크박스의 하단 우측 배치 오류');
+  const [mobileMedia, mobileTitleBand] = await Promise.all([cover.getByTestId('pdf-cover-media').boundingBox(), cover.getByTestId('pdf-cover-title-row').boundingBox()]);
+  assert.ok(mobileMedia && mobileTitleBand && mobileCheckbox.y >= mobileTitleBand.y && mobileCheckbox.y + mobileCheckbox.height <= mobileMedia.y + mobileMedia.height + 1, '모바일 표지 체크박스가 제목 띠 안에 있지 않음');
   await page.getByRole('button', { name: '목록 보기', exact: true }).click();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), '모바일 문서 목록이 화면 가로폭을 넘음');
   await page.screenshot({ path: new URL('document-list-mobile.png', output).pathname.slice(1), fullPage: true });
@@ -450,24 +451,18 @@ try {
     const rect = element.getBoundingClientRect();
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
   }));
-  assert.equal(actionBoxes.length, 5, '유료 표지의 전체 작업 버튼이 표시되지 않음');
-  const paidCheck = await paidCover.getByTestId('pdf-cover-selection').boundingBox();
-  assert.ok(paidCheck);
+  assert.equal(actionBoxes.length, 4, '유료 표지의 작업 버튼 4종이 표시되지 않음');
   for (const button of actionBoxes) {
-    assert.ok(Math.abs(button.y + button.height / 2 - paidCheck.y - paidCheck.height / 2) < 1, '표지 작업 버튼·체크박스가 일렬이 아님');
-    assert.ok(button.x + button.width <= paidCheck.x, '표지 작업 버튼과 체크박스가 겹침');
+    assert.ok(Math.abs(button.y - actionBoxes[0].y) < 1 && Math.abs(button.width - actionBoxes[0].width) < 1, '표지 작업 버튼이 일렬 균등 분할이 아님');
   }
-  const coverActionGaps = [...actionBoxes, paidCheck].slice(1).map((box, index) => box.x - actionBoxes[index].x - actionBoxes[index].width);
-  assert.ok(Math.max(...coverActionGaps) - Math.min(...coverActionGaps) < 1, '표지 아이콘·체크박스 사이 간격이 균등하지 않음');
+  const coverActionGaps = actionBoxes.slice(1).map((box, index) => box.x - actionBoxes[index].x - actionBoxes[index].width);
+  assert.ok(Math.max(...coverActionGaps) < 1, '표지 작업 버튼 사이에 빈틈이 있음');
   await paidCover.screenshot({ path: new URL('cover-actions-single-row.png', output).pathname.slice(1) });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(200);
-  const mobileCenters = await paidActions.locator('button, [data-testid="pdf-cover-selection"]').evaluateAll((elements) => elements.map((element) => {
-    const rect = element.getBoundingClientRect(); return rect.y + rect.height / 2;
-  }));
-  assert.ok(Math.max(...mobileCenters) - Math.min(...mobileCenters) < 1, '모바일 표지 작업 버튼·체크박스가 일렬이 아님');
-  const mobileActionGaps = await paidActions.locator('button, [data-testid="pdf-cover-selection"]').evaluateAll((elements) => elements.slice(1).map((element, index) => element.getBoundingClientRect().left - elements[index].getBoundingClientRect().right));
-  assert.ok(Math.max(...mobileActionGaps) - Math.min(...mobileActionGaps) < 1, '모바일 표지 작업 간격이 균등하지 않음');
+  const mobileButtons = await paidActions.locator('button').evaluateAll((elements) => elements.map((element) => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width }; }));
+  assert.equal(mobileButtons.length, 4, '모바일 표지 작업 버튼 4종 누락');
+  assert.ok(mobileButtons.every((button) => Math.abs(button.y - mobileButtons[0].y) < 1 && Math.abs(button.width - mobileButtons[0].width) < 1), '모바일 표지 작업 버튼이 균등 분할이 아님');
   scrollFixture = true;
   paidCoverFixture = false;
   await page.setViewportSize({ width: 1440, height: 900 });

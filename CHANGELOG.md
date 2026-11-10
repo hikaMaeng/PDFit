@@ -19,6 +19,11 @@
 
 ### Changed
 
+- The cover card is now a thumbnail with four equal-width action buttons directly under
+  it. The title sits in a two-line translucent black band over the bottom of the
+  thumbnail. Tags, last opened time, last page, and size show in a translucent overlay
+  on hover, or from the circled `i` button at the thumbnail's top right on devices
+  without hover.
 - The sidebar lists tags in Unicode (UTF-16 code unit) order of their names instead of
   bookstore-category groups, and each tag row starts with a tag icon in the tag's color
   instead of a `#` character.

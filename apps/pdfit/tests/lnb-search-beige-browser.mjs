@@ -77,22 +77,60 @@ try {
     const cover = page.getByTestId('pdf-cover-card').first();
     await cover.waitFor();
     const titleRow = cover.getByTestId('pdf-cover-title-row');
+    const media = cover.getByTestId('pdf-cover-media');
+    const actions = cover.getByTestId('pdf-cover-actions');
     assert.equal(await titleRow.getByTestId('pdf-cover-selection').count(), 1);
     const checkBox = await titleRow.getByTestId('pdf-cover-selection').boundingBox();
     const nameBox = await titleRow.locator('a').boundingBox();
     assert.ok(checkBox.x + checkBox.width <= nameBox.x);
-    assert.equal(await cover.getByTestId('pdf-cover-actions').getByTestId('pdf-cover-selection').count(), 0);
+    assert.equal(await actions.getByTestId('pdf-cover-selection').count(), 0);
+    // 카드 높이 = 썸네일 + 버튼 4종. 버튼 사이 구분선은 없고 균등 4분할이다.
+    assert.equal(await cover.getByTestId('pdf-cover-action-divider').count(), 0);
     assert.equal(await cover.getByTestId('pdf-cover-tag-actions').getByRole('button').count(), 2);
     assert.equal(await cover.getByTestId('pdf-cover-file-actions').getByRole('button').count(), 2);
-    assert.equal(await cover.getByTestId('pdf-cover-action-divider').evaluate((element) => getComputedStyle(element).opacity), '0.7');
+    const buttonBoxes = await actions.getByRole('button').evaluateAll((elements) => elements.map((element) => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; }));
+    assert.equal(buttonBoxes.length, 4);
+    for (let index = 1; index < buttonBoxes.length; index += 1) {
+      assert.ok(Math.abs(buttonBoxes[index].width - buttonBoxes[0].width) < 1, '버튼 폭이 균등하지 않음');
+      assert.ok(Math.abs(buttonBoxes[index].x - (buttonBoxes[index - 1].x + buttonBoxes[index - 1].width)) < 1, '버튼 사이에 빈틈이 있음');
+    }
+    const [cardBox, mediaBox, actionsBox, bandBox] = await Promise.all([cover.boundingBox(), media.boundingBox(), actions.boundingBox(), titleRow.boundingBox()]);
+    assert.ok(Math.abs(mediaBox.y + mediaBox.height - actionsBox.y) < 1, '버튼이 썸네일 바로 밑에 붙어야 함');
+    assert.ok(cardBox.y + cardBox.height - (actionsBox.y + actionsBox.height) <= 2, '카드가 버튼 행에서 끝나야 함');
+    assert.ok(Math.abs(bandBox.y + bandBox.height - (mediaBox.y + mediaBox.height)) < 1, '제목 띠가 썸네일 하단에 올려져야 함');
+    assert.match(await titleRow.evaluate((element) => getComputedStyle(element).backgroundColor), /^rgba\(0, 0, 0, 0\.\d+\)$/);
     await titleRow.getByRole('checkbox').check();
     assert.equal(await titleRow.getByRole('checkbox').isChecked(), true);
     await titleRow.getByRole('checkbox').uncheck();
     assert.equal(await page.getByTestId('pdf-list-header').count(), 0);
+    // 정보는 평소에 숨겨져 있고 i 버튼 토글로 열리며, 다시 누르면 닫힌다.
+    const overlay = cover.getByTestId('pdf-cover-info-overlay');
+    const toggle = cover.getByTestId('pdf-cover-info-toggle');
+    await page.mouse.move(2, 2);
+    assert.equal(await overlay.isVisible(), false);
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    await toggle.click();
+    await page.mouse.move(2, 2);
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    await overlay.waitFor({ state: 'visible' });
     assert.equal(await cover.getByTestId('pdf-cover-document-info').innerText(), '문서정보');
     assert.equal(await cover.getByTestId('pdf-cover-document-info').evaluate((element) => getComputedStyle(element).textDecorationLine), 'underline');
     assert.match(await cover.getByTestId('pdf-cover-opened-at').innerText(), /^열린시간: /);
     assert.equal(await cover.getByTestId('pdf-cover-opened-at').innerText(), '열린시간: 2025년 9월 30일');
+    assert.match(await cover.getByTestId('pdf-cover-last-page').innerText(), /^최종페이지: /);
+    const overlayBox = await overlay.boundingBox();
+    assert.ok(Math.abs(overlayBox.y + overlayBox.height - bandBox.y) < 1, '정보 영역은 제목 띠를 제외한 나머지를 덮어야 함');
+    await page.screenshot({ path: `${output}/covers-info-${viewport.width}.png`, fullPage: true });
+    await toggle.click();
+    await page.mouse.move(2, 2);
+    await overlay.waitFor({ state: 'hidden' });
+    // 마우스를 올리면 토글 없이도 같은 정보가 나온다(포인터 장치 한정).
+    if (viewport.width >= 900) {
+      await media.hover();
+      await overlay.waitFor({ state: 'visible' });
+      await page.mouse.move(2, 2);
+      await overlay.waitFor({ state: 'hidden' });
+    }
     await page.screenshot({ path: `${output}/covers-${viewport.width}.png`, fullPage: true });
     await page.getByTestId('lnb-bookmarks').click();
     await page.waitForURL('**/bookmarks');

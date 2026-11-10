@@ -31,6 +31,7 @@ try {
  assert.equal(runs,2);
  assert.equal(await page.getByTestId('ai-auto-tag-upgrade-guide').count(),0);
  await page.getByRole('button',{name:'표지 보기',exact:true}).click();
+ await page.getByTestId('pdf-cover-card').first().getByTestId('pdf-cover-info-toggle').click();
  const tag = page.getByTestId('pdf-cover-card').first().getByTestId('pdf-tag-chip').first();
  await tag.waitFor();
  assert.match(await tag.innerText(),/^#/);

@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Checkbox, Divider, CircularProgress, IconButton, Tooltip, Typography, useTheme } from '@mui/material';
+import { Box, Button, Checkbox, CircularProgress, IconButton, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import HashTagIcon from './HashTagIcon.js';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -13,6 +14,7 @@ import { DRAG_TYPE } from '../layout/LNB.js';
 import TagChip from './TagChip.js';
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
+import { progressApi } from '../api/progress.js';
 
 type Props = {
   filename: string;
@@ -384,51 +386,105 @@ function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; t
   </Box>;
 }
 
+// Two lines of 1.35em text plus the vertical padding; the overlay keeps this height even for one-line titles.
+const TITLE_BAND_MIN_HEIGHT = 'calc(2.7em + 12px)';
+const OVERLAY_TEXT_SX = { color: 'rgba(255,255,255,.86)', fontSize: '.75rem', lineHeight: 1.4 } as const;
+
 export default function PdfCoverItem(props: Props) {
   const { language, t, ui } = usePdfitI18n();
   const navigate = useNavigate();
   const theme = useTheme();
   const aiAccentColor = theme.palette.mode === 'light' ? '#b7791f' : '#f59e0b';
+  // Tag colors are chosen per theme mode; the overlay is always dark, so its tags use the dark palette.
+  const overlayTheme = useMemo(() => createTheme({ palette: { mode: 'dark' } }), []);
   const pending = isPendingUploadDriveFileId(props.driveFileId);
+  const [infoPinned, setInfoPinned] = useState(false);
+  const [infoRequested, setInfoRequested] = useState(false);
+  const [lastPage, setLastPage] = useState<number | null>(null);
   const openedAt = useSyncExternalStore(subscribeDocumentOpenHistory, () => getDocumentOpenedAt({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }), () => null);
   const openedLabel = formatDocumentOpenedDate(openedAt, language);
   const open = () => { if (!pending) openViewer({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }); };
   const viewerHref = viewerUrl({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId });
+  const infoId = useId();
+
+  // The last page is read only once the overlay is first shown, so a grid of cards does not
+  // issue one progress request per card.
+  useEffect(() => {
+    if (!infoRequested || pending) return;
+    let cancelled = false;
+    progressApi.get(props.folder, props.filename, props.driveFileId).then((page) => { if (!cancelled) setLastPage(page); }).catch(() => { if (!cancelled) setLastPage(null); });
+    return () => { cancelled = true; };
+  }, [infoRequested, openedAt, pending, props.driveFileId, props.filename, props.folder]);
+
+  const lastPageLabel = lastPage !== null && (lastPage > 1 || openedAt) ? String(lastPage) : '—';
+  const infoLabel = infoPinned ? t('hideCoverInfo') : t('showCoverInfo');
+  const requestInfo = () => setInfoRequested(true);
 
   return <Box component="article" data-testid="pdf-cover-card" sx={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', border: '1px solid', borderColor: props.selected ? 'primary.main' : 'divider', borderRadius: 1.5, bgcolor: 'background.paper', boxShadow: props.selected ? '0 0 0 1px #3b82f6' : '0 8px 20px rgba(0,0,0,.10)', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light' } }}>
-    <Box component="a" href={viewerHref} draggable={!pending} onDragStart={(event) => { if (pending) return; event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId })); }} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
-      {pending
-        ? <Box data-testid="pending-cover-placeholder" sx={{ display: 'grid', placeItems: 'center', aspectRatio: '3 / 4', bgcolor: 'action.hover' }}><PictureAsPdfIcon color="disabled" sx={{ fontSize: 48 }} /></Box>
-        : props.serverCover && props.thumbnailUrl
-          ? <ServerCoverThumbnail thumbnailUrl={props.thumbnailUrl} title={props.filename} />
-          : <FirstPageThumbnail url={props.url} thumbnailUrl={props.thumbnailUrl} title={props.filename} modifiedAt={props.modifiedAt} driveFileId={props.driveFileId} onCoverVisible={props.onCoverVisible} />}
-    </Box>
-    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: 1.25, gap: .75 }}>
-      <Box data-testid="pdf-cover-title-row" sx={{ display: 'flex', alignItems: 'flex-start', gap: .5 }}>
-        {!props.hideSelection && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0 }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange(props.folder, props.filename, checked)} />}
-      <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, minHeight: '2.7em', color: 'text.primary', fontWeight: 700, fontSize: '.88rem', lineHeight: 1.35, textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{props.filename}</Typography>
+    <Box
+      data-testid="pdf-cover-media"
+      data-info-open={infoPinned ? 'true' : 'false'}
+      onMouseEnter={requestInfo}
+      sx={{
+        position: 'relative',
+        '& [data-cover-info]': { opacity: infoPinned ? 1 : 0, visibility: infoPinned ? 'visible' : 'hidden' },
+        // Hover only exists on pointer devices; touch devices use the info button instead.
+        '@media (hover: hover)': { '&:hover [data-cover-info]': { opacity: 1, visibility: 'visible' } },
+      }}
+    >
+      <Box component="a" href={viewerHref} draggable={!pending} onDragStart={(event) => { if (pending) return; event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId })); }} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
+        {pending
+          ? <Box data-testid="pending-cover-placeholder" sx={{ display: 'grid', placeItems: 'center', aspectRatio: '3 / 4', bgcolor: 'action.hover' }}><PictureAsPdfIcon color="disabled" sx={{ fontSize: 48 }} /></Box>
+          : props.serverCover && props.thumbnailUrl
+            ? <ServerCoverThumbnail thumbnailUrl={props.thumbnailUrl} title={props.filename} />
+            : <FirstPageThumbnail url={props.url} thumbnailUrl={props.thumbnailUrl} title={props.filename} modifiedAt={props.modifiedAt} driveFileId={props.driveFileId} onCoverVisible={props.onCoverVisible} />}
       </Box>
-      {pending ? <Typography role="status" variant="caption" sx={{ alignSelf: 'flex-start', px: .75, py: .25, border: '1px solid', borderColor: 'warning.main', borderRadius: 99, color: 'warning.dark', bgcolor: 'action.hover', fontWeight: 650 }}>{t('uploadPending')}</Typography> : null}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: .5, minHeight: 20 }}>
-        {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={() => props.onTagDelete(props.folder, props.filename, tag)} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
-      </Box>
-        {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
-      <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" color="text.secondary">{t('openedAt')}: {openedLabel}</Typography>
-      <Typography data-testid="pdf-cover-file-size" variant="caption" color="text.secondary">{formatBytes(props.size)}</Typography>
-      <Box data-testid="pdf-cover-actions" sx={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 'auto', pt: .5, borderTop: '1px solid', borderColor: 'divider', '& .MuiIconButton-root': { p: .25, width: 24, height: 24 }, '& > span': { display: 'inline-flex', flexShrink: 0 } }}>
-        <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', flex: 1, gap: .75, '& > span': { display: 'inline-flex' } }}>
-        {props.onAutoTag ? <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small" disabled={pending || props.autoTagging || props.autoTagDisabled} onClick={() => props.onAutoTag?.(props.folder, props.filename)} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>{props.autoTagging ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon fontSize="small" />}</IconButton></span></Tooltip> : null}
-
-        <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip>
+      {/* Overlay layer: the info panel fills what the title band leaves; both sit on top of the thumbnail. */}
+      <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
+        <ThemeProvider theme={overlayTheme}>
+          <Box
+            id={infoId}
+            data-cover-info
+            data-testid="pdf-cover-info-overlay"
+            onClick={(event) => { if (event.target === event.currentTarget) open(); }}
+            sx={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: .75, p: 1, pt: 4.5, bgcolor: 'rgba(0,0,0,.72)', pointerEvents: 'auto', cursor: pending ? 'wait' : 'pointer', transition: 'opacity 140ms ease' }}
+          >
+            {pending ? <Typography role="status" variant="caption" sx={{ alignSelf: 'flex-start', px: .75, py: .25, border: '1px solid', borderColor: 'warning.main', borderRadius: 99, color: 'warning.light', fontWeight: 650 }}>{t('uploadPending')}</Typography> : null}
+            <Box data-testid="pdf-cover-tags" sx={{ display: 'flex', flexWrap: 'wrap', gap: .5 }}>
+              {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={() => props.onTagDelete(props.folder, props.filename, tag)} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
+            </Box>
+            {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', color: 'primary.light', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
+            <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" sx={OVERLAY_TEXT_SX}>{t('openedAt')}: {openedLabel}</Typography>
+            <Typography data-testid="pdf-cover-last-page" variant="caption" sx={OVERLAY_TEXT_SX}>{t('lastPage')}: {lastPageLabel}</Typography>
+            <Typography data-testid="pdf-cover-file-size" variant="caption" sx={OVERLAY_TEXT_SX}>{formatBytes(props.size)}</Typography>
+          </Box>
+        </ThemeProvider>
+        <Box data-testid="pdf-cover-title-row" sx={{ flexShrink: 0, minHeight: TITLE_BAND_MIN_HEIGHT, display: 'flex', alignItems: 'center', gap: .5, px: 1, py: '6px', fontSize: '.85rem', lineHeight: 1.35, bgcolor: 'rgba(0,0,0,.62)', color: '#fff', pointerEvents: 'none' }}>
+          {!props.hideSelection && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0, color: 'rgba(255,255,255,.8)', pointerEvents: 'auto' }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange(props.folder, props.filename, checked)} />}
+          <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
         </Box>
-        {!props.hideFileActions && <>
-        <Divider data-testid="pdf-cover-action-divider" orientation="vertical" flexItem sx={{ my: .25, borderColor: 'text.secondary', opacity: .7 }} />
-        <Box data-testid="pdf-cover-file-actions" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', flex: 1, gap: .75, '& > span': { display: 'inline-flex' } }}>
+      </Box>
+      <IconButton
+        data-testid="pdf-cover-info-toggle"
+        aria-label={infoLabel}
+        aria-expanded={infoPinned}
+        aria-controls={infoId}
+        size="small"
+        onClick={() => { requestInfo(); setInfoPinned((value) => !value); }}
+        sx={{ position: 'absolute', top: 6, right: 6, zIndex: 1, width: 24, height: 24, p: 0, color: '#fff', bgcolor: 'rgba(0,0,0,.55)', '&:hover': { bgcolor: 'rgba(0,0,0,.78)' } }}
+      >
+        <InfoOutlinedIcon sx={{ fontSize: 18 }} />
+      </IconButton>
+    </Box>
+    <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
+      <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'contents' }}>
+        {props.onAutoTag ? <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small" disabled={pending || props.autoTagging || props.autoTagDisabled} onClick={() => props.onAutoTag?.(props.folder, props.filename)} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>{props.autoTagging ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon fontSize="small" />}</IconButton></span></Tooltip> : null}
+        <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip>
+      </Box>
+      {!props.hideFileActions && <Box data-testid="pdf-cover-file-actions" sx={{ display: 'contents' }}>
         <Tooltip title={t('moveToFolder')}><span><IconButton aria-label={t('moveToFolder')} size="small" disabled={pending} onClick={() => props.onMove(props.folder, props.filename)}><DriveFileMoveIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title={t('delete')}><span><IconButton aria-label={t('delete')} size="small" color="error" disabled={pending} onClick={() => props.onDelete(props.folder, props.filename)}><DeleteIcon fontSize="small" /></IconButton></span></Tooltip>
-        </Box>
-        </>}
-      </Box>
+      </Box>}
     </Box>
   </Box>;
 }

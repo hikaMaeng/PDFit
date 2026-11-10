@@ -47,6 +47,7 @@ try {
       await row.getByTestId('pdf-tag-values').getByText('소프트웨어').waitFor();
       assert.equal(assigned, true);
       await page.getByRole('button', { name: '표지 보기' }).click();
+      await page.getByTestId('pdf-cover-info-toggle').first().click();
       await page.getByTestId('pdf-cover-card').getByText('소프트웨어').waitFor();
       await page.goto(`${origin}/samples`, { waitUntil: 'domcontentloaded' });
       await page.getByRole('button', { name: '공용 문서.pdf' }).waitFor();
