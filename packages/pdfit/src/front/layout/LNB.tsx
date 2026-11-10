@@ -32,6 +32,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -635,8 +636,9 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                               <ListItemText
                                 primary={
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <LocalOfferOutlinedIcon aria-hidden data-testid="lnb-tag-icon" sx={{ fontSize: 14, flexShrink: 0, color: tag.color }} />
                                     <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                                      {'# '}<DisplayName value={tag.name} />
+                                      <DisplayName value={tag.name} />
                                     </Typography>
                                     <Typography variant="caption" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0 }}>
                                       {tag.bookCount}

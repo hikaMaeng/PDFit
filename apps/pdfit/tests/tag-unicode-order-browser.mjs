@@ -51,10 +51,13 @@ await page.goto(`${baseUrl}/folder/PDFit%20Library`, { waitUntil: 'networkidle' 
 const rows = page.locator('.pdfit-tag-row');
 await rows.first().waitFor({ state: 'visible' });
 assert.equal(await rows.count(), tags.length, '태그가 누락되거나 중복 렌더링됨');
-const actual = await rows.locator('.MuiListItemText-root').evaluateAll((items) => items.map((item) => (item.textContent ?? '').replace(/^#\s*/, '').replace(/\d+$/, '').trim()));
+const actual = await rows.locator('.MuiListItemText-root').evaluateAll((items) => items.map((item) => (item.textContent ?? '').replace(/\d+$/, '').trim()));
 await page.screenshot({ path: path.join(output, 'lnb-tags.png'), fullPage: true });
 await writeFile(path.join(output, 'result.json'), JSON.stringify({ baseUrl, input: names, actual, expected }, null, 2), 'utf8');
 
+assert.equal(await rows.getByTestId('lnb-tag-icon').count(), tags.length, '태그 행마다 태그 아이콘이 하나씩 있어야 함');
+assert.equal(await page.locator('.pdfit-tag-row .MuiListItemText-root').filter({ hasText: /^\s*#/ }).count(), 0, '태그 이름 앞에 # 문자가 남아 있음');
+assert.equal(await rows.first().getByTestId('lnb-tag-icon').evaluate((el) => getComputedStyle(el).color), 'rgb(59, 130, 246)', '태그 아이콘이 태그 색상을 따르지 않음');
 assert.deepEqual(actual, expected, `태그가 유니코드 순이 아님: ${actual.join(', ')}`);
 assert.ok(actual.indexOf('3D그래픽') < actual.indexOf('AI'), '숫자가 영문보다 앞서지 않음');
 assert.ok(actual.indexOf('AWS') < actual.indexOf('Android'), '대문자가 소문자보다 앞서지 않음');
