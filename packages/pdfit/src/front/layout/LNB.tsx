@@ -32,6 +32,7 @@ import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
+import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -51,6 +52,7 @@ import { listAllBookmarks } from '../api/bookmarks';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
+import { UNTAGGED_PATH } from '../model/untagged.js';
 import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
@@ -111,6 +113,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [tags, setTags] = useState<TagSummary[]>([]);
+  const [untaggedCount, setUntaggedCount] = useState(0);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [foldersOpen, setFoldersOpen] = useState(true);
@@ -153,6 +156,11 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       setTags(data);
     } catch {
       // keep current tag list on error
+    }
+    try {
+      setUntaggedCount(await tagsApi.countUntaggedBooks());
+    } catch {
+      // 미분류 개수를 못 구해도 마지막 값을 유지한다
     }
   }, []);
 
@@ -626,8 +634,44 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Box>
 
             <Collapse in={tagsOpen} timeout="auto" unmountOnExit>
+              <List dense disablePadding sx={{ pb: tags.length === 0 ? 0 : undefined }}>
+                <ListItem disablePadding data-testid="lnb-untagged-row">
+                  <ListItemButton
+                    data-testid="lnb-untagged"
+                    selected={location.pathname === UNTAGGED_PATH}
+                    onClick={() => { go(UNTAGGED_PATH); onMobileClose(); }}
+                    sx={{
+                      borderRadius: 1,
+                      mx: 1,
+                      pl: 1.5,
+                      py: 0.4,
+                      color: sidebarTextPrimary,
+                      '&:hover': { backgroundColor: sidebarHover },
+                      '&.Mui-selected': {
+                        color: sidebarTextPrimary,
+                        backgroundColor: selectedNavigationBackground,
+                        boxShadow: `inset 3px 0 0 ${selectedAccent}`,
+                        '&:hover': { backgroundColor: selectedNavigationBackground },
+                      },
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <LabelOffOutlinedIcon aria-hidden data-testid="lnb-untagged-icon" sx={{ fontSize: 14, flexShrink: 0, color: sidebarTextSecondary }} />
+                          <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>{t('untagged')}</Typography>
+                          <Typography data-testid="lnb-untagged-count" variant="caption" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0 }}>
+                            {untaggedCount}
+                          </Typography>
+                        </Box>
+                      }
+                      disableTypography
+                    />
+                  </ListItemButton>
+                </ListItem>
+              </List>
               {tags.length === 0 ? (
-                <Typography variant="caption" sx={{ color: sidebarTextDisabled, px: 2, display: 'block', pb: 1 }}>
+                <Typography variant="caption" sx={{ color: sidebarTextDisabled, px: 2, display: 'block', py: 0.5, pb: 1 }}>
                   {t('addTagHint')}
                 </Typography>
               ) : (

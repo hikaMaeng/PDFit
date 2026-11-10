@@ -50,6 +50,10 @@ export interface MetadataStore {
   listTags(): Promise<string[]>;
   listTagSummaries(): Promise<TagSummary[]>;
   listBooksByTag(tag: string): Promise<TaggedBookRecord[]>;
+  /** 태그가 하나도 붙지 않은 책(사이드바 "미분류"). 구현하지 않는 저장소는 라우트가 501로 답한다. */
+  listUntaggedBooks?(): Promise<TaggedBookRecord[]>;
+  /** `listUntaggedBooks()`의 개수만 계산한다(사이드바 배지용). */
+  countUntaggedBooks?(): Promise<number>;
   listBooksByFolder(folder: string): Promise<BookRecord[]>;
   listFolderBookCounts(): Promise<Record<string, number>>;
   listFolderColors(): Promise<Record<string, string>>;

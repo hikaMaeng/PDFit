@@ -32,6 +32,27 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
     }
   });
 
+  // 태그 이름과 겹치지 않도록 `/:tag/books`와 모양이 다른 단일 세그먼트 경로를 쓴다.
+  router.get('/untagged-books', async (req: Request, res: Response) => {
+    try {
+      const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!metadataStore.listUntaggedBooks) { res.status(501).json({ error: 'Untagged listing is not available for this library.' }); return; }
+      res.json(await metadataStore.listUntaggedBooks());
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  router.get('/untagged-count', async (req: Request, res: Response) => {
+    try {
+      const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!metadataStore.countUntaggedBooks) { res.status(501).json({ error: 'Untagged listing is not available for this library.' }); return; }
+      res.json({ count: await metadataStore.countUntaggedBooks() });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
   router.delete('/', async (req: Request, res: Response) => {
     try {
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);

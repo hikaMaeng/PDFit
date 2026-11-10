@@ -18,6 +18,8 @@ const rows = {
   documentInfo: ['Document info', '파일정보', '文档信息', 'Información del documento', 'दस्तावेज़ जानकारी', 'معلومات المستند', 'Informations du document', 'Informações do documento'],
   fileSize: ['File size', '파일 크기', '文件大小', 'Tamaño del archivo', 'फ़ाइल का आकार', 'حجم الملف', 'Taille du fichier', 'Tamanho do arquivo'],
   tagAssignmentTotal: ['{count} tag assignments', '태그 연결 합계 {count}개', '共 {count} 个标签关联', '{count} asignaciones de etiquetas', 'कुल {count} टैग संबंध', 'إجمالي روابط الوسوم {count}', '{count} associations de tags', '{count} associações de tags'],
+  untagged: ['Untagged', '미분류', '未分类', 'Sin clasificar', 'अवर्गीकृत', 'غير مصنّف', 'Non classé', 'Sem classificação'],
+  noUntaggedPdfs: ['Every PDF has at least one tag.', '태그가 없는 PDF가 없습니다.', '所有 PDF 都至少有一个标签。', 'Todos los PDF tienen al menos una etiqueta.', 'हर PDF में कम से कम एक टैग है।', 'لكل ملف PDF وسم واحد على الأقل.', 'Chaque PDF a au moins une étiquette.', 'Todos os PDFs têm pelo menos uma tag.'],
   tagAssignmentShort: ['Links {count}', '연결 {count}', '关联 {count}', 'Vínculos {count}', 'संबंध {count}', 'روابط {count}', 'Liens {count}', 'Ligações {count}'],
   refreshFolders: ['Refresh folders', '폴더 새로고침', '刷新文件夹', 'Actualizar carpetas', 'फ़ोल्डर रीफ़्रेश करें', 'تحديث المجلدات', 'Actualiser les dossiers', 'Atualizar pastas'],
   listView: ['List view', '목록 보기', '列表视图', 'Vista de lista', 'सूची दृश्य', 'عرض القائمة', 'Vue en liste', 'Visualização em lista'],

@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { tagsApi, BookRef } from '../api/tags';
@@ -46,14 +47,15 @@ interface TagDialogState {
 const bookIdentity = (book: Pick<BookRef, 'folder' | 'filename' | 'driveFileId'>) =>
   book.driveFileId ?? `${book.folder}/${book.filename}`;
 
-export default function TagPage() {
+/** `untagged`이면 `/tag/:name` 대신 태그가 하나도 없는 문서를 보여 주는 "미분류" 보기다. */
+export default function TagPage({ untagged = false }: { untagged?: boolean } = {}) {
   const { t, ui } = usePdfitI18n();
   const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved, serverThumbnails } = usePdfitFrontConfig();
   const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
 
-  const tagName = decodeURIComponent(name ?? '');
+  const tagName = untagged ? '' : decodeURIComponent(name ?? '');
 
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [refreshing, setRefreshing] = useState(false);
@@ -110,11 +112,11 @@ export default function TagPage() {
 
   // ─── 초기 로드 ────────────────────────────────────────────
   const loadBooks = useCallback(async (background = false) => {
-    if (!tagName) return;
+    if (!tagName && !untagged) return;
     if (!background) setLoading(true);
     setError(null);
     try {
-      const [data, summaries] = await Promise.all([tagsApi.listBooks(tagName), tagsApi.listSummary()]);
+      const [data, summaries] = await Promise.all([untagged ? tagsApi.listUntaggedBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
       setTagColor(summaries.find((item) => item.name === tagName)?.color ?? '#22c55e');
       setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       setBooks(data);
@@ -126,11 +128,11 @@ export default function TagPage() {
     } finally {
       setLoading(false);
     }
-  }, [tagName]);
+  }, [tagName, untagged]);
 
   useEffect(() => { void loadBooks(); }, [loadBooks]);
 
-  useEffect(() => { setSelectedBooks(new Set()); }, [tagName]);
+  useEffect(() => { setSelectedBooks(new Set()); }, [tagName, untagged]);
 
   useEffect(() => {
     setSelectedBooks((current) => {
@@ -267,6 +269,8 @@ export default function TagPage() {
     publishTagSummaryOptimistic(trimmed, 1);
     setTagInput('');
     folderLibraryModel.get(folder).addTag(file, trimmed, driveFileId);
+    // 미분류 목록에서는 태그가 붙은 순간 더 이상 미분류가 아니므로 목록에서 뺀다.
+    if (untagged) setBooks((prev) => prev.filter((book) => bookIdentity(book) !== key));
         window.dispatchEvent(new Event('tags-changed'));
       setTagNotice({ message: ui("\"{p0}\" 태그가 추가되었습니다.", { p0: trimmed }), severity: 'success' });
       return true;
@@ -375,9 +379,11 @@ export default function TagPage() {
       {/* 헤더 */}
       <Box sx={{ px: 1, py: 0, mb: 0.5 }}>
         <Box data-testid="tag-title-row" sx={{ display: 'flex', alignItems: 'center', gap: 1, '& > .MuiIconButton-root': { p: 0 } }}>
-          <TagColorPicker icon={<Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>} color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />
+          {untagged
+            ? <LabelOffOutlinedIcon aria-hidden data-testid="untagged-title-icon" sx={{ fontSize: 28, color: 'text.secondary' }} />
+            : <TagColorPicker icon={<Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>} color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="h5" fontWeight={700}><DisplayText value={tagName} /></Typography>
+            <Typography variant="h5" fontWeight={700} data-testid={untagged ? 'untagged-title' : undefined}>{untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />
           </Box>
           <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto' }}>{t('refresh')}</Button>
@@ -391,7 +397,7 @@ export default function TagPage() {
         {books.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <PictureAsPdfIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-            <Typography color="text.secondary">{t('noTaggedPdfs')}</Typography>
+            <Typography color="text.secondary">{untagged ? t('noUntaggedPdfs') : t('noTaggedPdfs')}</Typography>
           </Box>
         ) : (
           <>

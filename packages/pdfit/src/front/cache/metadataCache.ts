@@ -229,6 +229,25 @@ export async function listCachedBooksByTag(tagName: string): Promise<Array<{ fol
     .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
 }
 
+/** 활성 태그 관계가 하나도 없는 PDF(사이드바 "미분류")를 하이드레이트된 스냅샷에서 투영한다. */
+export async function listCachedUntaggedBooks(): Promise<Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const [tags, relations, pdfs, folders] = await Promise.all([
+    readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
+    readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders'),
+  ]);
+  const activeTagIds = new Set(tags.filter((tag) => !tag.deletedAt).map((tag) => tag.tagId));
+  const taggedFileIds = new Set(relations.filter((relation) => !relation.deletedAt && activeTagIds.has(relation.tagId)).map((relation) => relation.driveFileId));
+  const folderNames = new Map(folders.filter((folder) => !folder.trashed).map((folder) => [folder.driveFolderId, folder.name]));
+  return pdfs
+    .filter((pdf) => !pdf.trashed && folderNames.has(pdf.parentFolderId) && !taggedFileIds.has(pdf.driveFileId))
+    .map((pdf) => ({
+      folder: folderNames.get(pdf.parentFolderId)!, filename: pdf.name, driveFileId: pdf.driveFileId, size: pdf.size,
+      modified_at: pdf.modifiedTime, tags: [] as string[],
+    }))
+    .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
+}
+
 /** 서버 `searchBooksByTitle`과 같은 규칙(제목=`.pdf` 제외 파일명, NFC·대소문자 무시 부분 문자열)을 하이드레이트된 DB 스냅샷에 적용한다. */
 export async function searchCachedBooksByTitle(query: string): Promise<{ total: number; books: Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> } | null> {
   const scope = await cachedScope(); if (!scope) return null;

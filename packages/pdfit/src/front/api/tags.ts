@@ -28,7 +28,7 @@ export interface AutomaticFolderTagResult {
   books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; addedTags: string[]; removedTags: string[] }>;
   errors: Array<{ filename: string; driveFileId?: string; error: string }>;
 }
-import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
+import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -80,6 +80,18 @@ export const tagsApi = {
   /** 특정 태그의 PDF 목록 */
   listBooks: async (tag: string) =>
     (await listCachedBooksByTag(tag)) ?? request<BookRef[]>(`/tags/${encodeURIComponent(tag)}/books`),
+
+  /** 태그가 하나도 없는 PDF 목록("미분류") */
+  listUntaggedBooks: async () =>
+    (await listCachedUntaggedBooks()) ?? request<BookRef[]>('/tags/untagged-books'),
+
+  /** 태그가 하나도 없는 PDF 수(사이드바 배지) */
+  countUntaggedBooks: async () => {
+    const cached = await listCachedUntaggedBooks();
+    if (cached) return cached.length;
+    const { count } = await request<{ count: number }>('/tags/untagged-count');
+    return Number.isFinite(count) ? count : 0;
+  },
 
   /** 폴더 내 모든 PDF의 태그를 한 번에 조회 → { filename: string[] } */
   listForFolder: async (folder: string) => (await listCachedFolderTags(folder)) ?? request<Record<string, string[]>>(`/tags/folder/${encodeURIComponent(folder)}`),

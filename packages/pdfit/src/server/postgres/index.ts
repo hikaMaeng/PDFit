@@ -89,6 +89,28 @@ export class PostgresMetadataStore implements MetadataStore {
     }));
   }
 
+  async listUntaggedBooks(): Promise<TaggedBookRecord[]> {
+    const result = await this.db.query(`
+      SELECT b.folder, b.filename, b.size, b.modified_at
+      FROM books b
+      WHERE NOT EXISTS (SELECT 1 FROM book_tags bt WHERE bt.folder = b.folder AND bt.filename = b.filename)
+      ORDER BY b.folder, b.filename
+    `);
+    return result.rows.map((row) => ({
+      folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
+      modified_at: String(row.modified_at), tags: [],
+    }));
+  }
+
+  async countUntaggedBooks(): Promise<number> {
+    const result = await this.db.query(`
+      SELECT COUNT(*)::int AS untagged_count
+      FROM books b
+      WHERE NOT EXISTS (SELECT 1 FROM book_tags bt WHERE bt.folder = b.folder AND bt.filename = b.filename)
+    `);
+    return Number(result.rows[0]?.untagged_count ?? 0);
+  }
+
   async searchBooksByTitle(query: string, limit = 500): Promise<BookTitleSearchResult> {
     const needle = query.normalize('NFC').trim();
     if (!needle) return { total: 0, books: [] };

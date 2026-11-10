@@ -4,6 +4,10 @@
 
 ### Added
 
+- An "Untagged" entry pinned at the top of the sidebar tag list. It shows how many
+  documents have no tag at all and opens `/untagged`, which lists them like a tag page
+  (a document leaves the list as soon as it gets a tag). Backed by
+  `GET /api/tags/untagged-books` and `GET /api/tags/untagged-count`.
 - Background task layer for the standalone server: a standard task envelope and script
   contract, a priority queue, a fixed pool of worker threads, and an hourly scheduler
   that recomputes and replaces the pending queue on every run

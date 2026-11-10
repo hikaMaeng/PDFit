@@ -4,6 +4,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { Outlet, useLocation } from 'react-router-dom';
 import LNB from './LNB';
+import { UNTAGGED_PATH } from '../model/untagged.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n';
 
 function RouteErrorState() {
@@ -55,7 +56,7 @@ export default function Layout() {
   const theme = useTheme();
   const isTabletDrawer = useMediaQuery('(min-width: 720px) and (max-width: 899.95px) and (pointer: coarse)');
   const location = useLocation();
-  const isLibraryList = location.pathname.startsWith('/folder/') || location.pathname.startsWith('/tag/') || location.pathname === '/bookmarks';
+  const isLibraryList = location.pathname.startsWith('/folder/') || location.pathname.startsWith('/tag/') || location.pathname === UNTAGGED_PATH || location.pathname === '/bookmarks';
   const mainBackground = 'background.default';
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);

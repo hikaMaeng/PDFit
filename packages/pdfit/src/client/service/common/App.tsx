@@ -4,6 +4,7 @@ import { usePdfitFrontConfig } from '../../../front/context.js';
 import Layout from '../../../front/layout/Layout.js';
 import FolderPage from '../../../front/pages/FolderPage.js';
 import HomePage from '../../../front/pages/HomePage.js';
+import { UNTAGGED_PATH } from '../../../front/model/untagged.js';
 
 const TagPage = lazy(() => import('../../../front/pages/TagPage.js'));
 const BookmarkPage = lazy(() => import('../../../front/pages/BookmarkPage.js'));
@@ -40,6 +41,7 @@ export default function PdfitServiceAppRoutes() {
         <Route path="/folder/:name" element={<FolderPage />} />
         <Route path="/bookmarks" element={<BookmarkPage />} />
         <Route path="/tag/:name" element={<TagPage />} />
+        <Route path={UNTAGGED_PATH} element={<TagPage untagged />} />
         <Route path="/search" element={<SearchPage />} />
         {extraRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />

@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "origin": "http://127.0.0.1:15203",
+  "results": {
+    "live": {
+      "apiCount": 5,
+      "badge": 5,
+      "chip": 5,
+      "rows": 5,
+      "firstTagUrl": "http://127.0.0.1:15203/tag/3D%EA%B7%B8%EB%9E%98%ED%94%BD"
+    },
+    "mocked": {
+      "posted": [
+        {
+          "filename": "E2E 미분류 A.pdf",
+          "body": {
+            "tag": "e2e-untagged-check"
+          }
+        }
+      ],
+      "remainingAfterTag": 1
+    }
+  }
+}
