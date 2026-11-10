@@ -263,6 +263,8 @@ export default function PdfViewer({
     setPages([]);
     setCurrentPage(1);
     setPageInput('1');
+    currentPageRef.current = 1;
+    interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setPage', page: 1 }).state;
     initialPageAppliedRef.current = false;
     loadedRef.current = new Set();
     spreadTokenRef.current.cancelled = true;
@@ -316,6 +318,12 @@ export default function PdfViewer({
           return next;
         });
         currentPageRef.current = firstPageNumber;
+        // 휠/키 입력은 interactionRef.page를 기준으로 다음 페이지를 계산한다.
+        // 복원한 페이지를 여기서 동기화하지 않으면 첫 휠 이동이 1페이지 기준이 된다.
+        interactionRef.current = reduceViewerInteraction(
+          reduceViewerInteraction(interactionRef.current, { type: 'setPageCount', pageCount: doc.numPages }).state,
+          { type: 'setPage', page: firstPageNumber },
+        ).state;
         setCurrentPage(firstPageNumber);
         setPageInput(String(firstPageNumber));
         initialPageAppliedRef.current = initialPageRef.current != null;

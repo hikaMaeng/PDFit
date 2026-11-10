@@ -11,6 +11,8 @@ Run:
 
 `apps/pdfit/tests/free-cover-view-deployed-browser.mjs` is a read-only headless check of the cover view against a deployed standalone server (`PDFIT_BASE_URL`, default `http://127.0.0.1:15203`). It reads `/api/tasks/status`, switches to the grid, and asserts that at least `PDFIT_MIN_READY_COVERS` covers are loaded 360 px wide server thumbnails with non-blank pixels and a `v=<mtime>-<size>` URL, that the page contains no browser-side PDF canvas, that no PDF file was downloaded, and that the view choice persists. `PDFIT_WAIT_TASKS_IDLE_SECONDS` waits for the task queue to drain first. Set `PDFIT_BROWSER_CHANNEL=chrome` to use an installed Chrome, and `PDFIT_EVIDENCE_DIR` to save a screenshot and JSON.
 
+`apps/pdfit/tests/viewer-restored-page-wheel-browser.mjs` mocks a saved viewer state (page 5, single and double layout) on an 8-page PDF, opens `/viewer/...` on the standalone server (`PDFIT_TEST_ORIGIN`, default `http://127.0.0.1:15203`), and asserts that the first mouse wheel without any prev/next click moves from the restored page (`5→6` single, `5→7` double). `PDFIT_TEST_CHANNEL=chrome` uses the installed Chrome; `PDFIT_TEST_RUN` names the report directory.
+
 `apps/pdfit/tests/aborted-file-read.mjs` aborts several range reads of a large PDF mid-stream and asserts that `/health` stays 200 and the container restart count (`PDFIT_CONTAINER`) does not change. Before the fix in `routes/folders.ts`, the first abort crashed Node with `ERR_HTTP_HEADERS_SENT`.
 
 `verify:pdfit` checks the integrated service/viewer bundles, Settings UI, AI server CRUD, the removed `/api/settings/pgvector` routes returning 404, and viewer isolation. Acceptance covers library CRUD, upload, tags, progress, viewer state, and SSE behavior.
