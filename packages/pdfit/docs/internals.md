@@ -438,3 +438,89 @@ AI 태그 잔여 안내를 데스크톱에서는 버튼 왼쪽 같은 줄 가운
 기본 뷰어의 대용량 range 로딩은 전체 파일 다운로드 퍼센트가 첫 페이지 준비 상태를 의미하지 않으므로 불확정 게이지와 첫 페이지 준비 안내를 사용한다. 작은 파일의 완전 다운로드 게이지는 기존 퍼센트를 유지한다.
 
 태그 분류 표지 카드도 폴더이동 및 삭제 액션을 표시하고 기존 확인 모달로 연결한다. 파일 자동분류는 유료 권한이 있을 때 표시하고 저장 후 태그 목록을 갱신한다. 카드 아이콘 버튼에 접근성 이름을 지정해 터치 환경에서도 식별한다.
+
+## Background tasks
+
+`src/server/tasks/` is a general periodic-work layer in the shared package, so the local
+runtime and a hosted runtime run the same scheduler, queue, and worker pool. Thumbnails
+are its first job; later periodic jobs reuse it unchanged.
+
+| File | Role |
+| --- | --- |
+| `taskProtocol.ts` | The standard contract: `TaskEnvelope` (`id`, `type`, `key`, `script`, `payload`, `priority`, `timeoutMs`), `TaskScript` (`run(payload, context)`), `TaskOutcome`, and the two worker messages |
+| `taskQueue.ts` | Pending tasks: highest priority first, submission order within a priority, one entry per `type` + `key`, bounded (100,000) |
+| `taskWorkerHost.ts` | The worker-thread entry shared by every task type. It imports the module named by `envelope.script` once per worker and calls its default export's `run` |
+| `taskWorkerPool.ts` | Fixed number of worker threads, which is the parallelism budget for all jobs together. A task past its timeout has its worker terminated and replaced; an idle worker is terminated after 60 s; a worker is recycled after 200 tasks |
+| `taskScheduler.ts` | Registers `PeriodicTaskDefinition`s, plans on a timer, dispatches to the pool, and reports status |
+| `backgroundTasks.ts` | Runtime-neutral entry: `createPdfitTaskScheduler(options)` with the shared defaults, and `readPdfitTaskSchedulerEnvironment(env)` for the `PDFIT_TASK_*` variables |
+
+Scheduling rule: every `intervalMs` the scheduler calls each definition's `plan()`,
+drops everything that type still had pending, and queues the new plan. A task that is
+already in a worker finishes there and is not queued again. If `plan()` throws, the
+previous queue of that type stays. Between ticks, `scheduler.submit(type, task)` adds
+one task; with `INTERACTIVE_TASK_PRIORITY` it runs before the periodic backlog.
+Equal-priority tasks run in the order they were planned, so a job that must not wait
+behind a large backlog of another job plans with a higher priority.
+
+Adding a job:
+
+1. Write a task script whose default export is `defineTask({ async run(payload) { ... } })`.
+   It runs in a worker thread; payload and result must be structured-cloneable.
+2. Write a `PeriodicTaskDefinition`: `type`, `script` (module URL), `plan()` returning
+   `{ key, payload, priority? }[]`, optional `timeoutMs` and `onSettled`.
+3. Register it on the scheduler. The local runtime does that next to the thumbnail job
+   in `bootstrap/createCommonRouters.ts`.
+
+Hosted runtime: the local assembly (`backgroundTasks` option) only exists on the
+`booksRoot` path, which a hosted server does not use. A hosted server builds its own
+scheduler from the same entry and registers its own definitions:
+
+```ts
+const scheduler = createPdfitTaskScheduler(readPdfitTaskSchedulerEnvironment(process.env));
+scheduler.register(accountThumbnailJob);   // its own plan(), any task script
+scheduler.start();
+// mount createTasksRouter(scheduler) behind the server's own authentication
+```
+
+What differs per edition is only the job definition: which items exist (`plan`), where
+a result is stored, and who may read it. The local thumbnail job lists a directory and
+writes files; a hosted job lists an account's library and stores results per account.
+
+## Server thumbnails
+
+`src/server/thumbnails/` renders page 1 of each library PDF to a 360 px wide JPEG.
+
+* `thumbnailTask.worker.ts` is the task script. PDF.js (`pdfjs-dist` legacy build) reads
+  the source in 256 KB ranges and draws on `@napi-rs/canvas`; the result is written to a
+  temporary file and renamed. The source is `{ kind: 'file', path }` or
+  `{ kind: 'http', url, headers }`, so a hosted job can render a PDF behind a storage API
+  that honours `Range` (for example with a bearer token) using the same script,
+  exported as `THUMBNAIL_TASK_SCRIPT_URL`.
+* `thumbnailStore.ts` owns the file naming. A thumbnail is
+  `<sha1(folder NUL filename)>.<mtimeMs>-<size>.v<format>.jpg` directly inside
+  `THUMBNAILS_ROOT`. There is no database state. A changed PDF has a new stamp, so it has
+  no thumbnail under its current name and the next plan renders it.
+* `thumbnailTask.ts` is the job definition. `plan()` lists the library with asynchronous
+  I/O, queues every PDF without a current thumbnail, and deletes thumbnail files that no
+  longer match any PDF. Deletion is skipped when the listing was incomplete or empty,
+  because that usually means the library volume is offline. A missing library root
+  fails the plan.
+* A failed render writes `<...>.failed` (JSON with the error). The PDF is skipped while
+  that marker is younger than 24 hours and the file is unchanged, then tried again.
+* `THUMBNAIL_FORMAT_VERSION` is part of the file name; raising it re-renders everything.
+
+The folder router's thumbnail route first looks the file up by the client's `v` stamp
+(no library I/O). On a miss it stats the PDF, serves the current thumbnail if there is
+one, and otherwise submits the task with interactive priority and answers `202`.
+
+The cover card (`ServerCoverThumbnail` in `PdfCoverItem.tsx`) shows the `<img>`; on a
+load error it fetches the same URL to read the status, shows "preparing" for `202`, and
+asks again after 3, 6, 12, 30, then every 60 seconds while the card is on screen.
+
+Memory: rendering allocates and frees large image buffers in worker threads. With
+glibc's default dynamic thresholds the freed memory stays in the process heap. The
+standalone entrypoint starts Node with `MALLOC_MMAP_THRESHOLD_=65536` and
+`MALLOC_TRIM_THRESHOLD_=131072`; measured on 120 library PDFs with 2 workers, resident
+memory after the batch was 367 MB without and 117 MB with these settings (peak 692 MB
+vs 414 MB, same duration). `MALLOC_ARENA_MAX=2` alone made no difference. A hosted
+image that enables background tasks should start Node the same way.

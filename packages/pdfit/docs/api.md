@@ -13,6 +13,9 @@ Extension fields:
   'primary'` renders a full-width navigation row above Bookmarks; omitted or
   `header` renders the existing compact header icon.
 * `themeOptions`
+* `serverThumbnails`: `true` on the local runtime. Covers of files without a
+  `driveFileId` are then `<img>` elements pointing at the server thumbnail route, and
+  the browser never renders those PDFs itself. Hosted runtimes leave it unset.
 * `metadataCache`: optional `{ scope, bootstrapUrl }` adapter for account-scoped
   IndexedDB hydration and folder/PDF list reads
 
@@ -72,7 +75,20 @@ Options:
 * `viewerIndexFile`
 * `viewerBasePath`
 
+* `backgroundTasks`: local runtime only. `{ thumbnailRoot, intervalMs?, concurrency?,
+  initialDelayMs?, cooldownMs?, autoStart? }` starts the periodic task scheduler
+  (defaults: one hour, 2 workers, 30 s, 0 ms). Omit it to run without background work.
+
 App-owned routers use the `extraRouters` option as `{ path, router }` mounts.
+
+`@pdfit/pdfit/server` also exports the background-task building blocks for any
+runtime: `createPdfitTaskScheduler`, `readPdfitTaskSchedulerEnvironment`,
+`createTasksRouter`, `TaskScheduler`, `defineTask`, `DEFAULT_TASK_PRIORITY`,
+`INTERACTIVE_TASK_PRIORITY`, the shared render script `THUMBNAIL_TASK_SCRIPT_URL` with
+`THUMBNAIL_WIDTH`, `THUMBNAIL_JPEG_QUALITY`, `THUMBNAIL_FORMAT_VERSION`, and the types
+`PdfitTaskSchedulerOptions`, `PeriodicTaskDefinition`, `PlannedTask`, `TaskEnvelope`,
+`TaskScript`, `TaskOutcome`, `TaskSchedulerStatus`, `ThumbnailTaskPayload`,
+`ThumbnailTaskSource`, `ThumbnailTaskResult`. See `internals.md`, "Background tasks".
 
 The server bootstrap also accepts `commonRouters`, `configureApp`, and
 `defaultMiddlewareEnabled` so authenticated hosted runtimes reuse PDFit's
@@ -122,3 +138,27 @@ library route. `GET /api/bookmarks/:folder/:filename` remains the viewer's
 book-local query. Both return `BookmarkRecord`; `POST`, `PATCH`, and `DELETE`
 remain the capture/edit lifecycle endpoints in
 [`src/server/api/bookmarks/index.ts`](../src/server/api/bookmarks/index.ts).
+
+## Thumbnail and task endpoints (local runtime)
+
+Mounted only when `backgroundTasks` is configured.
+
+`GET /api/folders/:name/files/:filename/thumbnail[?v=<mtimeMs>-<size>]`
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `200` | `image/jpeg` | The cover. `Cache-Control: public, max-age=31536000, immutable` when `v` matched the stored thumbnail, `no-cache` otherwise |
+| `202` | `{ "state": "queued" }` | Not rendered yet. The request queued it ahead of the periodic backlog; ask again later |
+| `404` | `{ "state": "failed" }` | Rendering failed within the last 24 hours |
+| `404` | `{ "state": "missing" }` | No such PDF in the library |
+
+`v` is the file's modification time in whole milliseconds and its size, both taken
+from the folder or tag listing. A hit by `v` does not touch the library volume.
+
+`GET /api/tasks/status` returns the scheduler state: `intervalMs`, `concurrency`,
+`planCount`, `planning`, `nextPlanAt`, `pending`, `active`, one entry per task type
+(`planned`, `pending`, `running`, `completedSincePlan`, `failedSincePlan`,
+`completedTotal`, `failedTotal`, `lastPlanAt`, `lastPlanDurationMs`, `lastPlanError`,
+`recentFailures`), and `details.thumbnail.lastPlan` (`sources`, `ready`, `failed`,
+`queued`, `removed`, `complete`). `completed*` counts tasks that settled successfully,
+not files that exist; the files on disk are the record of what was produced.

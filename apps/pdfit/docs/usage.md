@@ -27,4 +27,22 @@ Use `/settings` for AI server configuration; the database is embedded in the ima
 
 ## Cover view
 
-Folder and tag pages have a list/cover toggle at the right of the toolbar. The cover view shows a card grid with each PDF's first page, title, tags, last-opened time, size, and the same actions as the list. Local files have no provider thumbnail, so the browser renders the first page with PDF.js (range requests, six at a time, only for visible cards) and keeps it in the `pdfit-cover-thumbnails-v1` Cache Storage entry keyed by URL and modification time. The chosen view is stored per browser in `localStorage` key `pdfit.library.view`.
+Folder and tag pages have a list/cover toggle at the right of the toolbar. The cover view shows a card grid with each PDF's first page, title, tags, last-opened time, size, and the same actions as the list. Covers are JPEGs rendered by the server, not by the browser: an hourly background task renders the first page of every PDF that has no thumbnail for its current modification time and size, and stores it under `/app/data/thumbnails`. A card whose cover is not rendered yet shows "Preparing cover…"; opening the view moves the visible covers to the front of the queue. The chosen view is stored per browser in `localStorage` key `pdfit.library.view`.
+
+## Background tasks
+
+The standalone server runs periodic jobs on one shared schedule and one pool of worker
+threads. Cover thumbnails are the first job. Each run recomputes what is missing or
+out of date, replaces whatever was still waiting from the previous run, and works
+through it with a fixed number of workers.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `PDFIT_TASK_INTERVAL_MINUTES` | `60` | Minutes between runs (1 to 1440) |
+| `PDFIT_TASK_CONCURRENCY` | `2` | Worker threads shared by all jobs (1 to 16) |
+| `PDFIT_TASK_INITIAL_DELAY_SECONDS` | `30` | Delay before the first run after startup |
+| `PDFIT_TASK_COOLDOWN_MS` | `0` | Pause after each task before its worker takes the next |
+| `THUMBNAILS_ROOT` | `/app/data/thumbnails` | Where cover JPEGs are stored |
+
+`GET /api/tasks/status` shows the queue, what the last run planned, and recent
+failures. Deleting the thumbnails folder is safe; the next run renders it again.

@@ -48,7 +48,7 @@ const bookIdentity = (book: Pick<BookRef, 'folder' | 'filename' | 'driveFileId'>
 
 export default function TagPage() {
   const { t, ui } = usePdfitI18n();
-  const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved } = usePdfitFrontConfig();
+  const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved, serverThumbnails } = usePdfitFrontConfig();
   const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
@@ -428,7 +428,7 @@ export default function TagPage() {
               );
             })}
           </List> : <Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
-            {books.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} thumbnailUrl={foldersApi.thumbnailUrl(book.driveFileId)} tags={(bookTags[bookIdentity(book)] ?? []).filter(tag => tag !== tagName)} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={tagMutation === `ai:${bookIdentity(book)}`} autoTagDisabled={tagMutation !== null} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
+            {books.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} serverCover={serverThumbnails && !book.driveFileId} thumbnailUrl={serverThumbnails && !book.driveFileId ? foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size) : foldersApi.thumbnailUrl(book.driveFileId)} tags={(bookTags[bookIdentity(book)] ?? []).filter(tag => tag !== tagName)} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={tagMutation === `ai:${bookIdentity(book)}`} autoTagDisabled={tagMutation !== null} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
           </Box>}
           </>
         )}

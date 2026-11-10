@@ -46,6 +46,16 @@ function decodeRouteParam(value: string): string {
   return decoded;
 }
 
+/** Server-generated first-page thumbnails for local library files. */
+export interface FolderThumbnailProvider {
+  /** Path of the thumbnail for a source stamp the client supplied, or null. Must not touch the library. */
+  find(folder: string, filename: string, stamp: string): Promise<string | null>;
+  /** Current thumbnail of the file, or what is happening instead. May queue generation. */
+  resolve(folder: string, filename: string): Promise<{ state: 'ready'; path: string } | { state: 'queued' | 'failed' | 'missing' }>;
+}
+
+const THUMBNAIL_STAMP_PATTERN = /^\d{1,16}-\d{1,16}$/;
+
 export function createFoldersRouter(
   filesystem: FilesystemService,
   refresh?: () => Promise<void>,
@@ -56,6 +66,7 @@ export function createFoldersRouter(
   metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'>,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed') => void,
+  thumbnails?: FolderThumbnailProvider,
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
@@ -200,6 +211,36 @@ export function createFoldersRouter(
       }
     },
   );
+
+  // First-page thumbnail produced by the background thumbnail task.
+  //   200 image/jpeg       the thumbnail (immutable when `v` matched, revalidated otherwise)
+  //   202 {state:'queued'} not rendered yet; this request moved it to the front of the queue
+  //   404 {state}          `failed` (rendering failed recently) or `missing` (no such PDF)
+  router.get('/:name/files/:filename/thumbnail', async (req: Request, res: Response) => {
+    if (!thumbnails) { res.status(404).json({ error: 'Thumbnails are not enabled.' }); return; }
+    const folder = decodeRouteParam(req.params.name);
+    const filename = decodeRouteParam(req.params.filename);
+    const stamp = typeof req.query.v === 'string' && THUMBNAIL_STAMP_PATTERN.test(req.query.v) ? req.query.v : null;
+    const send = (filePath: string, cacheControl: string) => {
+      res.setHeader('Cache-Control', cacheControl);
+      res.type('image/jpeg');
+      res.sendFile(filePath, (error) => {
+        if (error && !res.headersSent) res.status(404).json({ state: 'missing' });
+      });
+    };
+    try {
+      // `v` is the source's modification time and size as the client knows them. A hit
+      // needs no access to the library volume and can be cached for good under that URL.
+      const known = stamp ? await thumbnails.find(folder, filename, stamp) : null;
+      if (known) { send(known, 'public, max-age=31536000, immutable'); return; }
+      const current = await thumbnails.resolve(folder, filename);
+      if (current.state === 'ready') { send(current.path, 'no-cache'); return; }
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(current.state === 'queued' ? 202 : 404).json({ state: current.state });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
 
   router.get('/:name/files/:filename', (req: Request, res: Response) => {
     const folder = sanitizeName(decodeRouteParam(req.params.name));

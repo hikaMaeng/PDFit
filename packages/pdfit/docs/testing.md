@@ -6,6 +6,12 @@ Shared package changes are verified through:
 * `npm run verify:repo`
 * `npm run verify:pdfit`
 * `npm run test:pdfgpu`
+* `npm run test:tasks`: background task queue, scheduler (replan, parallelism budget,
+  failed plan, urgent submissions, timers), worker pool with real worker threads
+  (script error, contract violation, timeout recovery), and the thumbnail job end to
+  end with real PDF.js rendering (fresh/stale/orphan/failed thumbnails, offline-library
+  guard, HTTP route states), and a hosted-style job on `createPdfitTaskScheduler` that
+  renders through authenticated HTTP range reads with the shared script
 * `npm run verify:release-contract`
 * integrated app build and deploy
 * service/viewer manifest checks that confirm dedicated front entries

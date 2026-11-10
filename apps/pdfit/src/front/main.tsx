@@ -10,6 +10,8 @@ const App = createPdfitServiceApp({
   extraRoutes: [settingsRoute],
   extraSidebarItems: [settingsNavItem],
   displayTranslation: { translate: translateDisplayTexts },
+  // Covers are rendered by the server's hourly thumbnail task, not in the browser.
+  serverThumbnails: true,
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

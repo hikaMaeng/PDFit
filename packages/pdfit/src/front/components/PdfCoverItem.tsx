@@ -18,6 +18,8 @@ type Props = {
   filename: string;
   url: string;
   thumbnailUrl?: string;
+  /** `thumbnailUrl` is produced by the server's thumbnail task; the browser must not render the PDF itself. */
+  serverCover?: boolean;
   folder: string;
   driveFileId?: string;
   size?: number;
@@ -297,6 +299,91 @@ function FirstPageThumbnail({ url, thumbnailUrl, title, modifiedAt, driveFileId,
   </Box>;
 }
 
+// Delay before asking again for a cover the server has queued; the last value repeats.
+const SERVER_COVER_RETRY_DELAYS_MS = [3_000, 6_000, 12_000, 30_000, 60_000];
+
+/**
+ * Cover rendered by the server's background thumbnail task (local libraries). The
+ * browser only displays the image. Asking for a cover that does not exist yet moves
+ * it to the front of the server queue, so the card asks again while it is on screen.
+ */
+function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; title: string }) {
+  const { t, ui } = usePdfitI18n();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const currentUrl = useRef(thumbnailUrl);
+  const [visible, setVisible] = useState(false);
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'queued' | 'failed'>('idle');
+  const [attempt, setAttempt] = useState(0);
+  currentUrl.current = thumbnailUrl;
+
+  useEffect(() => {
+    setState('idle');
+    setAttempt(0);
+  }, [thumbnailUrl]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: '180px 0px' });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (visible) setState((current) => current === 'idle' ? 'loading' : current);
+  }, [thumbnailUrl, visible]);
+
+  useEffect(() => {
+    if (state !== 'queued' || !visible) return;
+    const delay = SERVER_COVER_RETRY_DELAYS_MS[Math.min(attempt, SERVER_COVER_RETRY_DELAYS_MS.length - 1)];
+    const timer = window.setTimeout(() => { setAttempt((value) => value + 1); setState('loading'); }, delay);
+    return () => window.clearTimeout(timer);
+  }, [attempt, state, visible]);
+
+  // An <img> error carries no status, so ask the server why: 202 means the cover is queued.
+  const explainMiss = async () => {
+    const url = thumbnailUrl;
+    let next: 'reload' | 'queued' | 'failed' = 'failed';
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      // `response.ok` is also true for 202, which means "still queued", not "ready".
+      next = response.status === 200 ? 'reload' : response.status === 202 ? 'queued' : 'failed';
+    } catch { /* offline or server restarting: shown as unavailable with a retry button */ }
+    if (currentUrl.current !== url) return;
+    if (next === 'reload') setAttempt((value) => value + 1);
+    else setState(next);
+  };
+
+  const retry = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAttempt((value) => value + 1);
+    setState('loading');
+  };
+
+  const showImage = state === 'ready' || (visible && state === 'loading');
+  // Retries use a distinct URL so a failed load is never answered from the browser's memory cache.
+  const source = attempt === 0 ? thumbnailUrl : `${thumbnailUrl}${thumbnailUrl.includes('?') ? '&' : '?'}r=${attempt}`;
+
+  return <Box ref={hostRef} data-testid="pdf-cover-thumbnail" data-cover-source="server" data-cover-state={state} aria-label={ui("{p0} 첫 페이지 표지", { p0: title })} sx={{ position: 'relative', display: 'grid', placeItems: 'center', width: '100%', aspectRatio: '3 / 4', overflow: 'hidden', bgcolor: 'action.hover' }}>
+    {showImage ? <Box
+      component="img"
+      src={source}
+      alt=""
+      decoding="async"
+      onLoad={() => setState('ready')}
+      onError={() => { void explainMiss(); }}
+      sx={{ display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#fff', opacity: state === 'ready' ? 1 : 0 }}
+    /> : null}
+    {state !== 'ready' ? <Box sx={{ display: 'grid', justifyItems: 'center', gap: .75, px: 1.5, textAlign: 'center' }}>
+      <PictureAsPdfIcon color={state === 'failed' ? 'error' : 'disabled'} sx={{ fontSize: 48 }} />
+      {state === 'queued' ? <Typography role="status" variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>{t('coverPreparing')}</Typography> : null}
+      {state === 'failed' ? <Tooltip title={t('coverFailedReason')} arrow><Box sx={{ cursor: 'help' }}><Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.35 }}>{t('coverUnavailable')}</Typography><Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: .25, lineHeight: 1.25 }}>{t('coverFailedLabel')}</Typography></Box></Tooltip> : null}
+    </Box> : null}
+    {state === 'failed' ? <Tooltip title={`${t('coverFailedReason')} ${t('retry')}`}><IconButton data-testid="retry-cover" aria-label={t('retry')} size="small" onClick={retry} sx={{ position: 'absolute', right: 8, bottom: 8, color: 'text.secondary', bgcolor: 'background.paper', boxShadow: 1, '&:hover': { bgcolor: 'background.paper', color: 'primary.main' } }}><RefreshIcon fontSize="small" /></IconButton></Tooltip> : null}
+  </Box>;
+}
+
 export default function PdfCoverItem(props: Props) {
   const { language, t, ui } = usePdfitI18n();
   const navigate = useNavigate();
@@ -312,7 +399,9 @@ export default function PdfCoverItem(props: Props) {
     <Box component="a" href={viewerHref} draggable={!pending} onDragStart={(event) => { if (pending) return; event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId })); }} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
       {pending
         ? <Box data-testid="pending-cover-placeholder" sx={{ display: 'grid', placeItems: 'center', aspectRatio: '3 / 4', bgcolor: 'action.hover' }}><PictureAsPdfIcon color="disabled" sx={{ fontSize: 48 }} /></Box>
-        : <FirstPageThumbnail url={props.url} thumbnailUrl={props.thumbnailUrl} title={props.filename} modifiedAt={props.modifiedAt} driveFileId={props.driveFileId} onCoverVisible={props.onCoverVisible} />}
+        : props.serverCover && props.thumbnailUrl
+          ? <ServerCoverThumbnail thumbnailUrl={props.thumbnailUrl} title={props.filename} />
+          : <FirstPageThumbnail url={props.url} thumbnailUrl={props.thumbnailUrl} title={props.filename} modifiedAt={props.modifiedAt} driveFileId={props.driveFileId} onCoverVisible={props.onCoverVisible} />}
     </Box>
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, p: 1.25, gap: .75 }}>
       <Box data-testid="pdf-cover-title-row" sx={{ display: 'flex', alignItems: 'flex-start', gap: .5 }}>

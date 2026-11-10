@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { MetadataStore } from '../../shared/index.js';
 import {
   createPdfitCommonRouterAssembly,
+  type PdfitBackgroundTaskOptions,
   type PdfitServerRouterMount,
 } from './createCommonRouters.js';
 
@@ -22,6 +23,8 @@ export interface PdfitServerOptions {
   viewerBasePath?: string;
   maxUploadBytes?: number;
   suggestBookTags?: import('../services/tagSuggestion.js').BookTagSuggestionProvider;
+  /** Local runtime only: periodic background jobs such as thumbnail generation. */
+  backgroundTasks?: PdfitBackgroundTaskOptions;
   commonRouters?: PdfitServerRouterMount[];
   configureApp?: (app: Express) => void;
   defaultMiddlewareEnabled?: boolean;
@@ -35,7 +38,17 @@ const SILENT_PATTERNS = [
   /^GET \//,
 ];
 
-export type { PdfitServerRouterMount } from './createCommonRouters.js';
+export type { PdfitBackgroundTaskOptions, PdfitServerRouterMount } from './createCommonRouters.js';
+export { defineTask, DEFAULT_TASK_PRIORITY, INTERACTIVE_TASK_PRIORITY } from '../tasks/taskProtocol.js';
+export type { TaskEnvelope, TaskFailure, TaskOutcome, TaskRunContext, TaskScript } from '../tasks/taskProtocol.js';
+export { TaskScheduler } from '../tasks/taskScheduler.js';
+export { createPdfitTaskScheduler, readPdfitTaskSchedulerEnvironment } from '../tasks/backgroundTasks.js';
+export type { PdfitTaskSchedulerOptions } from '../tasks/backgroundTasks.js';
+export { createTasksRouter } from '../routes/tasks.js';
+export { THUMBNAIL_TASK_SCRIPT_URL } from '../thumbnails/thumbnailTask.js';
+export { THUMBNAIL_FORMAT_VERSION, THUMBNAIL_JPEG_QUALITY, THUMBNAIL_WIDTH } from '../thumbnails/thumbnailStore.js';
+export type { ThumbnailTaskPayload, ThumbnailTaskResult, ThumbnailTaskSource } from '../thumbnails/thumbnailTask.worker.js';
+export type { PeriodicTaskDefinition, PlannedTask, TaskSchedulerOptions, TaskSchedulerStatus, TaskTypeStatus } from '../tasks/taskScheduler.js';
 
 export function createPdfitServer(options: PdfitServerOptions): Express {
   const {
@@ -61,6 +74,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
       watcherEnabled,
       maxUploadBytes: options.maxUploadBytes,
       suggestBookTags: options.suggestBookTags,
+      backgroundTasks: options.backgroundTasks,
     }).routers;
   })();
 

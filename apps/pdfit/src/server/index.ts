@@ -2,7 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
-import { createPdfitServer, createTagSuggestionProviderFromEnvironment } from '@pdfit/pdfit/server';
+import { createPdfitServer, createTagSuggestionProviderFromEnvironment, readPdfitTaskSchedulerEnvironment } from '@pdfit/pdfit/server';
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
 import { createSettingsRouter } from './routes/settings.js';
 import { PostgresSettingsStore } from './services/settingsStore.js';
@@ -43,6 +43,9 @@ const booksRoot = readBooksRoot(process.env.BOOKS_ROOT);
 const bookmarksRoot = readBookmarksRoot(process.env.BOOKMARKS_ROOT);
 const booksRootName = process.env.BOOKS_ROOT_NAME ?? '이북';
 const maxUploadBytes = readMaxUploadBytes(process.env.MAX_UPLOAD_MB);
+// Background jobs (first-page thumbnails today) share one hourly schedule and one worker pool.
+const thumbnailsRoot = path.resolve(process.cwd(), process.env.THUMBNAILS_ROOT ?? path.join(path.dirname(bookmarksRoot), 'thumbnails'));
+const taskSchedulerOptions = readPdfitTaskSchedulerEnvironment(process.env);
 const pool = new Pool({
   host: process.env.PGHOST ?? '127.0.0.1',
   port: Number(process.env.PGPORT ?? '5432'),
@@ -69,6 +72,7 @@ const app = createPdfitServer({
   viewerIndexFile: path.join('viewer', 'index.html'),
   maxUploadBytes,
   suggestBookTags,
+  backgroundTasks: { thumbnailRoot: thumbnailsRoot, ...taskSchedulerOptions },
 });
 
 // Establish the first database connections and load the two initial read

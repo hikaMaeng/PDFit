@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Background task layer for the standalone server: a standard task envelope and script
+  contract, a priority queue, a fixed pool of worker threads, and an hourly scheduler
+  that recomputes and replaces the pending queue on every run
+  (`PDFIT_TASK_INTERVAL_MINUTES`, `PDFIT_TASK_CONCURRENCY`). `GET /api/tasks/status`
+  reports it. The layer lives in the shared package (`createPdfitTaskScheduler`), and
+  the thumbnail render script accepts a local file or an authenticated HTTP range
+  source, so a hosted runtime can register its own jobs on the same scheduler.
+- Server-rendered cover thumbnails as the first background job. Covers are stored under
+  `/app/data/thumbnails` and re-rendered when a PDF's modification time or size changes.
+
+### Changed
+
+- The standalone server starts Node with fixed glibc malloc thresholds so memory used
+  by background workers is returned after a batch.
+- The standalone cover view shows server thumbnails and no longer renders PDFs in the
+  browser. A cover that is not ready yet is queued ahead of the backlog when its card
+  is on screen.
+
 ## [0.4.5] - 2026-11-09
 
 PDFit 0.4.5 adds the cover (image list) view to the standalone library, merges

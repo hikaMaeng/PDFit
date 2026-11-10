@@ -37,4 +37,7 @@ su -s /bin/bash postgres -c "
 "
 
 echo "[pg] runtime ready on localhost:5432"
-exec node /app/dist/server/index.js
+# Background task workers allocate and free large image buffers. With glibc's default
+# dynamic thresholds that memory stays in the process heap after the work is done
+# (measured: 367 MB kept vs 117 MB with these fixed thresholds, same throughput).
+exec env MALLOC_MMAP_THRESHOLD_=65536 MALLOC_TRIM_THRESHOLD_=131072 node /app/dist/server/index.js

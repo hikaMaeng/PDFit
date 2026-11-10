@@ -46,6 +46,17 @@ private IPv4 address.
 | `PDFIT_DATA_PATH` | `./apps/pdfit/docker/volumes/data` | Host folder for `/app/data` (PostgreSQL and backups) |
 | `PDFIT_BOOKMARKS_PATH` | `./apps/pdfit/docker/volumes/data/bookmarks` | Host folder for bookmark JPEGs |
 
+Cover thumbnails are written to `/app/data/thumbnails`, inside `PDFIT_DATA_PATH`.
+
+## Background task variables (`pdfit` service)
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `PDFIT_TASK_INTERVAL_MINUTES` | `60` | Minutes between background runs; each run empties the pending queue and refills it |
+| `PDFIT_TASK_CONCURRENCY` | `2` | Worker threads shared by all background jobs |
+| `PDFIT_TASK_INITIAL_DELAY_SECONDS` | `30` | Delay before the first run after the container starts |
+| `PDFIT_TASK_COOLDOWN_MS` | `0` | Pause after each task before its worker takes the next |
+
 Two Compose projects must never share one `PDFIT_DATA_PATH`: both containers would
 start PostgreSQL on the same data directory. Use a separate path and
 `COMPOSE_PROJECT_NAME` for test instances.

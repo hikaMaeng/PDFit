@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@napi-rs/canvas": "1.0.6",
     "cors": "2.8.5",
     "dotenv": "16.4.5",
     "express": "4.22.2",
     "multer": "2.2.0",
+    "pdfjs-dist": "6.2.108",
     "pg": "8.16.3",
     "sharp": "0.35.3"
   }

@@ -16,5 +16,6 @@ export interface PdfitViewerExtension {
   languagePreference?: PdfitFrontExtension['languagePreference'];
   displayTranslation?: PdfitFrontExtension['displayTranslation'];
   bookMetadataEnabled?: PdfitFrontExtension['bookMetadataEnabled'];
+  serverThumbnails?: PdfitFrontExtension['serverThumbnails'];
   bookResearchAccess?: PdfitFrontExtension['bookResearchAccess'];
 }

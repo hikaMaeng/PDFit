@@ -409,4 +409,17 @@ export const foldersApi = {
   thumbnailUrl: (driveFileId?: string | null) => driveFileId && !driveFileId.startsWith('pending-upload-')
     ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}/thumbnail`
     : undefined,
+
+  /**
+   * Cover of a local library file, rendered by the server's thumbnail task. `v` is the
+   * file's modification time and size, so the URL changes when the file does and the
+   * image can be cached for good.
+   */
+  localThumbnailUrl: (folder: string, filename: string, modifiedAt?: string, size?: number) => {
+    const base = `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}/thumbnail`;
+    const modifiedAtMs = modifiedAt ? Date.parse(modifiedAt) : Number.NaN;
+    return Number.isFinite(modifiedAtMs) && typeof size === 'number' && Number.isFinite(size)
+      ? `${base}?v=${Math.trunc(modifiedAtMs)}-${Math.trunc(size)}`
+      : base;
+  },
 };
