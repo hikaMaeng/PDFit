@@ -135,6 +135,17 @@ The shared tags router in [`src/server/routes/tags.ts`](../src/server/routes/tag
 
 `POST /api/tags/folder/:folder/auto` accepts 1-500 `{ filename, driveFileId? }` book references, classifies them with concurrency limited to three, and persists all successful tag relations through one metadata batch when the storage adapter supports it. The response includes processed/failed counts, the total number of added tags, per-book results, and per-book classifier errors.
 
+## Title search endpoint
+
+`GET /api/search/books?q=<text>[&limit=<n>]` ([`src/server/routes/search.ts`](../src/server/routes/search.ts)) searches book titles in the metadata database, not the file system. The `books` table is the one `syncBooks` keeps in step with the library, so a PDF that is not indexed yet is not found until the next refresh.
+
+* Scope: the title only, i.e. the filename without `.pdf`. Folder names and tags are not searched.
+* Match: one substring of the trimmed query, case-insensitive. Both sides are normalized to NFC so a macOS-style NFD filename matches an NFC query. The query is compared with `position()`, so `%` and `_` are literal characters.
+* `q` is required and at most 200 characters; otherwise `400`. A metadata store without `searchBooksByTitle` answers `501`.
+* Response: `{ query, total, books }`. `books` are `{ folder, filename, size, modified_at, tags }` ordered by filename then folder and capped at `limit` (default 500, at most 2000); `total` is the uncapped match count.
+
+The route is part of `createPdfitMetadataRouterMounts`, so the hosted runtime mounts it too. A hosted store answers from the browser's hydrated IndexedDB snapshot instead (`searchCachedBooksByTitle` in `front/cache/metadataCache.ts`, same rules), and `front/api/search.ts` picks whichever exists.
+
 ## Bookmark endpoints
 
 `GET /api/bookmarks` returns every persisted bookmark newest-first for the

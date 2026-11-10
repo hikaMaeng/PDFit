@@ -229,6 +229,33 @@ export async function listCachedBooksByTag(tagName: string): Promise<Array<{ fol
     .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
 }
 
+/** 서버 `searchBooksByTitle`과 같은 규칙(제목=`.pdf` 제외 파일명, NFC·대소문자 무시 부분 문자열)을 하이드레이트된 DB 스냅샷에 적용한다. */
+export async function searchCachedBooksByTitle(query: string): Promise<{ total: number; books: Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> } | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const needle = query.normalize('NFC').trim().toLowerCase();
+  if (!needle) return { total: 0, books: [] };
+  const [tags, relations, pdfs, folders] = await Promise.all([
+    readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
+    readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders'),
+  ]);
+  const tagNames = new Map(tags.filter((tag) => !tag.deletedAt).map((tag) => [tag.tagId, tag.name]));
+  const tagsByFile = new Map<string, string[]>();
+  for (const relation of relations) {
+    const name = !relation.deletedAt ? tagNames.get(relation.tagId) : undefined;
+    if (!name) continue;
+    tagsByFile.set(relation.driveFileId, [...(tagsByFile.get(relation.driveFileId) ?? []), name]);
+  }
+  const folderNames = new Map(folders.filter((folder) => !folder.trashed).map((folder) => [folder.driveFolderId, folder.name]));
+  const books = pdfs
+    .filter((pdf) => !pdf.trashed && folderNames.has(pdf.parentFolderId) && pdf.name.normalize('NFC').replace(/\.pdf$/i, '').toLowerCase().includes(needle))
+    .map((pdf) => ({
+      folder: folderNames.get(pdf.parentFolderId)!, filename: pdf.name, driveFileId: pdf.driveFileId, size: pdf.size,
+      modified_at: pdf.modifiedTime, tags: (tagsByFile.get(pdf.driveFileId) ?? []).sort((left, right) => left.localeCompare(right, 'ko')),
+    }))
+    .sort((left, right) => left.filename.localeCompare(right.filename, 'ko') || left.folder.localeCompare(right.folder, 'ko'));
+  return { total: books.length, books };
+}
+
 export async function listCachedTagSummaries(): Promise<Array<{ name: string; bookCount: number; color: string }> | null> {
   const scope = await cachedScope(); if (!scope) return null;
   const [tags, relations, pdfs, folders] = await Promise.all([

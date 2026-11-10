@@ -7,6 +7,7 @@ import HomePage from '../../../front/pages/HomePage.js';
 
 const TagPage = lazy(() => import('../../../front/pages/TagPage.js'));
 const BookmarkPage = lazy(() => import('../../../front/pages/BookmarkPage.js'));
+const SearchPage = lazy(() => import('../../../front/pages/SearchPage.js'));
 
 function warmRouteModulesAfterFirstPaint(): () => void {
   const warm = () => {
@@ -39,6 +40,7 @@ export default function PdfitServiceAppRoutes() {
         <Route path="/folder/:name" element={<FolderPage />} />
         <Route path="/bookmarks" element={<BookmarkPage />} />
         <Route path="/tag/:name" element={<TagPage />} />
+        <Route path="/search" element={<SearchPage />} />
         {extraRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}

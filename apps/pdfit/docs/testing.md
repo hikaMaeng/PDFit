@@ -31,3 +31,5 @@ Plans and reports are under `apps/pdfit/tests/plans/` and `apps/pdfit/tests/repo
 The LinkCpp-inspired shell verification is recorded in `apps/pdfit/tests/reports/ui-theme/20260805_205600.md`, with browser evidence under `test/20260805/20260805_linkcpp-theme-smoke/`.
 
 `tests/free-settings-globe-deployed-browser.mjs` is a read-only check of a deployed Free app (`PDFIT_BASE_URL`, `PDFIT_EVIDENCE_DIR`, `PDFIT_BROWSER_CHANNEL=chrome`): the upper-left globe button (`lnb-preferences`) opens the language/theme dialog and `/settings` shows only the AI servers tab. Latest report: `tests/reports/settings-globe-pgvector-removal-20261110.md`.
+
+Title search: `packages/pdfit/tests/title-search.test.mjs` runs against `dist` (build first). The route tests need nothing else; the PostgreSQL test runs only with `PDFIT_TEST_DATABASE_URL` and uses a throwaway schema. `tests/title-search-browser.mjs` drives the deployed app (`PDFIT_TEST_BASE_URL`, default `http://localhost:15203`; set `PDFIT_TEST_CHROMIUM_PATH` when Playwright's bundled browser is not installed). Plan `tests/plans/title-search-20261110.md`, report `tests/reports/title-search/20261110.md`.

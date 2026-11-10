@@ -34,13 +34,14 @@ type Props = {
   autoTagging?: boolean;
   autoTagDisabled?: boolean;
   onSelectionChange: (folder: string, filename: string, selected: boolean) => void;
-  onTagDelete: (folder: string, filename: string, tag: string) => void;
-  onManageTags: (folder: string, filename: string) => void;
+  /** 관리 핸들러(태그 삭제·태그 관리·이동·삭제)는 없으면 해당 버튼을 그리지 않는다(읽기 전용 목록). */
+  onTagDelete?: (folder: string, filename: string, tag: string) => void;
+  onManageTags?: (folder: string, filename: string) => void;
   onAutoTag?: (folder: string, filename: string) => void;
   onEditMetadata?: (folder: string, filename: string) => void;
   onCoverVisible?: (driveFileId: string) => void;
-  onMove: (folder: string, filename: string) => void;
-  onDelete: (folder: string, filename: string) => void;
+  onMove?: (folder: string, filename: string) => void;
+  onDelete?: (folder: string, filename: string) => void;
 };
 
 function formatBytes(bytes?: number): string {
@@ -451,7 +452,7 @@ export default function PdfCoverItem(props: Props) {
           >
             {pending ? <Typography role="status" variant="caption" sx={{ alignSelf: 'flex-start', px: .75, py: .25, border: '1px solid', borderColor: 'warning.main', borderRadius: 99, color: 'warning.light', fontWeight: 650 }}>{t('uploadPending')}</Typography> : null}
             <Box data-testid="pdf-cover-tags" sx={{ display: 'flex', flexWrap: 'wrap', gap: .5 }}>
-              {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={() => props.onTagDelete(props.folder, props.filename, tag)} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
+              {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={props.onTagDelete ? () => props.onTagDelete?.(props.folder, props.filename, tag) : undefined} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
             </Box>
             {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', color: 'primary.light', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
             <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" sx={OVERLAY_TEXT_SX}>{t('openedAt')}: {openedLabel}</Typography>
@@ -476,15 +477,15 @@ export default function PdfCoverItem(props: Props) {
         <InfoOutlinedIcon sx={{ fontSize: 18 }} />
       </IconButton>
     </Box>
-    <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
+    {(props.onAutoTag || props.onManageTags || (!props.hideFileActions && (props.onMove || props.onDelete))) && <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
       <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'contents' }}>
         {props.onAutoTag ? <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small" disabled={pending || props.autoTagging || props.autoTagDisabled} onClick={() => props.onAutoTag?.(props.folder, props.filename)} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>{props.autoTagging ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon fontSize="small" />}</IconButton></span></Tooltip> : null}
-        <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip>
+        {props.onManageTags ? <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags?.(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip> : null}
       </Box>
       {!props.hideFileActions && <Box data-testid="pdf-cover-file-actions" sx={{ display: 'contents' }}>
-        <Tooltip title={t('moveToFolder')}><span><IconButton aria-label={t('moveToFolder')} size="small" disabled={pending} onClick={() => props.onMove(props.folder, props.filename)}><DriveFileMoveIcon fontSize="small" /></IconButton></span></Tooltip>
-        <Tooltip title={t('delete')}><span><IconButton aria-label={t('delete')} size="small" color="error" disabled={pending} onClick={() => props.onDelete(props.folder, props.filename)}><DeleteIcon fontSize="small" /></IconButton></span></Tooltip>
+        {props.onMove ? <Tooltip title={t('moveToFolder')}><span><IconButton aria-label={t('moveToFolder')} size="small" disabled={pending} onClick={() => props.onMove?.(props.folder, props.filename)}><DriveFileMoveIcon fontSize="small" /></IconButton></span></Tooltip> : null}
+        {props.onDelete ? <Tooltip title={t('delete')}><span><IconButton aria-label={t('delete')} size="small" color="error" disabled={pending} onClick={() => props.onDelete?.(props.folder, props.filename)}><DeleteIcon fontSize="small" /></IconButton></span></Tooltip> : null}
       </Box>}
-    </Box>
+    </Box>}
   </Box>;
 }

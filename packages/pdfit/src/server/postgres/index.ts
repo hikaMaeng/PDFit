@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type {
   BookRecord,
+  BookTitleSearchResult,
   MetadataStore,
   TagSummary,
   TaggedBookRecord,
@@ -86,6 +87,32 @@ export class PostgresMetadataStore implements MetadataStore {
       folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
       modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
     }));
+  }
+
+  async searchBooksByTitle(query: string, limit = 500): Promise<BookTitleSearchResult> {
+    const needle = query.normalize('NFC').trim();
+    if (!needle) return { total: 0, books: [] };
+    // 파일 시스템이 아니라 `books` 테이블(동기화된 DB)을 조회한다. 부분 문자열 비교는 LIKE 이스케이프가
+    // 필요 없는 position()으로 하고, NFD 파일명(macOS)도 맞도록 양쪽을 NFC로 정규화한다.
+    const result = await this.db.query(`
+      SELECT b.folder, b.filename, b.size, b.modified_at,
+        COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags,
+        COUNT(*) OVER ()::int AS total
+      FROM books b
+      LEFT JOIN book_tags bt ON bt.folder = b.folder AND bt.filename = b.filename
+      LEFT JOIN tags t ON t.id = bt.tag_id
+      WHERE position(lower(normalize($1::text, NFC)) IN lower(normalize(regexp_replace(b.filename, '\\.pdf$', '', 'i'), NFC))) > 0
+      GROUP BY b.folder, b.filename, b.size, b.modified_at
+      ORDER BY b.filename, b.folder
+      LIMIT $2
+    `, [needle, Math.max(1, Math.min(limit, 2000))]);
+    return {
+      total: result.rows[0] ? Number(result.rows[0].total) : 0,
+      books: result.rows.map((row) => ({
+        folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
+        modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
+      })),
+    };
   }
 
   async listBooksByFolder(folder: string): Promise<BookRecord[]> {

@@ -9,6 +9,7 @@ import BackgroundSyncIndicator from './components/BackgroundSyncIndicator.js';
 const PdfViewerPage = lazy(() => import('./pages/PdfViewerPage.js'));
 const TagPage = lazy(() => import('./pages/TagPage.js'));
 const BookmarkPage = lazy(() => import('./pages/BookmarkPage.js'));
+const SearchPage = lazy(() => import('./pages/SearchPage.js'));
 
 function warmRouteModulesAfterFirstPaint(): () => void {
   const warm = () => {
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/folder/:name" element={<FolderPage />} />
           <Route path="/bookmarks" element={<BookmarkPage />} />
           <Route path="/tag/:name" element={<TagPage />} />
+          <Route path="/search" element={<SearchPage />} />
           {extraRoutes.map((route) => (
             <Route key={route.path} path={route.path} element={route.element} />
           ))}

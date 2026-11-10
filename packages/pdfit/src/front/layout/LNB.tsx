@@ -8,7 +8,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Drawer,
   IconButton,
   List,
@@ -41,6 +40,8 @@ import LanguageIcon from '@mui/icons-material/Language';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePdfitFrontConfig } from '../context';
 import { foldersApi, type FolderInfo } from '../api/folders';
@@ -287,6 +288,18 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // 검색어는 결과 페이지(/search?q=)의 주소와 동기화한다. 다른 페이지에서는 입력하던 값을 그대로 둔다.
+  const urlSearchQuery = location.pathname === '/search' ? new URLSearchParams(location.search).get('q') ?? '' : null;
+  const [searchText, setSearchText] = useState(urlSearchQuery ?? '');
+  useEffect(() => { if (urlSearchQuery !== null) setSearchText(urlSearchQuery); }, [urlSearchQuery]);
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = searchText.trim();
+    if (!query) return;
+    go(`/search?q=${encodeURIComponent(query)}`);
+    onMobileClose();
+  };
+
   const handleCreate = async () => {
     if (!newFolderName.trim()) {
       return;
@@ -519,7 +532,43 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           </Box>
         </Box>
 
-        <Divider />
+        <Box
+          component="form"
+          role="search"
+          data-testid="lnb-search"
+          aria-label={t('searchBooksPlaceholder')}
+          onSubmit={submitSearch}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 1, flexShrink: 0, borderBottom: '1px solid', borderColor: sidebarDivider }}
+        >
+          <TextField
+            fullWidth
+            size="small"
+            type="search"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder={t('searchBooksPlaceholder')}
+            inputProps={{ 'aria-label': t('searchBooksPlaceholder'), 'data-testid': 'lnb-search-input', maxLength: 200, enterKeyHint: 'search' }}
+            InputProps={{
+              endAdornment: searchText ? (
+                <IconButton size="small" edge="end" data-testid="lnb-search-clear" aria-label={t('clearPdfSearch')} onClick={() => setSearchText('')} sx={{ color: sidebarTextSecondary }}>
+                  <ClearIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              ) : undefined,
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': { height: 34, fontSize: '0.85rem' },
+              // 브라우저 기본 검색 지우기 버튼은 위의 지우기 버튼과 겹치므로 숨긴다.
+              '& input[type="search"]::-webkit-search-cancel-button': { display: 'none' },
+            }}
+          />
+          <Tooltip title={t('searchButton')} placement="bottom" arrow>
+            <span>
+              <IconButton type="submit" data-testid="lnb-search-submit" aria-label={t('searchButton')} disabled={!searchText.trim()} size="small" sx={{ width: 34, height: 34, borderRadius: 1, color: selectedAccent, border: '1px solid', borderColor: sidebarDivider, '&:hover': { bgcolor: sidebarHover } }}>
+                <SearchIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
 
         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           {extraSidebarItems.some((item) => item.placement === 'primary') && (

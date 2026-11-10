@@ -32,7 +32,18 @@ export interface TaggedBookRecord extends BookRecord {
   tags: string[];
 }
 
+/** `books` 테이블 제목 검색 결과. `total`은 `limit`과 무관한 전체 일치 수다. */
+export interface BookTitleSearchResult {
+  total: number;
+  books: TaggedBookRecord[];
+}
+
 export interface MetadataStore {
+  /**
+   * 책 제목(파일명에서 `.pdf`를 뺀 값)에 `query`가 부분 문자열로 들어 있는 책을 DB 기준으로 찾는다.
+   * 대소문자와 유니코드 정규화(NFC/NFD) 차이는 무시한다. 구현하지 않는 저장소는 라우트가 501로 답한다.
+   */
+  searchBooksByTitle?(query: string, limit?: number): Promise<BookTitleSearchResult>;
   listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>>;
   getProgress(folder: string, filename: string, driveFileId?: string): Promise<number | null>;
   setProgress(folder: string, filename: string, page: number, driveFileId?: string): Promise<void>;
