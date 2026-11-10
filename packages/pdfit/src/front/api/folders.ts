@@ -406,9 +406,15 @@ export const foldersApi = {
     ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}`
     : `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`,
 
-  thumbnailUrl: (driveFileId?: string | null) => driveFileId && !driveFileId.startsWith('pending-upload-')
-    ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}/thumbnail`
-    : undefined,
+  /** Remote thumbnail. With `modifiedAt` and `size` the URL carries the same `v` stamp as a local one. */
+  thumbnailUrl: (driveFileId?: string | null, modifiedAt?: string, size?: number) => {
+    if (!driveFileId || driveFileId.startsWith('pending-upload-')) return undefined;
+    const base = `/api/folders/by-id/${encodeURIComponent(driveFileId)}/thumbnail`;
+    const modifiedAtMs = modifiedAt ? Date.parse(modifiedAt) : Number.NaN;
+    return Number.isFinite(modifiedAtMs) && typeof size === 'number' && Number.isFinite(size)
+      ? `${base}?v=${Math.trunc(modifiedAtMs)}-${Math.trunc(size)}`
+      : base;
+  },
 
   /**
    * Cover of a local library file, rendered by the server's thumbnail task. `v` is the

@@ -467,7 +467,11 @@ Adding a job:
 1. Write a task script whose default export is `defineTask({ async run(payload) { ... } })`.
    It runs in a worker thread; payload and result must be structured-cloneable.
 2. Write a `PeriodicTaskDefinition`: `type`, `script` (module URL), `plan()` returning
-   `{ key, payload, priority? }[]`, optional `timeoutMs` and `onSettled`.
+   `{ key, payload, priority? }[]`, optional `timeoutMs`, `prepare`, and `onSettled`.
+   `prepare(task)` runs on the main thread just before dispatch and returns the payload
+   the worker receives. Inputs that must be fresh at run time (an access ticket, a
+   token) are produced there instead of waiting in the queue. A task being prepared
+   holds its worker slot; a `prepare` that throws settles the task as failed.
 3. Register it on the scheduler. The local runtime does that next to the thumbnail job
    in `bootstrap/createCommonRouters.ts`.
 
@@ -485,6 +489,12 @@ scheduler.start();
 What differs per edition is only the job definition: which items exist (`plan`), where
 a result is stored, and who may read it. The local thumbnail job lists a directory and
 writes files; a hosted job lists an account's library and stores results per account.
+The hosted service does this for Drive libraries: its job plans from each active
+account's library index, `prepare` issues a one-time loopback URL so no credential
+reaches a worker, and results go to a per-account subfolder of its data volume.
+The hosted service does this for Drive libraries: its job plans from each active
+account's library index, `prepare` issues a one-time loopback URL so no credential
+reaches a worker, and results go to a per-account subfolder of its data volume.
 
 ## Server thumbnails
 

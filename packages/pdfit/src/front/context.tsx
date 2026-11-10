@@ -29,7 +29,7 @@ export interface PdfitFrontExtension {
   onAiTagRemoved?: (removal: { folder?: string; filename?: string; driveFileId?: string | null; tag?: string }) => Promise<void>;
   /** Enables account-scoped book research and manual metadata editing. */
   bookMetadataEnabled?: boolean;
-  /** Local runtime: covers come from the server thumbnail task instead of a browser-side render. */
+  /** Covers come from the server's thumbnail task (local or hosted) instead of a browser-side render. */
   serverThumbnails?: boolean;
   /** Whether the current account can use the server-managed AI book research feature. */
   bookResearchAccess?: () => boolean;

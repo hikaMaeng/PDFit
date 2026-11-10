@@ -11,6 +11,9 @@
   reports it. The layer lives in the shared package (`createPdfitTaskScheduler`), and
   the thumbnail render script accepts a local file or an authenticated HTTP range
   source, so a hosted runtime can register its own jobs on the same scheduler.
+- `prepare` hook on task definitions for inputs that must be fresh at dispatch time,
+  and `queued`/`failed`/`missing` answers on the remote thumbnail route, so remote
+  libraries use the same server-cover contract as local ones.
 - Server-rendered cover thumbnails as the first background job. Covers are stored under
   `/app/data/thumbnails` and re-rendered when a PDF's modification time or size changes.
 

@@ -369,3 +369,37 @@ test('a hosted runtime reuses the shared scheduler entry and render script over 
     fs.rmSync(output, { recursive: true, force: true });
   }
 });
+
+test('prepare() finalises the payload at dispatch time and its failure settles the task', async () => {
+  const runner = manualRunner(1);
+  const received = [];
+  const run = runner.run.bind(runner);
+  runner.run = (task) => { received.push(task.payload); return run(task); };
+  const settled = [];
+  let releasePrepare;
+  const scheduler = new TaskScheduler({ intervalMs: 3_600_000, concurrency: 1, runner });
+  scheduler.register({
+    type: 'demo', script: sampleScript,
+    plan: async () => ['1', '2', '3'].map((key) => ({ key, payload: { planned: key } })),
+    prepare: async (task) => {
+      if (task.key === '2') throw new Error('ticket unavailable');
+      if (task.key === '1') await new Promise((resolve) => { releasePrepare = resolve; });
+      return { ...task.payload, ticket: `fresh-${task.key}` };
+    },
+    onSettled: (task, outcome) => { settled.push(`${task.key}:${outcome.ok ? 'ok' : outcome.error.name}`); },
+  });
+  await scheduler.planNow();
+  await tick();
+  assert.deepEqual(received, [], 'the worker is not started while prepare() is pending');
+  assert.equal(scheduler.status().active, 1, 'a preparing task still occupies its one slot');
+  releasePrepare();
+  await tick();
+  assert.deepEqual(received, [{ planned: '1', ticket: 'fresh-1' }]);
+  runner.finish('1');
+  await tick(); await tick();
+  assert.deepEqual(received.at(-1), { planned: '3', ticket: 'fresh-3' }, 'task 2 failed in prepare() and never reached a worker');
+  runner.finish('3');
+  await scheduler.whenIdle();
+  assert.deepEqual(settled, ['1:ok', '2:TaskPrepareError', '3:ok']);
+  await scheduler.stop();
+});

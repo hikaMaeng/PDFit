@@ -51,6 +51,12 @@ services:
       # 공개 배포에는 전달하지 않는 루프백 전용 미리보기 로그인입니다.
       LOCAL_PREVIEW_AUTH_ENABLED: "true"
       MAX_UPLOAD_MB: ${SERVICE_MAX_UPLOAD_MB:-2048}
+      # 백그라운드 작업(표지 썸네일 등). 썸네일은 기존 service-data 볼륨의 /app/data/thumbnails 하위 폴더에 저장합니다.
+      THUMBNAILS_ROOT: /app/data/thumbnails
+      PDFIT_TASK_INTERVAL_MINUTES: ${PDFIT_TASK_INTERVAL_MINUTES:-60}
+      PDFIT_TASK_CONCURRENCY: ${PDFIT_TASK_CONCURRENCY:-2}
+      PDFIT_TASK_INITIAL_DELAY_SECONDS: ${PDFIT_TASK_INITIAL_DELAY_SECONDS:-30}
+      PDFIT_TASK_COOLDOWN_MS: ${PDFIT_TASK_COOLDOWN_MS:-0}
       BILLING_MOCK_ENABLED: ${BILLING_MOCK_ENABLED:-false}
       PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-production}
       PADDLE_CLIENT_TOKEN: ${PADDLE_CLIENT_TOKEN:-}

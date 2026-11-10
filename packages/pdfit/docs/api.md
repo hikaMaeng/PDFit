@@ -106,7 +106,11 @@ validates the identifier and Range response while the adapter verifies ownership
 An authenticated adapter may additionally implement `openThumbnailById` to expose
 `GET /by-id/:driveFileId/thumbnail`. The common route proxies the image with private
 browser caching, so remote credentials and short-lived provider URLs never reach the
-client.
+client. The adapter may set `cacheControl` on the image (for a URL versioned with
+`?v=<mtimeMs>-<size>`), or return `{ state: 'queued' | 'failed' | 'missing' }` instead
+of an image; the route then answers `202 { state: 'queued' }` or `404 { state }`, the
+same contract as the local thumbnail route. With `serverThumbnails` set, the cover
+card uses that contract for remote files too.
 
 Adapters may also implement `createResumableUploadSession` and
 `completeResumableUpload`. The common router then exposes metadata-only session and

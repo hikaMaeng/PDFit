@@ -17,6 +17,16 @@ export interface PdfitRemoteThumbnail {
   stream: NodeJS.ReadableStream;
   mimeType: string;
   size?: number;
+  /** Overrides the default private one-day browser cache, for example for a versioned URL. */
+  cacheControl?: string;
+}
+
+/**
+ * What a thumbnail lookup may answer instead of an image: `queued` (being rendered by a
+ * background task; the route answers 202), `failed`, or `missing` (both 404).
+ */
+export interface PdfitRemoteThumbnailState {
+  state: 'queued' | 'failed' | 'missing';
 }
 
 /** Browser-facing resumable session issued by a remote content authority. */
@@ -55,7 +65,7 @@ export interface PdfitRemoteLibraryAdapter {
   openFile(request: Request, folder: string, filename: string, range?: string): Promise<PdfitRemoteFile>;
   getFileById?(request: Request, driveFileId: string): Promise<PdfInfo>;
   openFileById?(request: Request, driveFileId: string, range?: string): Promise<PdfitRemoteFile>;
-  openThumbnailById?(request: Request, driveFileId: string): Promise<PdfitRemoteThumbnail>;
+  openThumbnailById?(request: Request, driveFileId: string): Promise<PdfitRemoteThumbnail | PdfitRemoteThumbnailState>;
   saveThumbnailById?(request: Request, driveFileId: string, mimeType: 'image/jpeg' | 'image/png', data: Buffer): Promise<void>;
   deleteFile(request: Request, folder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
   moveFile(request: Request, fromFolder: string, toFolder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
@@ -173,8 +183,13 @@ export function createPdfitRemoteFoldersRouter(
     if (!adapter.openThumbnailById) { res.status(404).json({ error: 'Thumbnail lookup is unavailable.' }); return; }
     try {
       const thumbnail = await adapter.openThumbnailById(req, driveFileId);
+      if ('state' in thumbnail) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(thumbnail.state === 'queued' ? 202 : 404).json({ state: thumbnail.state });
+        return;
+      }
       res.setHeader('Content-Type', thumbnail.mimeType);
-      res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('Cache-Control', thumbnail.cacheControl ?? 'private, max-age=86400, stale-while-revalidate=604800');
       if (thumbnail.size) res.setHeader('Content-Length', String(thumbnail.size));
       thumbnail.stream.pipe(res);
     } catch (error) { if (!res.headersSent) sendError(res, 404, 'Thumbnail could not be loaded.', error); }

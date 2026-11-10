@@ -20,6 +20,12 @@ export interface PeriodicTaskDefinition<Payload = unknown, Result = unknown> {
   script: URL | string;
   timeoutMs?: number;
   plan(): Promise<PlannedTask<Payload>[]>;
+  /**
+   * Runs on the main thread just before a task is handed to a worker and returns the
+   * payload the worker receives. Use it for inputs that must be fresh at run time,
+   * such as a short-lived access ticket, instead of storing them in the queue.
+   */
+  prepare?(task: TaskEnvelope<Payload>): Promise<unknown> | unknown;
   /** Runs on the main thread after each task settles, before its slot is reused. */
   onSettled?(task: TaskEnvelope<Payload>, outcome: TaskOutcome<Result>): void | Promise<void>;
 }
@@ -107,6 +113,8 @@ export class TaskScheduler {
   private readonly running = new Map<string, TaskEnvelope>();
   // Slots resting between tasks; counted against the parallelism budget. Bound: runner size.
   private cooling = 0;
+  // Slots reserved by tasks whose prepare() is still running. Bound: runner size.
+  private preparing = 0;
   private firstTimer: ReturnType<typeof setTimeout> | undefined;
   private intervalTimer: ReturnType<typeof setInterval> | undefined;
   private started = false;
@@ -259,16 +267,35 @@ export class TaskScheduler {
   }
 
   private pump(): void {
-    while (this.runner.idleSlots - this.cooling > 0) {
+    while (this.runner.idleSlots - this.cooling - this.preparing > 0) {
       const envelope = this.queue.take();
       if (!envelope) break;
       const identity = taskIdentity(envelope.type, envelope.key);
       this.running.set(identity, envelope);
-      void this.runner.run(envelope)
-        .catch((error: unknown): TaskOutcome => ({ ok: false, error: { code: 'worker-exit', name: 'TaskDispatchError', message: error instanceof Error ? error.message : String(error) }, durationMs: 0 }))
-        .then((outcome) => this.settled(identity, envelope, outcome));
+      void this.dispatch(envelope).then((outcome) => this.settled(identity, envelope, outcome));
     }
     this.notifyIdle();
+  }
+
+  private async dispatch(envelope: TaskEnvelope): Promise<TaskOutcome> {
+    let toRun = envelope;
+    const prepare = this.types.get(envelope.type)?.definition.prepare;
+    if (prepare) {
+      this.preparing += 1;
+      try {
+        toRun = { ...envelope, payload: await prepare(envelope) };
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        return { ok: false, error: { code: 'script-error', name: 'TaskPrepareError', message: failure.message, stack: failure.stack }, durationMs: 0 };
+      } finally {
+        this.preparing -= 1;
+      }
+    }
+    try {
+      return await this.runner.run(toRun);
+    } catch (error) {
+      return { ok: false, error: { code: 'worker-exit', name: 'TaskDispatchError', message: error instanceof Error ? error.message : String(error) }, durationMs: 0 };
+    }
   }
 
   private async settled(identity: string, envelope: TaskEnvelope, outcome: TaskOutcome): Promise<void> {
@@ -300,7 +327,7 @@ export class TaskScheduler {
   }
 
   private isIdle(): boolean {
-    return this.queue.size === 0 && this.running.size === 0 && this.cooling === 0 && this.planning === null;
+    return this.queue.size === 0 && this.running.size === 0 && this.cooling === 0 && this.preparing === 0 && this.planning === null;
   }
 
   private notifyIdle(): void {
