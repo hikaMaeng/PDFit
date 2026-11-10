@@ -19,6 +19,9 @@
 
 ### Changed
 
+- The sidebar lists tags in Unicode (UTF-16 code unit) order of their names instead of
+  bookstore-category groups, and each tag row starts with a tag icon in the tag's color
+  instead of a `#` character.
 - The standalone server starts Node with fixed glibc malloc thresholds so memory used
   by background workers is returned after a batch.
 - The standalone cover view shows server thumbnails and no longer renders PDFs in the
