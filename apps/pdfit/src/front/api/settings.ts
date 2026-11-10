@@ -26,11 +26,6 @@ export interface AiServerInput {
   models?: AiServerModels;
 }
 
-export interface PgVectorConfig {
-  user?: string;
-  password?: string;
-}
-
 // ─── AI 서버 API ───────────────────────────────────────────────
 export async function listAiServers(): Promise<AiServer[]> {
   const res = await fetch('/api/settings/ai-servers');
@@ -66,22 +61,6 @@ export async function deleteAiServer(id: number): Promise<void> {
   const res = await fetch(`/api/settings/ai-servers/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(await res.text());
   displayTranslationAvailability = undefined;
-}
-
-// ─── PGVector 설정 API ────────────────────────────────────────
-export async function getPgVectorConfig(): Promise<PgVectorConfig> {
-  const res = await fetch('/api/settings/pgvector');
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-export async function savePgVectorConfig(config: PgVectorConfig): Promise<void> {
-  const res = await fetch('/api/settings/pgvector', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  if (!res.ok) throw new Error(await res.text());
 }
 
 const displayTranslationCache = new Map<string, string>();

@@ -50,11 +50,10 @@ await page.getByRole('button', { name: 'Settings' }).click();
 await page.waitForSelector('text=AI servers');
 
 const aiServers = await page.request.get(`${baseUrl}/api/settings/ai-servers`);
-const pgvector = await page.request.get(`${baseUrl}/api/settings/pgvector`);
 assert(aiServers.ok(), `AI servers endpoint failed with ${aiServers.status()}.`);
-assert(pgvector.ok(), `PGVector endpoint failed with ${pgvector.status()}.`);
+const removedPgvector = await page.request.get(`${baseUrl}/api/settings/pgvector`);
+assert(removedPgvector.status() === 404, `PGVector settings route must stay removed, got ${removedPgvector.status()}.`);
 
-const originalPgvector = await pgvector.json();
 const originalAiServers = await aiServers.json();
 const testServerName = `Integrated Verify ${Date.now()}`;
 let createdServerId = null;
@@ -81,19 +80,11 @@ try {
   const updatedServer = updatedServers.find((item) => item.id === createdServerId);
   assert(updatedServer?.name === `${testServerName} Updated`, 'AI server update was not persisted.');
   assert(updatedServer.models.vision === 'codex-vision', 'AI server model update was not persisted.');
-
-  const nextPgvector = { user: `verify-user-${Date.now()}`, password: 'verify-pass' };
-  const saveResponse = await page.request.put(`${baseUrl}/api/settings/pgvector`, { data: nextPgvector });
-  assert(saveResponse.ok(), `PGVector save failed with ${saveResponse.status()}.`);
-  const savedPgvector = await (await page.request.get(`${baseUrl}/api/settings/pgvector`)).json();
-  assert(savedPgvector.user === nextPgvector.user && savedPgvector.password === nextPgvector.password, 'PGVector settings were not persisted.');
 } finally {
   if (createdServerId !== null) {
     const response = await page.request.delete(`${baseUrl}/api/settings/ai-servers/${createdServerId}`);
     assert(response.ok(), `AI server cleanup failed with ${response.status()}.`);
   }
-  const restoreResponse = await page.request.put(`${baseUrl}/api/settings/pgvector`, { data: originalPgvector });
-  assert(restoreResponse.ok(), `PGVector restore failed with ${restoreResponse.status()}.`);
   const finalServers = await (await page.request.get(`${baseUrl}/api/settings/ai-servers`)).json();
   assert(finalServers.length === originalAiServers.length, 'AI server cleanup left an unexpected row behind.');
 }

@@ -205,7 +205,7 @@ does not expose a content stream. Viewer cleanup aborts an unfinished download.
 드래그 대상 및 태그 선택 색상은 유지한다. 태그 색상 변경은 태그 페이지 제목과
 태그 관리창에서 제공한다.
 
-상단 `lnb-preferences` 버튼은 언어와 다크/라이트 선택 모달을 연다.
+상단 `lnb-preferences` 버튼(지구본 아이콘, 접근성 이름은 언어)은 언어와 다크/라이트 선택 모달을 연다. 설정 페이지로 가는 톱니바퀴는 오른쪽의 별도 버튼이다.
 기존 언어 모델과 테마 모델을 사용하여 즉시 반영하고 localStorage에 저장한다.
 모달 닫기는 별도 저장이나 취소 동작이 아니다. 언어 확장이 없는 런타임에서는
 언어 선택 항목을 표시하지 않는다.

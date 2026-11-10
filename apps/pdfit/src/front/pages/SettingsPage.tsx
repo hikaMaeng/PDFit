@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Tab, Tabs, Typography } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import StorageIcon from '@mui/icons-material/Storage';
 import AIServersTab from './settings/AIServersTab';
-import PGVectorTab from './settings/PGVectorTab';
 import { usePdfitI18n } from '@pdfit/pdfit/client/service';
 
 interface TabPanelProps {
@@ -45,21 +43,11 @@ export default function SettingsPage() {
             id="settings-tab-0"
             aria-controls="settings-tabpanel-0"
           />
-          <Tab
-            icon={<StorageIcon fontSize="small" />}
-            iconPosition="start"
-            label="PGVector"
-            id="settings-tab-1"
-            aria-controls="settings-tabpanel-1"
-          />
         </Tabs>
       </Box>
 
       <TabPanel value={tab} index={0}>
         <AIServersTab />
-      </TabPanel>
-      <TabPanel value={tab} index={1}>
-        <PGVectorTab />
       </TabPanel>
     </Box>
   );

@@ -23,7 +23,7 @@ For source development, clone the repository, run `npm install`, set `PDFIT_LAN_
 
 Open `http://127.0.0.1:15203` (or `PDFIT_STANDALONE_PORT`). The selected host folder is mounted at `/app/data/books` and is the library root, so PDFs already in that directory are visible immediately; folders created in PDFit are real directories below the mounted root.
 
-Use `/settings` for AI server and pgvector configuration. Use `/viewer` for the dedicated viewer entry.
+Use `/settings` for AI server configuration; the database is embedded in the image and has no settings. The globe icon at the upper left opens the language and light/dark dialog. Use `/viewer` for the dedicated viewer entry.
 
 ## Cover view
 

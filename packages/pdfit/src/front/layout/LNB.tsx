@@ -36,7 +36,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TagIcon from '../components/HashTagIcon.js';
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import LanguageIcon from '@mui/icons-material/Language';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -499,9 +499,9 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           </Box>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Tooltip title={t('settings')} placement="bottom" arrow>
-              <IconButton data-testid="lnb-preferences" size="small" aria-label={t('settings')} aria-haspopup="dialog" onClick={() => setPreferencesOpen(true)} sx={{ color: sidebarTextSecondary, '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover } }}>
-                <SettingsOutlinedIcon fontSize="small" />
+            <Tooltip title={t('language')} placement="bottom" arrow>
+              <IconButton data-testid="lnb-preferences" size="small" aria-label={t('language')} aria-haspopup="dialog" onClick={() => setPreferencesOpen(true)} sx={{ color: sidebarTextSecondary, '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover } }}>
+                <LanguageIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             {extraSidebarItems.filter((item) => !item.placement || item.placement === 'header').map((item) => (

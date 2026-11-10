@@ -16,7 +16,7 @@ PDFit server implementation.
 * `src/front/main.tsx`: service UI with library and Settings navigation
 * `src/front/viewer-main.tsx`: dedicated PDF viewer entry
 * `src/server/index.ts`: one Express process, one PostgreSQL pool, and all routes
-* `src/server/services/settingsStore.ts`: AI server and pgvector settings persistence
+* `src/server/services/settingsStore.ts`: AI server settings persistence
 * `docker/`: one runtime image with PostgreSQL, pgvector, and text search extensions
 
 The service and viewer remain separate browser entrypoints but share one app package, one image, one port, and one data root.

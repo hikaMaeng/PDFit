@@ -81,14 +81,6 @@ export function createSettingsRouter(store: SettingsStore): Router {
     }
   });
 
-  router.get('/pgvector', async (_req: Request, res: Response) => {
-    try {
-      res.json(await store.getPgVectorConfig());
-    } catch (error) {
-      res.status(500).json({ error: String(error) });
-    }
-  });
-
   router.post('/translations', async (req: Request, res: Response) => {
     const { texts, language } = req.body as { texts?: unknown; language?: unknown };
     if (!Array.isArray(texts) || texts.length < 1 || texts.length > 50 || texts.some((text) => typeof text !== 'string' || text.length > 200)) {
@@ -109,16 +101,6 @@ export function createSettingsRouter(store: SettingsStore): Router {
       res.json({ translations: await translateDisplayTexts(server, texts as string[], language as DisplayTranslationLanguage) });
     } catch (error) {
       res.status(502).json({ error: String(error) });
-    }
-  });
-
-  router.put('/pgvector', async (req: Request, res: Response) => {
-    const { user, password } = req.body as { user?: string; password?: string };
-    try {
-      await store.savePgVectorConfig({ user, password });
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ error: String(error) });
     }
   });
 

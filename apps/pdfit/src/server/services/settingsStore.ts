@@ -33,8 +33,6 @@ export interface SettingsStore {
   createAiServer(input: AiServerInput): Promise<number>;
   updateAiServer(id: number, input: Partial<AiServerInput>): Promise<boolean>;
   deleteAiServer(id: number): Promise<boolean>;
-  getPgVectorConfig(): Promise<{ user?: string; password?: string }>;
-  savePgVectorConfig(config: { user?: string; password?: string }): Promise<void>;
 }
 
 export class PostgresSettingsStore implements SettingsStore {
@@ -212,44 +210,5 @@ export class PostgresSettingsStore implements SettingsStore {
   async deleteAiServer(id: number): Promise<boolean> {
     const result = await this.pool.query('DELETE FROM ai_servers WHERE id = $1', [id]);
     return (result.rowCount ?? 0) > 0;
-  }
-
-  async getPgVectorConfig(): Promise<{ user?: string; password?: string }> {
-    const result = await this.pool.query(`
-      SELECT key, value
-      FROM app_settings
-      WHERE key IN ('pgvector_user', 'pgvector_password')
-    `);
-    const config: { user?: string; password?: string } = {};
-
-    for (const row of result.rows) {
-      if (row.key === 'pgvector_user') {
-        config.user = row.value;
-      }
-      if (row.key === 'pgvector_password') {
-        config.password = row.value;
-      }
-    }
-
-    return config;
-  }
-
-  async savePgVectorConfig(config: { user?: string; password?: string }): Promise<void> {
-    const entries = Object.entries({
-      pgvector_user: config.user,
-      pgvector_password: config.password,
-    }).filter(([, value]) => value !== undefined);
-
-    for (const [key, value] of entries) {
-      await this.pool.query(
-        `
-          INSERT INTO app_settings (key, value, updated_at)
-          VALUES ($1, $2, EXTRACT(EPOCH FROM NOW())::BIGINT)
-          ON CONFLICT (key) DO UPDATE
-          SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-        `,
-        [key, value],
-      );
-    }
   }
 }

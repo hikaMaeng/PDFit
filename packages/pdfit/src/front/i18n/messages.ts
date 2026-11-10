@@ -153,8 +153,6 @@ const rows = {
   embeddingModel: ['Embedding model', '임베딩 모델', '嵌入模型', 'Modelo de embeddings', 'एम्बेडिंग मॉडल', 'نموذج التضمين', 'Modèle d’embedding', 'Modelo de embedding'],
   additionalHeaders: ['Additional headers', '추가 헤더', '其他请求头', 'Encabezados adicionales', 'अतिरिक्त हेडर', 'ترويسات إضافية', 'En-têtes supplémentaires', 'Cabeçalhos adicionais'],
   addHeader: ['Add header', '헤더 추가', '添加请求头', 'Añadir encabezado', 'हेडर जोड़ें', 'إضافة ترويسة', 'Ajouter un en-tête', 'Adicionar cabeçalho'],
-  pgRuntime: ['PGVector runtime', 'PGVector 런타임', 'PGVector 运行时', 'Entorno PGVector', 'PGVector रनटाइम', 'بيئة تشغيل PGVector', 'Runtime PGVector', 'Runtime PGVector'],
-  pgRuntimeCopy: ['These settings are stored in the embedded PostgreSQL runtime.', '이 설정은 내장 PostgreSQL 런타임에 저장됩니다.', '这些设置保存在内嵌 PostgreSQL 运行时中。', 'Estos ajustes se guardan en el entorno PostgreSQL integrado.', 'ये सेटिंग अंतर्निहित PostgreSQL रनटाइम में सहेजी जाती हैं।', 'تُحفظ هذه الإعدادات في بيئة PostgreSQL المضمنة.', 'Ces paramètres sont stockés dans le runtime PostgreSQL intégré.', 'Estas configurações são armazenadas no runtime PostgreSQL integrado.'],
   saveSettings: ['Save settings', '설정 저장', '保存设置', 'Guardar configuración', 'सेटिंग सहेजें', 'حفظ الإعدادات', 'Enregistrer les paramètres', 'Salvar configurações'],
   settingsSaved: ['PostgreSQL runtime settings saved.', 'PostgreSQL 런타임 설정을 저장했습니다.', 'PostgreSQL 运行时设置已保存。', 'Configuración de PostgreSQL guardada.', 'PostgreSQL रनटाइम सेटिंग सहेजी गई।', 'تم حفظ إعدادات PostgreSQL.', 'Paramètres PostgreSQL enregistrés.', 'Configurações do PostgreSQL salvas.'],
   modified: ['Modified', '수정', '修改时间', 'Modificado', 'संशोधित', 'عُدّل', 'Modifié', 'Modificado'],

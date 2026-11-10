@@ -32,7 +32,7 @@ The brand mark is the same compact transparent PNG used by the service header an
 - **Useful organization** — browse folders and tags, open the complete book list for a folder, and keep reading state across sessions.
 - **Visual bookmarks** — drag a page region to save a high-resolution JPEG capture with absolute PDF coordinates, border/fill color, opacity, and comments. The overlay follows zoom, scroll, page changes, and two-page layout changes.
 - **Bookmark workspace** — review recent or book-grouped captures, preview the original image, jump to its page, edit colors/comments, and delete from the library or viewer.
-- **AI-ready foundation** — configure AI servers and pgvector from the same Settings surface.
+- **AI-ready foundation** — configure AI servers from the Settings page (the embedded pgvector database needs no setup).
 - **Local-first deployment** — the public checkout keeps the local/USB/SMB contract and does not require an account or remote storage service.
 
 ## Quick start
