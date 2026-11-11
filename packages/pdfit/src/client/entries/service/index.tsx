@@ -9,12 +9,14 @@ import PdfitServiceAppRoutes from '../../service/common/App.js';
 import { PDFIT_LANGUAGES, pdfitLanguagePreferenceModel, type PdfitLanguage } from '../../../front/model/languagePreference.js';
 import { configurePdfitMetadataCache, refreshPdfitMetadataCache } from '../../../front/cache/metadataCache.js';
 import { configureMetadataOutbox } from '../../../front/cache/metadataOutbox.js';
+import { ensureCredentialFreeBase } from '../../../front/api/credentialFreeBase.js';
 
 export type { PdfitServiceExtension, PdfitSidebarItem } from '../../shared/runtime.js';
 export type { PdfitLanguage } from '../../../front/model/languagePreference.js';
 export { usePdfitI18n, useTranslatedDisplayText } from '../../../front/i18n/usePdfitI18n.js';
 
 export function createPdfitServiceApp(extension: PdfitServiceExtension = {}) {
+  ensureCredentialFreeBase();
   const defaultLanguagePreference = {
     model: pdfitLanguagePreferenceModel,
     labels: () => Object.fromEntries(PDFIT_LANGUAGES.map((language) => [language, language.toUpperCase()])) as Record<PdfitLanguage, string>,

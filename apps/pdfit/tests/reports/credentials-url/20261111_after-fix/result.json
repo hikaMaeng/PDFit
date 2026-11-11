@@ -1,0 +1,37 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "proxyPort": 56770,
+  "channel": "chrome",
+  "browserVersion": "157.0.8103.51",
+  "expected": {
+    "folders": 2,
+    "tags": 127,
+    "tagBookLinks": 1319
+  },
+  "A": {
+    "loaded": true,
+    "baseURI": "http://127.0.0.1:56770/",
+    "href": "http://127.0.0.1:56770/",
+    "folderRows": 2,
+    "tagTotal": "1319",
+    "tagRows": 127,
+    "baseElements": [
+      "http://127.0.0.1:56770/"
+    ],
+    "probe": "status 200",
+    "errors": [],
+    "proxyAuthedApi": 7,
+    "proxyUnauthedApi": 0
+  },
+  "B": {
+    "baseURI": "http://127.0.0.1:56770/",
+    "errors": []
+  },
+  "C": {
+    "path": "/viewer/이북/(만화)미적분 7일만에 끝내기.pdf",
+    "baseURI": "http://127.0.0.1:56770/viewer/%EC%9D%B4%EB%B6%81/(%EB%A7%8C%ED%99%94)%EB%AF%B8%EC%A0%81%EB%B6%84%207%EC%9D%BC%EB%A7%8C%EC%97%90%20%EB%81%9D%EB%82%B4%EA%B8%B0.pdf",
+    "fetch": "status 200",
+    "errors": []
+  },
+  "verdict": "PASS"
+}

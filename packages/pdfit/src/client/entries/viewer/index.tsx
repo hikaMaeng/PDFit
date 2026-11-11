@@ -9,11 +9,13 @@ import PdfitViewerAppRoutes from '../../viewer/common/App.js';
 import { configurePdfitMetadataCache, refreshPdfitMetadataCache } from '../../../front/cache/metadataCache.js';
 import { configureMetadataOutbox } from '../../../front/cache/metadataOutbox.js';
 import { PDFIT_LANGUAGES, pdfitLanguagePreferenceModel, type PdfitLanguage } from '../../../front/model/languagePreference.js';
+import { ensureCredentialFreeBase } from '../../../front/api/credentialFreeBase.js';
 
 export type { PdfitViewerExtension } from '../../shared/runtime.js';
 export { usePdfitI18n, useTranslatedDisplayText } from '../../../front/i18n/usePdfitI18n.js';
 
 export function createPdfitViewerApp(extension: PdfitViewerExtension = {}) {
+  ensureCredentialFreeBase();
   const defaultLanguagePreference = {
     model: pdfitLanguagePreferenceModel,
     labels: () => Object.fromEntries(PDFIT_LANGUAGES.map((language) => [language, language.toUpperCase()])) as Record<PdfitLanguage, string>,

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening the app from an address that carries HTTP Basic credentials (`https://user:pass@host/`)
+  left the sidebar without folders and tags. The page keeps the credentials in
+  `document.baseURI`, so every relative `fetch('/api/...')` resolved to a URL with credentials,
+  which `fetch` rejects before sending anything. The service and viewer entries now declare the
+  same address without credentials as the document base (`ensureCredentialFreeBase`); the
+  browser keeps authenticating from its own HTTP auth cache. Addresses without credentials are
+  unchanged.
+
 ## [0.4.6] - 2026-11-11
 
 PDFit 0.4.6 adds book-title search (including Korean initials), an "Untagged" entry and a

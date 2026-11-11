@@ -1,0 +1,29 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "proxyPort": 64793,
+  "channel": "chrome",
+  "browserVersion": "157.0.8103.51",
+  "expected": {
+    "folders": 2,
+    "tags": 127,
+    "tagBookLinks": 1319
+  },
+  "A": {
+    "loaded": false,
+    "baseURI": "http://pdfit-test-user:p%40ss%23word!1@127.0.0.1:64793/",
+    "href": "http://127.0.0.1:64793/",
+    "folderRows": 0,
+    "tagTotal": "0",
+    "tagRows": 0,
+    "baseElements": [],
+    "probe": "TypeError: Failed to execute 'fetch' on 'Window': Request cannot be constructed from a URL that includes credentials: /api/folders",
+    "errors": [
+      "pageerror: Failed to execute 'fetch' on 'Window': Request cannot be constructed from a URL that includes credentials: /api/folders",
+      "pageerror: Failed to execute 'fetch' on 'Window': Request cannot be constructed from a URL that includes credentials: /api/folders"
+    ],
+    "proxyAuthedApi": 0,
+    "proxyUnauthedApi": 0
+  },
+  "verdict": "FAIL",
+  "failure": "document.baseURI에 계정이 없어야 한다\n+ actual - expected\n\n  [\n+   'pdfit-test-user',\n+   'p%40ss%23word!1'\n-   '',\n-   ''\n  ]\n"
+}
