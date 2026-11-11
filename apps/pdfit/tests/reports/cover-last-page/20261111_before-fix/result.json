@@ -1,0 +1,26 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "channel": "chrome",
+  "expected": {
+    "saved": {
+      "name": "(사용자를)생각하게 하지마!.pdf",
+      "page": 111,
+      "progressPage": 1
+    },
+    "unsaved": {
+      "name": "(만화)미적분 7일만에 끝내기.pdf",
+      "page": null,
+      "progressPage": 1
+    },
+    "books": 715
+  },
+  "observed": {
+    "saved": "최종페이지: —",
+    "unsaved": "최종페이지: —",
+    "pageErrors": [],
+    "nonGetRequests": []
+  },
+  "verdict": "FAIL",
+  "failure": "저장 페이지가 111인 책의 오버레이가 그 값을 보여야 한다: \"최종페이지: —\"\n\n'' !== '111'\n"
+}

@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- The cover card's info overlay always showed "Last page: —". It read the `reading_progress`
+  record, which the viewer never writes, instead of the page the viewer saves in its viewer
+  state (the value reopening a book restores). The overlay now reads the viewer state page.
+
 - Opening the app from an address that carries HTTP Basic credentials (`https://user:pass@host/`)
   left the sidebar without folders and tags. The page keeps the credentials in
   `document.baseURI`, so every relative `fetch('/api/...')` resolved to a URL with credentials,

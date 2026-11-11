@@ -14,7 +14,7 @@ import { DRAG_TYPE } from '../layout/LNB.js';
 import TagChip from './TagChip.js';
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
-import { progressApi } from '../api/progress.js';
+import { viewerStateApi } from '../api/viewerState.js';
 
 type Props = {
   filename: string;
@@ -408,12 +408,14 @@ export default function PdfCoverItem(props: Props) {
   const viewerHref = viewerUrl({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId });
   const infoId = useId();
 
-  // The last page is read only once the overlay is first shown, so a grid of cards does not
-  // issue one progress request per card.
+  // The last page is the page the viewer saved in its viewer state (the same value that reopening
+  // the book restores). It is read only once the overlay is first shown, so a grid of cards does
+  // not issue one request per card. The separate reading-progress record is never written by the
+  // viewer, so it is not used here.
   useEffect(() => {
     if (!infoRequested || pending) return;
     let cancelled = false;
-    progressApi.get(props.folder, props.filename, props.driveFileId).then((page) => { if (!cancelled) setLastPage(page); }).catch(() => { if (!cancelled) setLastPage(null); });
+    viewerStateApi.get(props.folder, props.filename, props.driveFileId).then((state) => { if (!cancelled) setLastPage(typeof state?.page === 'number' ? state.page : null); }).catch(() => { if (!cancelled) setLastPage(null); });
     return () => { cancelled = true; };
   }, [infoRequested, openedAt, pending, props.driveFileId, props.filename, props.folder]);
 
