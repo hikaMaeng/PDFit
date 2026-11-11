@@ -230,6 +230,35 @@ export async function listCachedBooksByTag(tagName: string): Promise<Array<{ fol
     .sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko'));
 }
 
+/** 모든 활성 태그와 각 태그의 책을 하이드레이트된 스냅샷에서 한 번에 투영한다(인덱스 페이지). 책이 없는 태그는 뺀다. */
+export async function listCachedTagIndex(): Promise<Array<{ name: string; color: string; books: Array<{ folder: string; filename: string; driveFileId: string }> }> | null> {
+  const scope = await cachedScope(); if (!scope) return null;
+  const [tags, relations, pdfs, folders] = await Promise.all([
+    readAll<CachedTag>(scope, 'tags'), readAll<CachedRelation>(scope, 'pdfTags'),
+    readAll<CachedPdfRow>(scope, 'pdfs'), readAll<CachedFolderRow>(scope, 'folders'),
+  ]);
+  const folderNames = new Map(folders.filter((folder) => !folder.trashed).map((folder) => [folder.driveFolderId, folder.name]));
+  const activePdfs = new Map(pdfs.filter((pdf) => !pdf.trashed && folderNames.has(pdf.parentFolderId)).map((pdf) => [pdf.driveFileId, pdf]));
+  const filesByTag = new Map<string, Set<string>>();
+  for (const relation of relations) {
+    if (relation.deletedAt || !activePdfs.has(relation.driveFileId)) continue;
+    const files = filesByTag.get(relation.tagId) ?? new Set<string>();
+    files.add(relation.driveFileId);
+    filesByTag.set(relation.tagId, files);
+  }
+  return withDistinctTagColors(tags
+    .filter((tag) => !tag.deletedAt && filesByTag.has(tag.tagId))
+    .map((tag) => ({
+      name: tag.name,
+      color: tag.color,
+      books: [...filesByTag.get(tag.tagId)!].map((driveFileId) => {
+        const pdf = activePdfs.get(driveFileId)!;
+        return { folder: folderNames.get(pdf.parentFolderId)!, filename: pdf.name, driveFileId };
+      }).sort((left, right) => left.folder.localeCompare(right.folder, 'ko') || left.filename.localeCompare(right.filename, 'ko')),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'ko')));
+}
+
 /** 활성 태그 관계가 하나도 없는 PDF(사이드바 "미분류")를 하이드레이트된 스냅샷에서 투영한다. */
 export async function listCachedUntaggedBooks(): Promise<Array<{ folder: string; filename: string; driveFileId: string; size: number; modified_at: string; tags: string[] }> | null> {
   const scope = await cachedScope(); if (!scope) return null;

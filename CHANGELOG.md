@@ -4,6 +4,12 @@
 
 ### Added
 
+- A tag "Index" page. An icon in the sidebar Tags header (next to the total) opens
+  `/tag-index`, which shows every tag as a card of a Pinterest-style masonry layout:
+  the tag name on top and, inside, the titles of all books with that tag in a small
+  font. A title opens the book in the viewer; the card header opens the tag page. A book
+  with several tags appears in each of those cards. Backed by `GET /api/tags/index`
+  (one query for all tags and their books).
 - An "Untagged" entry pinned at the top of the sidebar tag list. It shows how many
   documents have no tag at all and opens `/untagged`, which lists them like a tag page
   (a document leaves the list as soon as it gets a tag). Backed by

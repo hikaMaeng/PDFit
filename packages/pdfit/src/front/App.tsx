@@ -6,9 +6,11 @@ import FolderPage from './pages/FolderPage';
 import HomePage from './pages/HomePage';
 import BackgroundSyncIndicator from './components/BackgroundSyncIndicator.js';
 import { UNTAGGED_PATH } from './model/untagged.js';
+import { TAG_INDEX_PATH } from './model/tagIndex.js';
 
 const PdfViewerPage = lazy(() => import('./pages/PdfViewerPage.js'));
 const TagPage = lazy(() => import('./pages/TagPage.js'));
+const TagIndexPage = lazy(() => import('./pages/TagIndexPage.js'));
 const BookmarkPage = lazy(() => import('./pages/BookmarkPage.js'));
 const SearchPage = lazy(() => import('./pages/SearchPage.js'));
 
@@ -50,6 +52,7 @@ export default function App() {
           <Route path="/bookmarks" element={<BookmarkPage />} />
           <Route path="/tag/:name" element={<TagPage />} />
           <Route path={UNTAGGED_PATH} element={<TagPage untagged />} />
+          <Route path={TAG_INDEX_PATH} element={<TagIndexPage />} />
           <Route path="/search" element={<SearchPage />} />
           {extraRoutes.map((route) => (
             <Route key={route.path} path={route.path} element={route.element} />

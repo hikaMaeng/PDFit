@@ -7,6 +7,7 @@ import type {
   BookRecord,
   BookTitleSearchResult,
   MetadataStore,
+  TagIndexEntry,
   TagSummary,
   TaggedBookRecord,
   ViewerStateRecord,
@@ -88,6 +89,25 @@ export class PostgresMetadataStore implements MetadataStore {
       folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
       modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
     }));
+  }
+
+  async listTagIndex(): Promise<TagIndexEntry[]> {
+    // `listBooksByTag`와 같은 규칙: `books`에 실제로 있는 책만 센다. 태그마다 쿼리하지 않고 한 번에 읽는다.
+    const result = await this.db.query(`
+      SELECT t.name, t.color, b.folder, b.filename
+      FROM tags t
+      JOIN book_tags bt ON bt.tag_id = t.id
+      JOIN books b ON b.folder = bt.folder AND b.filename = bt.filename
+      ORDER BY t.name, b.folder, b.filename
+    `);
+    const byName = new Map<string, TagIndexEntry>();
+    for (const row of result.rows) {
+      const name = String(row.name);
+      let entry = byName.get(name);
+      if (!entry) { entry = { name, color: String(row.color), books: [] }; byName.set(name, entry); }
+      entry.books.push({ folder: String(row.folder), filename: String(row.filename) });
+    }
+    return withDistinctTagColors([...byName.values()]);
   }
 
   async listUntaggedBooks(): Promise<TaggedBookRecord[]> {

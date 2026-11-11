@@ -33,6 +33,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
+import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -53,6 +54,7 @@ import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
 import { UNTAGGED_PATH } from '../model/untagged.js';
+import { TAG_INDEX_PATH } from '../model/tagIndex.js';
 import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
@@ -621,16 +623,34 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
               )}
               <Tooltip title={t('tags')} placement="right" arrow><TagIcon sx={{ fontSize: 18, color: sidebarAccent }} /></Tooltip>
               <Typography variant="caption" sx={{ ml: 0.75, fontWeight: 700 }}>{t('tags')}</Typography>
+              {/* 헤더 행 자체가 접기/펼치기 버튼이므로 클릭이 행으로 올라가지 않게 막는다. */}
+              <Tooltip title={t('tagIndexOpen')} placement="bottom" arrow>
+                <IconButton
+                  data-testid="lnb-tag-index"
+                  size="small"
+                  aria-label={t('tagIndexOpen')}
+                  aria-current={isActive(TAG_INDEX_PATH) ? 'page' : undefined}
+                  onClick={(event) => { event.stopPropagation(); go(TAG_INDEX_PATH); onMobileClose(); }}
+                  sx={{
+                    ml: 'auto',
+                    mr: 0.5,
+                    p: 0.25,
+                    color: isActive(TAG_INDEX_PATH) ? selectedAccent : sidebarTextSecondary,
+                    '&:hover': { color: sidebarTextPrimary, bgcolor: sidebarHover },
+                  }}
+                >
+                  <ViewQuiltOutlinedIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
               <Typography
                 data-testid="tag-assignment-total"
                 variant="caption"
                 title={t('tagAssignmentTotal', { count: totalTagAssignments })}
                 aria-label={t('tagAssignmentTotal', { count: totalTagAssignments })}
-                sx={{ color: sidebarTextSecondary, ml: 'auto', minWidth: 24, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                sx={{ color: sidebarTextSecondary, minWidth: 24, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
               >
                 {totalTagAssignments}
               </Typography>
-
             </Box>
 
             <Collapse in={tagsOpen} timeout="auto" unmountOnExit>

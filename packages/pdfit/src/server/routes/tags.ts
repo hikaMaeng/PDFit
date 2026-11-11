@@ -32,7 +32,17 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
     }
   });
 
-  // 태그 이름과 겹치지 않도록 `/:tag/books`와 모양이 다른 단일 세그먼트 경로를 쓴다.
+  // 태그 이름과 겹치지 않도록 `/:tag/books`와 모양이 다른 단일 세그먼트 경로를 쓴다(`/index`, `/untagged-*` 모두).
+  router.get('/index', async (req: Request, res: Response) => {
+    try {
+      const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!metadataStore.listTagIndex) { res.status(501).json({ error: 'Tag index is not available for this library.' }); return; }
+      res.json(await metadataStore.listTagIndex());
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
   router.get('/untagged-books', async (req: Request, res: Response) => {
     try {
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);

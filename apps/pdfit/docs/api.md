@@ -5,12 +5,14 @@
 * `/` — library service UI
 * `/settings` — AI server settings UI (no database settings: the image embeds PostgreSQL)
 * `/viewer` — dedicated PDF viewer UI
+* `/tag-index` — tag "Index" page: one masonry card per tag listing its book titles
 
 ## Server routes
 
 * `/health` — runtime health
 * `/api/folders`, `/api/tags`, `/api/progress`, `/api/viewer-state`, `/api/events` — shared library APIs
 * `/api/tags/summary` — tag names with the number of books using each tag
+* `GET /api/tags/index` — every tag with all of its books (`[{ name, color, books: [{ folder, filename }] }]`), for the sidebar "Index" page; `501` when the metadata store does not implement it
 * `GET /api/tags/untagged-books`, `GET /api/tags/untagged-count` — books that have no tag at all (sidebar "Untagged"); `501` when the metadata store does not implement them
 * `DELETE /api/tags/:tag` — removes a tag and its association from every book
 * `GET /api/search/books?q=` — book title search against the metadata database (substring, titles only)

@@ -1,0 +1,40 @@
+{
+  "status": "PASS",
+  "origin": "http://127.0.0.1:15203",
+  "results": {
+    "expectedTags": 127,
+    "expectedLinks": 1319,
+    "live": {
+      "cards": 127,
+      "chip": "태그 127개 · 책 연결 1319건",
+      "columns": 4,
+      "minHeight": 71,
+      "maxHeight": 5463,
+      "fontPx": 11.52,
+      "sidebarTotal": 1319,
+      "popupPath": "/viewer/%EC%9D%B4%EB%B6%81/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf"
+    },
+    "mobile": {
+      "columns": 1,
+      "rightmost": 366,
+      "viewport": 390,
+      "pageOverflow": 0
+    },
+    "contrast_dark": {
+      "mode": "dark",
+      "book": 9.56,
+      "heading": 14.77,
+      "count": 9.56,
+      "bodyBackground": "rgb(20, 20, 20)"
+    },
+    "contrast_light": {
+      "mode": "light",
+      "book": 5.53,
+      "heading": 12.5,
+      "count": 5.53,
+      "bodyBackground": "rgb(248, 248, 248)"
+    },
+    "empty": "PASS",
+    "error": "PASS"
+  }
+}

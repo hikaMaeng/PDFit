@@ -28,6 +28,20 @@ export interface BookRecord {
   modified_at: string;
 }
 
+/** 인덱스 페이지가 책을 식별하고 열기 위해 필요한 최소 정보. */
+export interface TagIndexBook {
+  folder: string;
+  filename: string;
+  driveFileId?: string;
+}
+
+/** 태그 하나와 그 태그가 붙은 모든 책. 인덱스 페이지의 카드 한 장에 해당한다. */
+export interface TagIndexEntry {
+  name: string;
+  color: string;
+  books: TagIndexBook[];
+}
+
 export interface TaggedBookRecord extends BookRecord {
   tags: string[];
 }
@@ -50,6 +64,8 @@ export interface MetadataStore {
   listTags(): Promise<string[]>;
   listTagSummaries(): Promise<TagSummary[]>;
   listBooksByTag(tag: string): Promise<TaggedBookRecord[]>;
+  /** 모든 태그와 각 태그의 책을 한 번에 돌려준다(사이드바 "인덱스"). 구현하지 않는 저장소는 라우트가 501로 답한다. */
+  listTagIndex?(): Promise<TagIndexEntry[]>;
   /** 태그가 하나도 붙지 않은 책(사이드바 "미분류"). 구현하지 않는 저장소는 라우트가 501로 답한다. */
   listUntaggedBooks?(): Promise<TaggedBookRecord[]>;
   /** `listUntaggedBooks()`의 개수만 계산한다(사이드바 배지용). */

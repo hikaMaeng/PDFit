@@ -14,6 +14,13 @@ export interface TagSummary {
   color: string;
 }
 
+/** 인덱스 카드 한 장: 태그와 그 태그가 붙은 모든 책. */
+export interface TagIndexEntry {
+  name: string;
+  color: string;
+  books: Array<{ folder: string; filename: string; driveFileId?: string }>;
+}
+
 export interface AutomaticTagResult {
   title: string;
   suggestedTags: string[];
@@ -28,7 +35,7 @@ export interface AutomaticFolderTagResult {
   books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; addedTags: string[]; removedTags: string[] }>;
   errors: Array<{ filename: string; driveFileId?: string; error: string }>;
 }
-import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
+import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -80,6 +87,10 @@ export const tagsApi = {
   /** 특정 태그의 PDF 목록 */
   listBooks: async (tag: string) =>
     (await listCachedBooksByTag(tag)) ?? request<BookRef[]>(`/tags/${encodeURIComponent(tag)}/books`),
+
+  /** 모든 태그와 각 태그의 책을 한 번에("인덱스" 페이지). 서버는 `GET /api/tags/index`, 하이드레이트된 캐시가 있으면 로컬 투영. */
+  listIndex: async () =>
+    (await listCachedTagIndex()) ?? request<TagIndexEntry[]>('/tags/index'),
 
   /** 태그가 하나도 없는 PDF 목록("미분류") */
   listUntaggedBooks: async () =>
