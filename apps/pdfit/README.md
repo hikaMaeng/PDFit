@@ -35,7 +35,7 @@ viewer bookmark-bar card.
 Requirements: Node.js 20 or newer with npm, and Docker Desktop (or Docker Engine) with Compose. Install the released launcher from GitHub:
 
 ```bash
-npm install https://github.com/hikaMaeng/PDFit.git#v0.4.5
+npm install https://github.com/hikaMaeng/PDFit.git#v0.4.6
 npx pdfit
 ```
 

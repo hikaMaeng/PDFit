@@ -2,8 +2,24 @@
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-11
+
+PDFit 0.4.6 adds book-title search (including Korean initials), an "Untagged" entry and a
+tag "Index" page to the sidebar, server-rendered cover thumbnails on a shared background
+task layer, and a redesigned cover card. It also fixes the viewer's first wheel after
+reopening a book.
+
 ### Added
 
+- A fixed search box under the sidebar header. Submitting opens `/search?q=`, a read-only
+  results page (list or cover view). It searches book titles only (the filename without
+  `.pdf`) as a case-insensitive substring with NFC normalization, and reads the metadata
+  database instead of the file system: `GET /api/search/books?q=` queries the PostgreSQL
+  `books` table, and the hosted runtime applies the same rules to its IndexedDB snapshot.
+- Korean initial-consonant search: `books` gains a nullable `title_choseong` column
+  (Hangul syllables replaced by their initial consonants, whitespace removed, the rest
+  lowercased). `syncBooks` fills it on every write and `ensureSchema` backfills existing
+  rows in batches; a query matches the title or the initials field.
 - A tag "Index" page. An icon in the sidebar Tags header (next to the total) opens
   `/tag-index`, which shows every tag as a card of a Pinterest-style masonry layout:
   the tag name on top and, inside, the titles of all books with that tag in a small
@@ -42,6 +58,27 @@
 - The standalone cover view shows server thumbnails and no longer renders PDFs in the
   browser. A cover that is not ready yet is queued ahead of the backlog when its card
   is on screen.
+- The upper-left sidebar button (language and light/dark dialog) shows a globe and is named
+  Language, so it no longer duplicates the Settings gear. The PGVector settings tab and its
+  `/api/settings/pgvector` routes are removed because the image embeds PostgreSQL and nothing
+  read the values; existing `app_settings` rows are left untouched.
+
+### Fixed
+
+- Reopening a book restored the saved page but left wheel and key navigation on page 1, so
+  the first wheel moved 1→2 until a prev/next button was clicked. The PDF.js viewer now syncs
+  that state on document open and resets it when the document changes.
+
+### Commit summary since 0.4.5
+
+- `a653f22`, `98fb31e` — shared background task layer and server-rendered covers, local and remote.
+- `71fc6c2` — cover card with the title over the thumbnail.
+- `2bac552`, `8e3d5de`, `ad81b9c` — Unicode tag order and tag icons in the sidebar.
+- `1d857f6` — language globe, PGVector settings tab removed.
+- `dca5199` — restored-page wheel fix.
+- `e428a6d`, `12c41c0` — title search and initial-consonant search.
+- `fb40fd1` — Untagged entry.
+- `7fb4840`, `593b167` — tag Index page and its left-to-right, lowest-column placement.
 
 ## [0.4.5] - 2026-11-09
 

@@ -4,7 +4,7 @@ import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
-const version = '0.4.5';
+const version = '0.4.6';
 const releaseQualifier = (process.env.PDFIT_RELEASE_QUALIFIER ?? '').trim();
 const releaseEnvFile = (process.env.PDFIT_RELEASE_ENV_FILE ?? '').trim();
 const releaseRedirectUri = (process.env.PDFIT_RELEASE_REDIRECT_URI ?? '').trim();
