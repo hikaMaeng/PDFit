@@ -4,6 +4,15 @@
   "results": {
     "expectedTags": 127,
     "expectedLinks": 1319,
+    "placement": {
+      "columns": 4,
+      "firstRowTags": [
+        "3D그래픽",
+        "AI",
+        "API",
+        "AWS"
+      ]
+    },
     "live": {
       "cards": 127,
       "chip": "태그 127개 · 책 연결 1319건",

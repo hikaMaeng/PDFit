@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Box, Chip, CircularProgress, Typography } from '@mui/material';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
@@ -21,9 +21,24 @@ interface IndexCard {
   books: Array<{ folder: string; filename: string; driveFileId?: string; title: string }>;
 }
 
+/** 카드 사이 간격(px)과 한 단의 최소 너비(px). 단 수는 화면 너비로 정한다. */
+const CARD_GAP = 16;
+const MIN_COLUMN_WIDTH = 250;
+
+interface MasonryLayout {
+  positions: Array<{ left: number; top: number }>;
+  height: number;
+}
+
+const sameLayout = (left: MasonryLayout, right: MasonryLayout) => left.height === right.height
+  && left.positions.length === right.positions.length
+  && left.positions.every((position, index) => position.left === right.positions[index].left && position.top === right.positions[index].top);
+
 /**
  * `/tag-index` — 모든 태그를 카드 한 장씩으로 놓고, 카드 안에 그 태그가 붙은 책 제목을 작은 글씨로 나열한다.
- * 태그마다 책 수가 제각각이므로 CSS 다단(column)으로 카드를 핀터레스트처럼 쌓는다.
+ * 태그마다 책 수가 제각각이므로 핀터레스트처럼 쌓는다: 카드를 순서대로 왼쪽에서 오른쪽으로 한 줄 놓고,
+ * 그다음 카드부터는 그때 가장 낮은(바닥이 가장 위인) 단 아래에 놓는다(같으면 왼쪽 단). 카드 높이는
+ * 실제로 재서 위치를 정하므로(`position: absolute`) DOM 순서는 태그 순서 그대로다.
  * 같은 책이 여러 태그를 가지면 그 태그들의 카드마다 나온다.
  */
 export default function TagIndexPage() {
@@ -70,6 +85,49 @@ export default function TagIndexPage() {
     .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0)), [entries]);
   const linkTotal = useMemo(() => cards.reduce((total, card) => total + card.books.length, 0), [cards]);
 
+  // ── 핀터레스트 배치: 단 너비는 컨테이너 너비로, 위치는 잰 카드 높이로 정한다 ──
+  const gridRef = useRef<HTMLUListElement | null>(null);
+  const cardRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const [gridWidth, setGridWidth] = useState(0);
+  const [layout, setLayout] = useState<MasonryLayout>({ positions: [], height: 0 });
+  const columns = Math.max(1, Math.floor((gridWidth + CARD_GAP) / (MIN_COLUMN_WIDTH + CARD_GAP)));
+  const columnWidth = gridWidth > 0 ? (gridWidth - CARD_GAP * (columns - 1)) / columns : 0;
+
+  const place = useCallback(() => {
+    if (columnWidth <= 0) return;
+    const bottoms = new Array<number>(columns).fill(0);
+    const positions = cards.map((_, index) => {
+      let target = 0;
+      for (let column = 1; column < columns; column += 1) if (bottoms[column] < bottoms[target]) target = column;
+      const top = bottoms[target];
+      bottoms[target] = top + (cardRefs.current[index]?.offsetHeight ?? 0) + CARD_GAP;
+      return { left: target * (columnWidth + CARD_GAP), top };
+    });
+    const next = { positions, height: Math.max(0, Math.max(...bottoms) - CARD_GAP) };
+    setLayout((current) => (sameLayout(current, next) ? current : next));
+  }, [cards, columns, columnWidth]);
+
+  const gridMounted = cards.length > 0;
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return undefined;
+    setGridWidth(grid.clientWidth);
+    const observer = new ResizeObserver(() => setGridWidth(grid.clientWidth));
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [gridMounted]);
+
+  useLayoutEffect(() => { place(); }, [place]);
+
+  // 태그 이름 번역이나 글꼴 로딩으로 카드 높이가 바뀌면 다시 놓는다.
+  useEffect(() => {
+    const observer = new ResizeObserver(() => place());
+    for (const element of cardRefs.current) if (element) observer.observe(element);
+    return () => observer.disconnect();
+  }, [place, cards]);
+
+  const layoutReady = columnWidth > 0 && layout.positions.length === cards.length;
+
   return (
     <Box data-testid="tag-index-page" sx={{ py: 0.5 }}>
       <Box sx={{ px: 1, mb: 1.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -97,25 +155,28 @@ export default function TagIndexPage() {
           <Typography color="text.secondary">{t('tagIndexEmpty')}</Typography>
         </Box>
       ) : (
+        <Box sx={{ px: 1 }}>
         <Box
           component="ul"
+          ref={gridRef}
           data-testid="tag-index-grid"
           aria-label={t('tagIndex')}
-          sx={{ listStyle: 'none', m: 0, p: 0, px: 1, columnWidth: 250, columnGap: '16px' }}
+          // 첫 배치가 끝나기 전에는 카드가 겹쳐 보이지 않도록 숨긴다(보이지 않아도 높이는 잴 수 있다).
+          sx={{ listStyle: 'none', m: 0, p: 0, position: 'relative', height: layout.height, visibility: layoutReady ? 'visible' : 'hidden' }}
         >
-          {cards.map((card) => (
+          {cards.map((card, index) => (
             <Box
               key={card.name}
               component="li"
+              ref={(element: HTMLLIElement | null) => { cardRefs.current[index] = element; }}
               data-testid="tag-index-card"
               data-tag={card.name}
               sx={{
-                display: 'inline-block',
-                width: '100%',
-                verticalAlign: 'top',
-                mb: 2,
-                breakInside: 'avoid',
-                WebkitColumnBreakInside: 'avoid',
+                position: 'absolute',
+                boxSizing: 'border-box',
+                width: columnWidth,
+                left: layout.positions[index]?.left ?? 0,
+                top: layout.positions[index]?.top ?? 0,
                 border: '1px solid',
                 borderColor: 'divider',
                 borderTop: `3px solid ${card.color}`,
@@ -187,6 +248,7 @@ export default function TagIndexPage() {
               </Box>
             </Box>
           ))}
+        </Box>
         </Box>
       )}
     </Box>

@@ -107,12 +107,31 @@ try {
       // ── B. 다단(핀터레스트) 배치 ────────────────────────
       const layout = await page.evaluate(() => {
         const grid = document.querySelector('[data-testid="tag-index-grid"]');
-        const cards = [...document.querySelectorAll('[data-testid="tag-index-card"]')].map((card) => { const box = card.getBoundingClientRect(); return { left: Math.round(box.left), width: Math.round(box.width), height: Math.round(box.height) }; });
-        return { columns: new Set(cards.map((card) => card.left)).size, heights: new Set(cards.map((card) => card.height)).size, minHeight: Math.min(...cards.map((card) => card.height)), maxHeight: Math.max(...cards.map((card) => card.height)), overflowX: grid.scrollWidth - grid.clientWidth };
+        const gridTop = grid.getBoundingClientRect().top;
+        const cards = [...document.querySelectorAll('[data-testid="tag-index-card"]')].map((card) => { const box = card.getBoundingClientRect(); return { left: Math.round(box.left), width: Math.round(box.width), height: Math.round(box.height), top: box.top - gridTop, bottom: box.bottom - gridTop }; });
+        return { cards, columns: new Set(cards.map((card) => card.left)).size, heights: new Set(cards.map((card) => card.height)).size, minHeight: Math.min(...cards.map((card) => card.height)), maxHeight: Math.max(...cards.map((card) => card.height)), overflowX: grid.scrollWidth - grid.clientWidth };
       });
       assert.ok(layout.columns >= 2, `카드가 2열 이상으로 배치돼야 한다(열 ${layout.columns})`);
       assert.ok(layout.heights >= 3 && layout.maxHeight > layout.minHeight * 1.5, `카드 높이가 제각각이어야 한다(최소 ${layout.minHeight}, 최대 ${layout.maxHeight})`);
       assert.ok(layout.overflowX <= 0, '카드가 가로로 넘치면 안 된다');
+      // 배치 순서(요청: 왼쪽→오른쪽으로 전개한 다음 아래로): DOM 순서대로 카드를 훑으며, 각 카드가 "그 시점에 바닥이 가장 위인 단"
+      // (동률이면 가장 왼쪽 단)에 놓였는지 렌더된 좌표만으로 확인한다. 첫 줄은 자연히 왼쪽→오른쪽 순서가 된다.
+      {
+        const lefts = [...new Set(layout.cards.map((card) => card.left))].sort((a, b) => a - b);
+        const bottoms = new Map(lefts.map((left) => [left, 0]));
+        const GAP = 16;
+        for (const [index, card] of layout.cards.entries()) {
+          const lowest = Math.min(...bottoms.values());
+          const expectedLeft = lefts.find((left) => bottoms.get(left) <= lowest + 1);
+          assert.equal(card.left, expectedLeft, `카드 ${index}(${dom[index].tag})는 가장 낮은 단(왼쪽 ${expectedLeft})에 놓여야 한다. 실제 왼쪽 ${card.left}`);
+          assert.ok(Math.abs(card.top - bottoms.get(card.left)) <= 1, `카드 ${index}의 위쪽 ${card.top}은 그 단의 바닥+간격 ${bottoms.get(card.left)}이어야 한다`);
+          bottoms.set(card.left, card.bottom + GAP);
+        }
+        const firstRow = layout.cards.slice(0, lefts.length);
+        assert.deepEqual(firstRow.map((card) => card.left), lefts, '처음 카드들은 왼쪽에서 오른쪽 순서로 첫 줄을 채운다');
+        assert.ok(firstRow.every((card) => Math.abs(card.top) <= 1), '첫 줄 카드는 모두 맨 위에서 시작한다');
+        results.placement = { columns: lefts.length, firstRowTags: dom.slice(0, lefts.length).map((card) => card.tag) };
+      }
       await page.screenshot({ path: shot('index-page.png') });
       await page.locator('[data-testid="tag-index-card"]').first().scrollIntoViewIfNeeded();
 
