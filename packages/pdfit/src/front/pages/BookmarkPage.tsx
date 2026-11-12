@@ -3,8 +3,11 @@ import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogCont
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import NotesIcon from '@mui/icons-material/Notes';
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
-import { listAllBookmarks } from '../api/bookmarks.js';
+import { listAllBookmarks, retryBookmarkOcr } from '../api/bookmarks.js';
+import OcrTextPanel, { type OcrPanelState } from '../components/OcrTextPanel.js';
 import { bookmarkLibraryModel } from '../model/bookmarkModel.js';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import { deleteBookmarkOptimistically } from '../model/optimisticBookmarks.js';
@@ -16,8 +19,29 @@ function bookTitle(filename: string) {
   return filename.replace(/\.pdf$/i, '');
 }
 
+/** Panel state for a clip, or null where the runtime does not run OCR. */
+function clipOcrState(bookmark: BookmarkRecord): OcrPanelState | null {
+  const ocr = bookmark.ocr;
+  if (!ocr) return null;
+  if (ocr.status === 'done') return { status: 'done', text: ocr.text ?? '', source: ocr.source === 'vision' ? 'vision' : 'text-layer' };
+  if (ocr.status === 'failed') return { status: 'failed', error: ocr.error ?? '' };
+  return { status: ocr.status };
+}
+
+/** While a clip's text is being read, the list is read again this often, at most this many times. */
+const OCR_POLL_MS = 5_000;
+const OCR_POLL_LIMIT = 60;
+
 function TranslatedFolderName({ value }: { value: string }) {
   return <>{useTranslatedDisplayText(value)}</>;
+}
+
+function ClipOcrBadge({ status }: { status: NonNullable<BookmarkRecord['ocr']>['status'] }) {
+  const { t } = usePdfitI18n();
+  const label = status === 'pending' ? t('ocrReading') : status === 'done' ? t('ocrClipHasText') : t('ocrClipNeedsAttention');
+  return <Box data-testid="bookmark-card-ocr" data-ocr-status={status} role="img" aria-label={label} title={label} sx={{ position: 'absolute', top: 6, left: 6, display: 'grid', placeItems: 'center', width: 24, height: 24, borderRadius: '50%', color: status === 'done' ? '#fff' : status === 'pending' ? '#d4d4d8' : '#fbbf24', bgcolor: 'rgba(10,10,12,.78)' }}>
+    {status === 'pending' ? <CircularProgress size={13} color="inherit" /> : status === 'done' ? <NotesIcon sx={{ fontSize: 15 }} /> : <ReportProblemOutlinedIcon sx={{ fontSize: 15 }} />}
+  </Box>;
 }
 
 function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: BookmarkRecord; onOpen: (bookmark: BookmarkRecord) => void; onDelete: (bookmark: BookmarkRecord) => void; deleting: boolean }) {
@@ -59,6 +83,7 @@ function BookmarkCard({ bookmark, onOpen, onDelete, deleting }: { bookmark: Book
         >
           {deleting ? <CircularProgress size={17} /> : <DeleteOutlineIcon fontSize="small" />}
         </IconButton>
+        {bookmark.ocr ? <ClipOcrBadge status={bookmark.ocr.status} /> : null}
         {bookmark.fillColor && <Box data-testid="bookmark-library-color-indicator" sx={{ position: 'absolute', right: 8, bottom: 8, width: 11, height: 11, borderRadius: '50%', bgcolor: bookmark.fillColor, border: '1px solid rgba(255,255,255,.75)' }} />}
       </Box>
       <Box sx={{ display: 'grid', gridTemplateRows: 'repeat(3, 1rem)', gap: 0.35, px: 1, py: 0.75, minWidth: 0 }}>
@@ -107,6 +132,36 @@ export default function BookmarkPage() {
     };
     return subscribeBookmarkChanges(onBookmarkChange);
   }, [load]);
+
+  // Clip text is read on the server after a clip is saved; re-read the list until it settles.
+  const hasPendingOcr = bookmarks.some((bookmark) => bookmark.ocr?.status === 'pending');
+  useEffect(() => {
+    if (!hasPendingOcr) return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > OCR_POLL_LIMIT) { window.clearInterval(timer); return; }
+      void listAllBookmarks().then((records) => bookmarkLibraryModel.replace(records)).catch(() => undefined);
+    }, OCR_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [hasPendingOcr]);
+
+  // The dialog shows the live record, so its text appears when reading finishes.
+  const previewRecord = previewBookmark ? bookmarks.find((bookmark) => bookmark.id === previewBookmark.id) ?? previewBookmark : null;
+  const previewOcr = previewRecord ? clipOcrState(previewRecord) : null;
+  const [retryingOcr, setRetryingOcr] = useState(false);
+  const retryOcr = useCallback(async (record: BookmarkRecord) => {
+    setRetryingOcr(true);
+    setDeleteError(null);
+    try {
+      await retryBookmarkOcr(record.id);
+      bookmarkLibraryModel.upsert({ ...record, ocr: { status: 'pending', text: null, source: null, error: null, updatedAt: null } });
+    } catch (caught) {
+      setDeleteError(t('ocrFailed', { reason: caught instanceof Error ? caught.message : String(caught) }));
+    } finally {
+      setRetryingOcr(false);
+    }
+  }, [t]);
 
   const byBook = useMemo(() => {
     const groups = new Map<string, BookmarkRecord[]>();
@@ -190,6 +245,7 @@ export default function BookmarkPage() {
               </Box>
               {previewBookmark.comment && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{previewBookmark.comment}</Typography>}
             </Box>
+            {previewRecord && previewOcr ? <Box sx={{ mb: 1.5 }}><OcrTextPanel testId="clip-ocr" state={previewOcr} retrying={retryingOcr} onRetry={() => void retryOcr(previewRecord)} maxHeight="22vh" /></Box> : null}
             {deleteError && <Alert severity="error" sx={{ mb: 1.5 }}>{deleteError}</Alert>}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
               <IconButton data-testid="bookmark-preview-delete" aria-label={t('deleteBookmark')} title={t('deleteBookmark')} color="error" onClick={removePreviewBookmark}>

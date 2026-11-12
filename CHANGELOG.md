@@ -26,6 +26,8 @@
   clip has no text layer. `BookmarkRecord.ocr`; `POST /api/bookmarks/:id/ocr` retries.
   `POST /api/ocr/page` reads one page the same way and caches the result per file
   state. A `page-text` task runs in the shared worker pool.
+- **My clips** shows each clip's text, its source, copy and "Read again". The viewer
+  header has "Read page text" for the page on screen (local files).
 
 ## [0.4.7] - 2026-11-12
 

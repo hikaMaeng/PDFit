@@ -31,12 +31,18 @@ Folder and tag pages have a list/cover toggle at the right of the toolbar. The c
 
 The image-search button under a cover ("Use a real book cover") replaces the rendered first page with the real book's cover. The dialog searches YES24 and Open Library for the filename without `.pdf`. The title can be edited and searched again. Candidates are ordered by title match. Clicking one downloads it and shows it on every card for that file. "Restore first page" brings back the rendered page. The chosen cover survives edits to the PDF and follows the file when it is moved; deleting the file deletes it. Another open tab picks up a changed cover when it becomes visible again.
 
+## Clip and page text (OCR)
+
+A saved clip is read in the background. The text comes from the PDF itself when the clip covers real text. Otherwise the Settings AI server reads the captured image: the first server with a `vision` model, else the first with an `llm` model. In **My clips** the card shows a badge while the text is being read, once it is ready, and when it could not be read. The clip's dialog shows the text with its source ("From the PDF text" or "Read by AI"), a copy button and "Read again". The page re-reads the list every 5 s while a clip is still being read, for up to 5 minutes.
+
+In the viewer, the text button in the header ("Read page text") reads the page on screen the same way. A digital page answers at once. A scanned page goes to the AI server and can take minutes; the dialog says so after 4 s. Results are kept per page until the PDF changes, so asking again is instant. Closing the dialog stops waiting, but the server still finishes and keeps the result. Without an AI server, areas without PDF text show a hint to add one in Settings. Both features exist for local library files only.
+
 ## Background tasks
 
 The standalone server runs periodic jobs on one shared schedule and one pool of worker
 threads. Cover thumbnails are the first job. Each run recomputes what is missing or
 out of date, replaces whatever was still waiting from the previous run, and works
-through it with a fixed number of workers.
+through it with a fixed number of workers. Page text for OCR (`page-text`) is the second job; it plans only clips left pending by a restart and pages a reader is waiting for.
 
 | Variable | Default | Effect |
 | --- | --- | --- |

@@ -7,6 +7,7 @@ import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import AddToDriveOutlinedIcon from '@mui/icons-material/AddToDriveOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
+import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
 import { foldersApi } from '../api/folders';
 import { useViewerState } from '../hooks/useViewerState';
 import PdfViewer from '../components/PdfViewer';
@@ -23,6 +24,7 @@ import { createBookmarkOptimistically, deleteBookmarkOptimistically, updateBookm
 import { isPendingUploadDriveFileId, isViewerCommand, registerViewerWindow } from '../viewer/openViewer.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
 import DocumentExportDialog from '../components/DocumentExportDialog.js';
+import PageOcrDialog from '../components/PageOcrDialog.js';
 import { addSampleToLibrary, getSampleLibraryStatus } from '../api/samples.js';
 import BookMetadataDialog from '../components/BookMetadataDialog.js';
 import { usePdfitFrontConfig } from '../context.js';
@@ -138,6 +140,9 @@ export default function PdfViewerPage() {
   // explicit opt-in for diagnostics and high-performance local comparisons.
   const [viewerEngine, setViewerEngine] = useState<'gpu' | 'legacy'>(searchParams.get('engine') === 'gpu' ? 'gpu' : 'legacy');
   const [exportOpen, setExportOpen] = useState(false);
+  const [ocrOpen, setOcrOpen] = useState(false);
+  /** 1-based page captured when the page-text dialog opened. */
+  const [ocrPage, setOcrPage] = useState(1);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [sampleLibraryState, setSampleLibraryState] = useState<'checking' | 'available' | 'adding' | 'added' | 'error'>(sample ? 'checking' : 'available');
   const [sampleLibraryNotice, setSampleLibraryNotice] = useState<string | null>(null);
@@ -352,12 +357,21 @@ export default function PdfViewerPage() {
             >
               {ui("파일 정보")}</Button>
           ) : null}
+          {!driveFileId && !sample && !pendingUpload ? (
+            <Tooltip title={t('ocrPage')} arrow>
+              <IconButton data-testid="page-ocr-open" aria-label={t('ocrPage')} size="small" onClick={() => { setOcrPage(Math.max(1, Math.trunc(latestViewerStateRef.current?.page ?? savedState?.page ?? 1))); setOcrOpen(true); }}>
+                <TextSnippetOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           <Tooltip title={t('exportDocument')} arrow>
             <IconButton data-testid="document-export-open" aria-label={t('exportDocument')} size="small" onClick={() => setExportOpen(true)}>
               <FileDownloadOutlinedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
       </Box>
+
+      {!driveFileId && !sample ? <PageOcrDialog open={ocrOpen} folder={folderName} filename={fileName} page={ocrPage} onClose={() => setOcrOpen(false)} /> : null}
 
       <DocumentExportDialog
         open={exportOpen}

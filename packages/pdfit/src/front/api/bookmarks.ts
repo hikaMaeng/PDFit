@@ -40,3 +40,12 @@ export async function deleteBookmark(id: string): Promise<void> {
   const response = await requestWithMetadataOutbox({ coalesceKey: `bookmark:delete:${id}`, url: `/api/bookmarks/${encodeURIComponent(id)}`, method: 'DELETE' });
   if (!response.ok) throw new Error(uiText("북마크를 삭제하지 못했습니다."));
 }
+
+/** Queues the clip's text to be read again (local runtime). The record turns `pending`. */
+export async function retryBookmarkOcr(id: string): Promise<void> {
+  const response = await fetch(`/api/bookmarks/${encodeURIComponent(id)}/ocr`, { method: 'POST' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ?? `HTTP ${response.status}`);
+  }
+}

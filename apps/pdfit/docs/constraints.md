@@ -10,4 +10,4 @@
 | `src/server/services/settingsStore.ts` | Settings router | Uses parameterized SQL and preserves legacy `pro_settings` values. |
 | `docker/Dockerfile` | Root Compose | Copies prebuilt `dist`; runtime image owns PostgreSQL startup. |
 
-UI landmarks used by browser tests include visible `PDFit`, `PDF Viewer`, `Settings`, `AI servers`, and the `viewer status` aria label.
+UI landmarks used by browser tests include visible `PDFit`, `PDF Viewer`, `Settings`, `AI servers`, and the `viewer status` aria label. OCR hooks: `bookmark-card-ocr` (`data-ocr-status`), `clip-ocr` and `page-ocr` panels (`data-ocr-status`, `-text`, `-source` with `data-source`, `-copy`, `-retry`, `-unavailable`, `-failed`), `page-ocr-open`, `page-ocr-dialog`. Real-cover hooks: `pdf-cover-real-cover`, `real-cover-dialog`, `real-cover-query`, `real-cover-search`, `real-cover-candidate`, `real-cover-restore`.
