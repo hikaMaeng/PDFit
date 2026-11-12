@@ -23,8 +23,14 @@ interface CoverOverrideSummary { folder: string; filename: string; version: stri
 
 const key = (folder: string, filename: string) => `${folder}\u0000${filename}`;
 let versions = new Map<string, string>();
-/** null until the first load; false when the server has no cover API (hosted runtime). */
+/**
+ * null until a load gives a definite answer; false only when the server has no cover
+ * API (404 or a response that is not the cover list, as on the hosted runtime). A
+ * network error or 5xx keeps it null, so the next card or tab return asks again.
+ */
 let available: boolean | null = null;
+let lastFailureAt = 0;
+const RETRY_AFTER_FAILURE_MS = 5_000;
 let revision = 0;
 let loading: Promise<void> | null = null;
 const listeners = new Set<() => void>();
@@ -57,6 +63,7 @@ export function loadCoverOverrides(): Promise<void> {
   loading ??= (async () => {
     try {
       const response = await fetch('/api/covers', { cache: 'no-store' });
+      if (response.status >= 500) { lastFailureAt = Date.now(); return; }
       const payload = response.ok ? await response.json().catch(() => null) as { overrides?: CoverOverrideSummary[] } | null : null;
       if (!payload || !Array.isArray(payload.overrides)) {
         if (available === null) { available = false; notify(); }
@@ -66,7 +73,8 @@ export function loadCoverOverrides(): Promise<void> {
       available = true;
       notify();
     } catch {
-      if (available === null) { available = false; notify(); }
+      // Offline, aborted, or refused by the browser: not an answer about the server.
+      lastFailureAt = Date.now();
     } finally {
       loading = null;
     }
@@ -82,9 +90,9 @@ let refreshOnVisible = false;
 export function ensureCoverOverrides(): void {
   if (!refreshOnVisible && typeof document !== 'undefined') {
     refreshOnVisible = true;
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && available === true) void loadCoverOverrides(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && available !== false) void loadCoverOverrides(); });
   }
-  if (available === null && !loading) void loadCoverOverrides();
+  if (available === null && !loading && Date.now() - lastFailureAt >= RETRY_AFTER_FAILURE_MS) void loadCoverOverrides();
 }
 
 async function errorText(response: Response): Promise<string> {

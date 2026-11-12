@@ -89,7 +89,7 @@ export default function RealCoverDialog({ open, folder, filename, onClose }: Pro
       <Typography variant="body2" color="text.secondary" translate="no" sx={{ mb: 1.5, overflowWrap: 'anywhere' }}>{filename}</Typography>
       <Box component="form" role="search" onSubmit={(event) => { event.preventDefault(); void search(query); }} sx={{ display: 'flex', gap: 1, mb: 2 }}>
         <TextField size="small" fullWidth label={t('realCoverQuery')} value={query} onChange={(event) => setQuery(event.target.value)} inputProps={{ maxLength: 200, 'data-testid': 'real-cover-query' }} disabled={state === 'applying'} />
-        <Button type="submit" variant="contained" disabled={busy || !query.trim()} data-testid="real-cover-search">{t('realCoverSearch')}</Button>
+        <Button type="submit" variant="contained" disabled={busy || !query.trim()} data-testid="real-cover-search" sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{t('realCoverSearch')}</Button>
       </Box>
       {state === 'searching' ? <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}><CircularProgress size={20} /><Typography variant="body2">{t('realCoverSearching')}</Typography></Box> : null}
       {state === 'applying' ? <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}><CircularProgress size={20} /><Typography variant="body2">{t('realCoverApplying')}</Typography></Box> : null}
