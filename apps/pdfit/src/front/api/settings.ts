@@ -73,23 +73,101 @@ async function hasDisplayTranslationServer(): Promise<boolean> {
   return displayTranslationAvailability;
 }
 
+/**
+ * Display-name translation requests, batched. Every tag chip asks for its own label,
+ * so a cover grid of hundreds of books asks for thousands at once. Requests are merged
+ * per text, gathered for a short moment, and sent at most BATCH_SIZE texts per request
+ * with one request in flight, because one AI server answers them one at a time.
+ *
+ * State: `queued` and `inflight` are keyed by language + NUL + text. An entry lives from
+ * the first request for that text until its batch settles, then moves to
+ * `displayTranslationCache` (page lifetime). They are bounded by the distinct labels on
+ * the page. `flushBatches` clears them.
+ */
+const BATCH_SIZE = 50;
+const MAX_TEXT_LENGTH = 200;
+const BATCH_DELAY_MS = 30;
+const queued = new Map<string, { text: string; language: string; resolve: (value: string) => void }[]>();
+const inflight = new Map<string, Promise<string>>();
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let sending: Promise<void> = Promise.resolve();
+
+/** True when the text is already written in the target language's script. */
+function alreadyInLanguage(text: string, language: string): boolean {
+  if (language === 'ko') return /[\uac00-\ud7a3]/.test(text) && !/[A-Za-z]{2,}/.test(text);
+  if (language === 'en') return /^[\x20-\x7e]+$/.test(text);
+  return false;
+}
+
+async function sendBatch(language: string, entries: { text: string; resolve: (value: string) => void }[]): Promise<void> {
+  const texts = entries.map((entry) => entry.text);
+  let translations: string[] = texts;
+  try {
+    const res = await fetch('/api/settings/translations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts, language }),
+    });
+    if (res.ok) {
+      const list = (await res.json() as { translations?: unknown }).translations;
+      if (Array.isArray(list)) translations = texts.map((text, index) => (typeof list[index] === 'string' ? list[index] as string : text));
+    }
+  } catch { /* offline: keep the original labels */ }
+  entries.forEach((entry, index) => {
+    const key = `${language}\u0000${entry.text}`;
+    const value = translations[index]?.trim() ? translations[index] : entry.text;
+    displayTranslationCache.set(key, value);
+    inflight.delete(key);
+    entry.resolve(value);
+  });
+}
+
+function flushBatches(): void {
+  flushTimer = undefined;
+  const byLanguage = new Map<string, { text: string; resolve: (value: string) => void }[]>();
+  for (const [, waiters] of queued) {
+    const [first] = waiters;
+    const list = byLanguage.get(first.language) ?? [];
+    // One entry per text; every waiter for it resolves with the same value.
+    list.push({ text: first.text, resolve: (value) => waiters.forEach((waiter) => waiter.resolve(value)) });
+    byLanguage.set(first.language, list);
+  }
+  queued.clear();
+  for (const [language, entries] of byLanguage) {
+    for (let index = 0; index < entries.length; index += BATCH_SIZE) {
+      const batch = entries.slice(index, index + BATCH_SIZE);
+      sending = sending.then(() => sendBatch(language, batch));
+    }
+  }
+}
+
+function requestTranslation(text: string, language: string): Promise<string> {
+  const key = `${language}\u0000${text}`;
+  const existing = inflight.get(key);
+  if (existing) return existing;
+  const promise = new Promise<string>((resolve) => {
+    const waiters = queued.get(key) ?? [];
+    waiters.push({ text, language, resolve });
+    queued.set(key, waiters);
+  });
+  inflight.set(key, promise);
+  flushTimer ??= setTimeout(flushBatches, BATCH_DELAY_MS);
+  return promise;
+}
+
 export async function translateDisplayTexts(texts: string[], language: string): Promise<string[]> {
   const missing = [...new Set(texts.filter((text) => !displayTranslationCache.has(`${language}\u0000${text}`)))];
   if (missing.length > 0) {
     if (!await hasDisplayTranslationServer()) {
       missing.forEach((text) => displayTranslationCache.set(`${language}\u0000${text}`, text));
-      return texts.map((text) => displayTranslationCache.get(`${language}\u0000${text}`) ?? text);
-    }
-    const res = await fetch('/api/settings/translations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: missing, language }),
-    });
-    if (res.ok) {
-      const payload = await res.json() as { translations: string[] };
-      missing.forEach((text, index) => displayTranslationCache.set(`${language}\u0000${text}`, payload.translations[index] ?? text));
     } else {
-      missing.forEach((text) => displayTranslationCache.set(`${language}\u0000${text}`, text));
+      await Promise.all(missing.map((text) => {
+        if (!text.trim() || text.length > MAX_TEXT_LENGTH || alreadyInLanguage(text, language)) {
+          displayTranslationCache.set(`${language}\u0000${text}`, text);
+          return Promise.resolve(text);
+        }
+        return requestTranslation(text, language);
+      }));
     }
   }
   return texts.map((text) => displayTranslationCache.get(`${language}\u0000${text}`) ?? text);

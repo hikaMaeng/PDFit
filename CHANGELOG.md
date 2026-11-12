@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- With an AI server configured, the cover view sent one display-name translation
+  request per tag chip (2,767 for a 715-book folder, up to 2,669 at once), and Chrome
+  refused the rest with `ERR_INSUFFICIENT_RESOURCES`, thumbnails included. Labels are
+  now merged, sent 50 per request one request at a time, and skipped when already in
+  the target language's script.
+
 ### Added
 
 - **Real book covers** in the cover view: an image-search button under each local
