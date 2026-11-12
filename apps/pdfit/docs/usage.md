@@ -23,7 +23,7 @@ For source development, clone the repository, run `npm install`, set `PDFIT_LAN_
 
 Open `http://127.0.0.1:15203` (or `PDFIT_STANDALONE_PORT`). The selected host folder is mounted at `/app/data/books` and is the library root, so PDFs already in that directory are visible immediately; folders created in PDFit are real directories below the mounted root.
 
-Use `/settings` for AI server configuration; the database is embedded in the image and has no settings. The globe icon at the upper left opens the language and light/dark dialog. Use `/viewer` for the dedicated viewer entry.
+Use `/settings` for AI server configuration; the database is embedded in the image and has no settings. The URL is the OpenAI-compatible base that ends before `/chat/completions`, so an LM Studio or apibond server on port 18180 is entered as `http://<host>:18180/v1`. The server calls it from inside the container, so a server running on the Docker host is reachable as `host.docker.internal` or the LAN address, never `127.0.0.1`. Display-name translation waits up to 300 s for a reply, because a local reasoning model can take minutes. The globe icon at the upper left opens the language and light/dark dialog. Use `/viewer` for the dedicated viewer entry.
 
 ## Cover view
 

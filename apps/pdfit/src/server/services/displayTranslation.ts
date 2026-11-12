@@ -42,7 +42,7 @@ export async function translateDisplayTexts(server: AiServer, texts: string[], l
         { role: 'user', content: JSON.stringify(texts) },
       ],
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(300_000),
   });
 
   if (!response.ok) throw new Error(`AI translation request failed (${response.status}).`);
