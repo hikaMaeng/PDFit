@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Automatic tags with an AI server: one run now applies 4 to 6 tags, the bookstore
+  category first and then subject tags read from the YES24 description and table of
+  contents, reusing the library's existing tag names. It used to apply the category
+  only. The table of contents sent to the model grows from 2,000 to 6,000 characters.
+  The folder route adds `assignedTags`.
+- A tag page's cards and rows show every tag of a book, including the page's own tag.
+
 ### Fixed
 
 - With an AI server configured, the cover view sent one display-name translation

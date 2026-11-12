@@ -533,15 +533,14 @@ function FolderPage({ folderName: requestedFolderName }: {
             const result = await tagsApi.autoTagFolder(folderName, targets.map((target) => ({ filename: target.name, driveFileId: target.driveFileId })), (completed, total) => setBulkAutoTagProgress({ completed, total }), () => cancellation.cancelled);
             successful = result.processed;
             successfulDocuments = result.books.map(book => ({ ...book, folder: folderName, driveFileId: book.driveFileId ?? undefined }));
-            for (const book of result.books) {
-                const assignedTag = book.assignedTag ?? book.addedTags[0];
-                if (assignedTag)
-                    folderModel.addTag(book.filename, assignedTag, book.driveFileId);
-            }
+            const appliedTags = (book: typeof result.books[number]) => book.assignedTags ?? (book.assignedTag ? [book.assignedTag] : book.addedTags.slice(0, 1));
+            for (const book of result.books)
+                for (const tag of appliedTags(book))
+                    folderModel.addTag(book.filename, tag, book.driveFileId);
             for (const book of result.books)
                 for (const tag of book.removedTags)
                     folderModel.removeTag(book.filename, tag, book.driveFileId);
-            setAllTags((previous) => [...new Set([...previous, ...result.books.flatMap((book) => book.assignedTag ? [book.assignedTag] : book.addedTags)])].sort());
+            setAllTags((previous) => [...new Set([...previous, ...result.books.flatMap(appliedTags)])].sort());
             const removedTags = new Set(result.books.flatMap((book) => book.removedTags));
             if (removedTags.size > 0)
                 setAllTags((previous) => previous.filter((tag) => !removedTags.has(tag)));

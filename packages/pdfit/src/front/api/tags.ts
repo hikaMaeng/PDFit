@@ -32,7 +32,8 @@ export interface AutomaticFolderTagResult {
   failed: number;
   addedTags: number;
   cancelled?: boolean;
-  books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; addedTags: string[]; removedTags: string[] }>;
+  /** assignedTag is the bookstore category; assignedTags is every tag the run applied, category first. */
+  books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; assignedTags?: string[]; addedTags: string[]; removedTags: string[] }>;
   errors: Array<{ filename: string; driveFileId?: string; error: string }>;
 }
 import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
@@ -165,8 +166,8 @@ export const tagsApi = {
           const key = keyFor(book);
           resultBooks.set(key, book);
           failures.delete(key);
-          const assignedTag = book.assignedTag ?? book.addedTags[0];
-          if (assignedTag) await mutateCachedTag(folder, book.filename, assignedTag, false, book.driveFileId);
+          const assignedTags = book.assignedTags ?? (book.assignedTag ? [book.assignedTag] : book.addedTags.slice(0, 1));
+          await Promise.all(assignedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, false, book.driveFileId)));
           await Promise.all(book.removedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, true, book.driveFileId)));
         }
         for (const error of result.errors) failures.set(keyFor(error), error);
@@ -202,12 +203,14 @@ export const tagsApi = {
           );
           const assignedTag = result.suggestedTags[0] ?? result.addedTags[0];
           if (!assignedTag) throw new Error(uiText("신뢰할 수 있는 도서 분류를 결정하지 못했습니다."));
-          await mutateCachedTag(folder, book.filename, assignedTag, false, book.driveFileId);
+          const assignedTags = result.suggestedTags.length > 0 ? result.suggestedTags : [assignedTag];
+          await Promise.all(assignedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, false, book.driveFileId)));
           await Promise.all(result.removedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, true, book.driveFileId)));
           resultBooks.set(key, {
             filename: book.filename,
             ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}),
             assignedTag,
+            assignedTags,
             addedTags: result.addedTags,
             removedTags: result.removedTags,
           });

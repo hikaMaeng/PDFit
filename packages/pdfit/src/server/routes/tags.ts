@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
-import { bookTitleFromFilename, normalizeSuggestedTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
+import { AUTOMATIC_TAG_MAX, bookTitleFromFilename, normalizeSuggestedTags, selectAutomaticTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, documentTagFromTitle } from '../../shared/tagTaxonomy.js';
 
 const AUTOMATIC_CATEGORY_SET = new Set<string>([...BOOKSTORE_TAG_TAXONOMY, ...DOCUMENT_TAG_TAXONOMY]);
@@ -192,11 +192,10 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       const documentTag = documentTagFromTitle(title);
       const suggestedTags = documentTag
         ? [documentTag]
-        : normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), 5, true)
-          .filter((tag) => BOOKSTORE_TAG_TAXONOMY.includes(tag as typeof BOOKSTORE_TAG_TAXONOMY[number])).slice(0, 1);
+        : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
       const selectedTag = suggestedTags[0];
       if (!selectedTag) throw new Error('신뢰할 수 있는 도서 분류를 결정하지 못했습니다.');
-      const addedTags = selectedTag && !currentTags.includes(selectedTag) ? [selectedTag] : [];
+      const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
       const removedTags = selectedTag
         ? currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag)
         : [];
@@ -249,7 +248,7 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
         metadataStore.listTags(),
         metadataStore.listFolderTags(req.params.folder),
       ]);
-      const results: Array<{ filename: string; driveFileId?: string; assignedTag: string; addedTags: string[]; removedTags: string[] }> = [];
+      const results: Array<{ filename: string; driveFileId?: string; assignedTag: string; assignedTags: string[]; addedTags: string[]; removedTags: string[] }> = [];
       const errors: Array<{ filename: string; driveFileId?: string; error: string }> = [];
       const relations: Array<{ folder: string; filename: string; tag: string; driveFileId?: string }> = [];
       let cursor = 0;
@@ -263,15 +262,14 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
             const documentTag = documentTagFromTitle(title);
             const suggestedTags = documentTag
               ? [documentTag]
-              : normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), 5, true)
-                .filter((tag) => BOOKSTORE_TAG_TAXONOMY.includes(tag as typeof BOOKSTORE_TAG_TAXONOMY[number])).slice(0, 1);
+              : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
             const selectedTag = suggestedTags[0];
             if (!selectedTag) throw new Error('신뢰할 수 있는 도서 분류를 결정하지 못했습니다.');
-            const addedTags = selectedTag && !currentTags.includes(selectedTag) ? [selectedTag] : [];
+            const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
             const removedTags = selectedTag
               ? currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag)
               : [];
-            results.push({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), assignedTag: selectedTag, addedTags, removedTags });
+            results.push({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), assignedTag: selectedTag, assignedTags: suggestedTags, addedTags, removedTags });
             for (const tag of addedTags) relations.push({ folder: req.params.folder, filename: book.filename, tag, driveFileId: book.driveFileId });
           } catch (error) {
             errors.push({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), error: error instanceof Error ? error.message : String(error) });

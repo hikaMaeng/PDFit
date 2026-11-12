@@ -64,7 +64,7 @@ await settingsStore.ensureSchema();
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
   resolveAiServer: async () => {
     const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
-    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 300_000 } : null;
+    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 300_000, reasoningEffort: 'low' } : null;
   },
 });
 const app = createPdfitServer({

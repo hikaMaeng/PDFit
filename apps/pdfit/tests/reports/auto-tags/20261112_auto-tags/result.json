@@ -1,0 +1,65 @@
+{
+  "runId": "20261112_auto-tags",
+  "origin": "http://127.0.0.1:15203",
+  "tagName": "인공지능",
+  "filename": "AI 엔지니어링.pdf",
+  "apiTags": [
+    "AI",
+    "LLM",
+    "LLMOps",
+    "RAG",
+    "데이터엔지니어링",
+    "인공지능",
+    "인프라"
+  ],
+  "steps": [
+    {
+      "viewport": "desktop",
+      "view": "목록 보기",
+      "chips": [
+        "AI",
+        "LLM",
+        "LLMOps",
+        "RAG",
+        "데이터엔지니어링",
+        "인공지능",
+        "인프라"
+      ],
+      "matchesApi": true,
+      "includesPageTag": true
+    },
+    {
+      "viewport": "desktop",
+      "view": "표지 보기",
+      "chips": [
+        "AI",
+        "LLM",
+        "LLMOps",
+        "RAG",
+        "데이터엔지니어링",
+        "인공지능",
+        "인프라"
+      ],
+      "matchesApi": true,
+      "includesPageTag": true
+    },
+    {
+      "viewport": "mobile",
+      "view": "표지 보기",
+      "chips": [
+        "AI",
+        "LLM",
+        "LLMOps",
+        "RAG",
+        "데이터엔지니어링",
+        "인공지능",
+        "인프라"
+      ],
+      "matchesApi": true,
+      "includesPageTag": true,
+      "horizontalOverflow": 0
+    }
+  ],
+  "pageErrors": [],
+  "writes": []
+}
