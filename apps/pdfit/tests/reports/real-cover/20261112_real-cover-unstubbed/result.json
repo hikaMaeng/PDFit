@@ -1,0 +1,39 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "Three.js로 3D 그래픽만들기.pdf",
+  "channel": "chrome",
+  "stubTranslations": false,
+  "steps": {},
+  "baseline": {
+    "overrides": 0
+  },
+  "verdict": "FAIL",
+  "failure": "Error: 적용 전: 카드 이미지가 조건을 만족하며 로드되지 않았다 {\"state\":\"failed\",\"src\":null,\"complete\":false,\"naturalWidth\":0,\"naturalHeight\":0}\n    at readyImage (file:///F:/dev/pdfit/apps/pdfit/tests/real-cover-browser.mjs:115:9)\n    at async file:///F:/dev/pdfit/apps/pdfit/tests/real-cover-browser.mjs:142:18",
+  "pageErrors": [
+    "main: Failed to fetch dynamically imported module: http://127.0.0.1:15203/assets/pdfjs-_ILrHu-j.js",
+    "main: Failed to fetch dynamically imported module: http://127.0.0.1:15203/assets/TagPage-n112oIsu.js",
+    "main: Failed to fetch dynamically imported module: http://127.0.0.1:15203/assets/BookmarkPage-DCbV_oMO.js"
+  ],
+  "writes": [],
+  "translationPosts": 2767,
+  "network": {
+    "maxInFlight": 2669,
+    "failed": {
+      "POST /api/settings/translations net::ERR_INSUFFICIENT_RESOURCES": 1418,
+      "GET /assets/pdfjs-_ILrHu-j.js net::ERR_INSUFFICIENT_RESOURCES": 1,
+      "GET /assets/TagPage-n112oIsu.js net::ERR_INSUFFICIENT_RESOURCES": 1,
+      "GET /assets/BookmarkPage-DCbV_oMO.js net::ERR_INSUFFICIENT_RESOURCES": 1,
+      "GET /assets/optimisticBookmarks-DA4geiwu.js net::ERR_INSUFFICIENT_RESOURCES": 1,
+      "GET /api/covers net::ERR_INSUFFICIENT_RESOURCES": 1,
+      "GET /api/folders/%EC%9D%B4%EB%B6%81/files/*/thumbnail net::ERR_INSUFFICIENT_RESOURCES": 57,
+      "GET /api/viewer-state/%EC%9D%B4%EB%B6%81/%EA%B2%8C%EC%9E%84%20%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%98%EB%A8%B8%EB%A5%BC%20%EC%9C%84%ED%95%9C%20%EC%88%98%ED%95%99%EA%B3%BC%20openGL%20%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%98%EB%B0%8D.pdf net::ERR_INSUFFICIENT_RESOURCES": 1
+    }
+  },
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "finalOverrides": 0,
+    "matchesBaseline": true
+  }
+}

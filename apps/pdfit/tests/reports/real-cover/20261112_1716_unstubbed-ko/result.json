@@ -1,0 +1,413 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "Three.js로 3D 그래픽만들기.pdf",
+  "channel": "chrome",
+  "language": "ko",
+  "locale": "ko-KR",
+  "stubTranslations": false,
+  "translationWaitMs": 0,
+  "steps": {
+    "1_cover_view_card": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "naturalWidth": 360,
+      "naturalHeight": 463,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    },
+    "2_dialog_auto_search": {
+      "verdict": "PASS",
+      "query": "Three.js로 3D 그래픽만들기",
+      "candidates": 1,
+      "failedSources": [],
+      "firstCandidate": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL",
+        "pageUrl": "https://www.yes24.com/product/goods/26079845",
+        "score": 1
+      },
+      "focusInside": true,
+      "focusAfterTab": true,
+      "searchButton": {
+        "text": "표지 검색",
+        "width": 92.9,
+        "height": 40,
+        "siblingFieldHeight": 40,
+        "lineHeight": 24.5,
+        "textHeight": 18,
+        "textLines": 1,
+        "singleLineHeight": 36.5,
+        "twoLineHeight": 61,
+        "whiteSpace": "nowrap",
+        "flexShrink": "0",
+        "viewport": 1440
+      }
+    },
+    "3_edited_query_research": {
+      "verdict": "PASS",
+      "query": "Three.js 3D",
+      "candidates": 11,
+      "shown": 11
+    },
+    "4_apply_first_candidate": {
+      "verdict": "PASS",
+      "chosen": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL"
+      },
+      "version": "mwd9y6vt",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9y6vt",
+      "naturalWidth": 960,
+      "naturalHeight": 1200,
+      "cardBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "previewBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "private, max-age=86400",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "listed": {
+        "folder": "이북",
+        "filename": "Three.js로 3D 그래픽만들기.pdf",
+        "version": "mwd9y6vt",
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기"
+      }
+    },
+    "5_reload_persists": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9y6vt",
+      "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7",
+      "view": "covers"
+    },
+    "6_dark_theme": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9y6vt",
+      "dialogPaperBackground": "rgb(32, 33, 36)",
+      "restoreVisible": true,
+      "escapeCloses": true,
+      "searchButton": {
+        "text": "표지 검색",
+        "width": 92.9,
+        "height": 40,
+        "siblingFieldHeight": 40,
+        "lineHeight": 24.5,
+        "textHeight": 18,
+        "textLines": 1,
+        "singleLineHeight": 36.5,
+        "twoLineHeight": 61,
+        "whiteSpace": "nowrap",
+        "flexShrink": "0",
+        "viewport": 1440
+      }
+    },
+    "7_mobile_375": {
+      "verdict": "PASS",
+      "viewport": 375,
+      "paperLeft": 32,
+      "paperRight": 343,
+      "pageOverflow": 0,
+      "listOverflow": 0
+    },
+    "8_restore": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "removed": true,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    }
+  },
+  "baseline": {
+    "overrides": 0,
+    "keys": []
+  },
+  "folderFiles": 715,
+  "thumbnailCensus": [
+    {
+      "label": "top",
+      "at": 8785,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 15,
+      "states": {
+        "loaded": 15
+      },
+      "firstVisibleCardIndex": 0,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-1",
+      "at": 9883,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "firstVisibleCardIndex": 10,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-2",
+      "at": 10220,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "firstVisibleCardIndex": 25,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-3",
+      "at": 10573,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 15,
+      "states": {
+        "loaded": 15
+      },
+      "firstVisibleCardIndex": 35,
+      "totalCards": 715
+    }
+  ],
+  "translationPendingAtClose": 1,
+  "verdict": "PASS",
+  "assertions": {
+    "no_err_insufficient_resources": {
+      "pass": true,
+      "count": 0
+    },
+    "thumbnails_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "covers_list_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "translation_peak_concurrency_per_page_load_le_1": {
+      "pass": true,
+      "peakPerLoad": 1,
+      "peakAcrossPagesGlobal": 2
+    },
+    "translation_posts_within_bound_ko": {
+      "pass": true,
+      "rule": "posts per page load <= ceil(shownTagLabels / 50) + 2 (stubbed runs do not count)",
+      "over": []
+    }
+  },
+  "translation": {
+    "total": 5,
+    "peakPerLoad": 1,
+    "peakAcrossPagesGlobal": 2,
+    "pendingAtEnd": 0,
+    "textsRequested": 187,
+    "hangulOnlyTextsRequested": 0,
+    "perLoad": [
+      {
+        "page": "main",
+        "load": 0,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 47,
+        "distinctTextsRequested": 47,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "posts": 2,
+        "peakConcurrent": 1,
+        "textsRequested": 47,
+        "distinctTextsRequested": 47,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "dark",
+        "load": 0,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 47,
+        "distinctTextsRequested": 47,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "mobile",
+        "load": 0,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 46,
+        "distinctTextsRequested": 46,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": 127,
+        "bound": 5
+      }
+    ],
+    "posts": [
+      {
+        "page": "main",
+        "load": 0,
+        "startedAt": 1062,
+        "texts": 47,
+        "language": "ko",
+        "sample": [
+          "AI",
+          "API",
+          "AWS",
+          "Android",
+          "C++"
+        ],
+        "endedAt": 21719,
+        "durationMs": 20657,
+        "status": null,
+        "failure": "abandoned by navigation (no response before the page reloaded)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 22005,
+        "texts": 1,
+        "language": "ko",
+        "sample": [
+          "AX"
+        ],
+        "endedAt": 33530,
+        "durationMs": 11525,
+        "status": 200,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 33537,
+        "texts": 46,
+        "language": "ko",
+        "sample": [
+          "AI",
+          "API",
+          "AWS",
+          "Android",
+          "C++"
+        ],
+        "endedAt": 67603,
+        "durationMs": 34066,
+        "status": null,
+        "failure": "abandoned by close (no response before the page closed)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "dark",
+        "load": 0,
+        "startedAt": 38906,
+        "texts": 47,
+        "language": "ko",
+        "sample": [
+          "AX",
+          "AI",
+          "API",
+          "AWS",
+          "Android"
+        ],
+        "endedAt": 48415,
+        "durationMs": 9509,
+        "status": null,
+        "failure": "abandoned by close (no response before the page closed)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 1
+      },
+      {
+        "page": "mobile",
+        "load": 0,
+        "startedAt": 60691,
+        "texts": 46,
+        "language": "ko",
+        "sample": [
+          "AI",
+          "UX",
+          "Figma",
+          "UI",
+          "Android"
+        ],
+        "endedAt": 62436,
+        "durationMs": 1745,
+        "status": null,
+        "failure": "abandoned by close (no response before the page closed)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 1
+      }
+    ]
+  },
+  "pageErrors": [],
+  "writes": [
+    "main PUT /api/covers",
+    "main DELETE /api/covers"
+  ],
+  "network": {
+    "maxInFlight": 18,
+    "failed": {},
+    "thumbnails": {
+      "requested": 136,
+      "finished": {
+        "200": 136
+      },
+      "failed": [],
+      "finishedWhileTranslationPending": 136
+    },
+    "covers": {
+      "requested": 4,
+      "finished": {
+        "200": 4
+      },
+      "failed": []
+    }
+  },
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "finalOverrides": 0,
+    "finalKeys": [],
+    "matchesBaseline": true
+  },
+  "durationMs": 67640
+}

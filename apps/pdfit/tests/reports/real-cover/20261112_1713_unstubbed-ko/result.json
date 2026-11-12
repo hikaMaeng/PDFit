@@ -1,0 +1,202 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "Three.js로 3D 그래픽만들기.pdf",
+  "channel": "chrome",
+  "language": "ko",
+  "locale": "ko-KR",
+  "stubTranslations": false,
+  "translationWaitMs": 0,
+  "steps": {
+    "1_cover_view_card": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "naturalWidth": 360,
+      "naturalHeight": 463,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    }
+  },
+  "baseline": {
+    "overrides": 0,
+    "keys": []
+  },
+  "folderFiles": 715,
+  "thumbnailCensus": [
+    {
+      "label": "top",
+      "at": 9230,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 15,
+      "states": {
+        "loaded": 15
+      },
+      "scrollY": 0
+    },
+    {
+      "label": "screen-1",
+      "at": 10174,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "scrollY": 0
+    },
+    {
+      "label": "screen-2",
+      "at": 10503,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "scrollY": 0
+    },
+    {
+      "label": "screen-3",
+      "at": 10882,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "scrollY": 0
+    }
+  ],
+  "verdict": "FAIL",
+  "failure": "AssertionError [ERR_ASSERTION]: 검색 버튼 글자가 한 줄 {\"text\":\"표지 검색\",\"width\":92.9,\"height\":40,\"lineHeight\":24.5,\"singleLineHeight\":36.5,\"textLines\":2,\"whiteSpace\":\"nowrap\",\"viewport\":1440}\n\n2 !== 1\n\n    at file:///F:/dev/pdfit/apps/pdfit/tests/real-cover-browser.mjs:322:10",
+  "assertions": {
+    "no_err_insufficient_resources": {
+      "pass": true,
+      "count": 0
+    },
+    "thumbnails_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "covers_list_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "translation_peak_concurrency_per_page_load_le_1": {
+      "pass": true,
+      "peakPerLoad": 1,
+      "peakAcrossPagesGlobal": 1
+    },
+    "translation_posts_within_bound_ko": {
+      "pass": false,
+      "rule": "posts per page load <= ceil(shownTagLabels / 50) + 2 (stubbed runs do not count)",
+      "over": [
+        {
+          "page": "main",
+          "load": 1,
+          "posts": 1,
+          "peakConcurrent": 1,
+          "textsRequested": 47,
+          "distinctTextsRequested": 47,
+          "hangulOnlyTextsRequested": 0,
+          "shownTagLabels": null,
+          "bound": null
+        }
+      ]
+    }
+  },
+  "translation": {
+    "total": 1,
+    "peakPerLoad": 1,
+    "peakAcrossPagesGlobal": 1,
+    "pendingAtEnd": 1,
+    "textsRequested": 47,
+    "hangulOnlyTextsRequested": 0,
+    "perLoad": [
+      {
+        "page": "main",
+        "load": 0,
+        "posts": 0,
+        "peakConcurrent": 0,
+        "textsRequested": 0,
+        "distinctTextsRequested": 0,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": null,
+        "bound": null
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 47,
+        "distinctTextsRequested": 47,
+        "hangulOnlyTextsRequested": 0,
+        "shownTagLabels": null,
+        "bound": null
+      }
+    ],
+    "posts": [
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 1099,
+        "texts": 47,
+        "language": "ko",
+        "sample": [
+          "AI",
+          "API",
+          "AWS",
+          "Android",
+          "C++"
+        ],
+        "endedAt": null,
+        "durationMs": null,
+        "status": null,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      }
+    ]
+  },
+  "pageErrors": [],
+  "writes": [],
+  "network": {
+    "maxInFlight": 18,
+    "failed": {},
+    "thumbnails": {
+      "requested": 75,
+      "finished": {
+        "200": 75
+      },
+      "failed": [],
+      "finishedWhileTranslationPending": 75
+    },
+    "covers": {
+      "requested": 1,
+      "finished": {
+        "200": 1
+      },
+      "failed": []
+    }
+  },
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "finalOverrides": 0,
+    "finalKeys": [],
+    "matchesBaseline": true
+  },
+  "durationMs": 15766
+}

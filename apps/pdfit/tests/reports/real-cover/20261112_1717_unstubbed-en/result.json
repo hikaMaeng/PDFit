@@ -1,0 +1,452 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "Three.js로 3D 그래픽만들기.pdf",
+  "channel": "chrome",
+  "language": "en",
+  "locale": "en-US",
+  "stubTranslations": false,
+  "translationWaitMs": 330000,
+  "steps": {
+    "1_cover_view_card": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "naturalWidth": 360,
+      "naturalHeight": 463,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    },
+    "2_dialog_auto_search": {
+      "verdict": "PASS",
+      "query": "Three.js로 3D 그래픽만들기",
+      "candidates": 1,
+      "failedSources": [],
+      "firstCandidate": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL",
+        "pageUrl": "https://www.yes24.com/product/goods/26079845",
+        "score": 1
+      },
+      "focusInside": true,
+      "focusAfterTab": true,
+      "searchButton": {
+        "text": "Search covers",
+        "width": 123.5,
+        "height": 40,
+        "siblingFieldHeight": 40,
+        "lineHeight": 24.5,
+        "textHeight": 18,
+        "textLines": 1,
+        "singleLineHeight": 36.5,
+        "twoLineHeight": 61,
+        "whiteSpace": "nowrap",
+        "flexShrink": "0",
+        "viewport": 1440
+      }
+    },
+    "3_edited_query_research": {
+      "verdict": "PASS",
+      "query": "Three.js 3D",
+      "candidates": 11,
+      "shown": 11
+    },
+    "4_apply_first_candidate": {
+      "verdict": "PASS",
+      "chosen": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL"
+      },
+      "version": "mwd9zjbt",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9zjbt",
+      "naturalWidth": 960,
+      "naturalHeight": 1200,
+      "cardBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "previewBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "private, max-age=86400",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "listed": {
+        "folder": "이북",
+        "filename": "Three.js로 3D 그래픽만들기.pdf",
+        "version": "mwd9zjbt",
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기"
+      }
+    },
+    "5_reload_persists": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9zjbt",
+      "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7",
+      "view": "covers"
+    },
+    "6_dark_theme": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd9zjbt",
+      "dialogPaperBackground": "rgb(32, 33, 36)",
+      "restoreVisible": true,
+      "escapeCloses": true,
+      "searchButton": {
+        "text": "Search covers",
+        "width": 123.5,
+        "height": 40,
+        "siblingFieldHeight": 40,
+        "lineHeight": 24.5,
+        "textHeight": 18,
+        "textLines": 1,
+        "singleLineHeight": 36.5,
+        "twoLineHeight": 61,
+        "whiteSpace": "nowrap",
+        "flexShrink": "0",
+        "viewport": 1440
+      }
+    },
+    "7_mobile_375": {
+      "verdict": "PASS",
+      "viewport": 375,
+      "paperLeft": 32,
+      "paperRight": 343,
+      "pageOverflow": 0,
+      "listOverflow": 0
+    },
+    "8_restore": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "removed": true,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    }
+  },
+  "baseline": {
+    "overrides": 0,
+    "keys": []
+  },
+  "folderFiles": 715,
+  "thumbnailCensus": [
+    {
+      "label": "top",
+      "at": 9134,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 15,
+      "states": {
+        "loaded": 15
+      },
+      "firstVisibleCardIndex": 0,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-1",
+      "at": 10266,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 1,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "firstVisibleCardIndex": 10,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-2",
+      "at": 10594,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 2,
+      "inView": 20,
+      "states": {
+        "loaded": 20
+      },
+      "firstVisibleCardIndex": 25,
+      "totalCards": 715
+    },
+    {
+      "label": "screen-3",
+      "at": 10965,
+      "translationPostsPendingGlobal": 1,
+      "translationPostsSoFar": 2,
+      "inView": 15,
+      "states": {
+        "loaded": 15
+      },
+      "firstVisibleCardIndex": 35,
+      "totalCards": 715
+    }
+  ],
+  "thumbnailCensusWhileWaiting": {
+    "label": "middle-while-waiting",
+    "at": 68150,
+    "translationPostsPendingGlobal": 1,
+    "translationPostsSoFar": 6,
+    "inView": 20,
+    "states": {
+      "loaded": 20
+    },
+    "firstVisibleCardIndex": 345,
+    "totalCards": 715
+  },
+  "translationPendingAtClose": 0,
+  "verdict": "PASS",
+  "assertions": {
+    "no_err_insufficient_resources": {
+      "pass": true,
+      "count": 0
+    },
+    "thumbnails_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "covers_list_no_failed_requests": {
+      "pass": true,
+      "failedOutsideOwnTeardown": 0,
+      "abortedDuringOwnTeardown": 0,
+      "httpErrors": 0
+    },
+    "translation_peak_concurrency_per_page_load_le_1": {
+      "pass": true,
+      "peakPerLoad": 1,
+      "peakAcrossPagesGlobal": 2
+    }
+  },
+  "translation": {
+    "total": 7,
+    "peakPerLoad": 1,
+    "peakAcrossPagesGlobal": 2,
+    "pendingAtEnd": 0,
+    "textsRequested": 185,
+    "hangulOnlyTextsRequested": 182,
+    "perLoad": [
+      {
+        "page": "main",
+        "load": 0,
+        "posts": 2,
+        "peakConcurrent": 1,
+        "textsRequested": 51,
+        "distinctTextsRequested": 51,
+        "hangulOnlyTextsRequested": 50,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "posts": 3,
+        "peakConcurrent": 1,
+        "textsRequested": 83,
+        "distinctTextsRequested": 83,
+        "hangulOnlyTextsRequested": 82,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "dark",
+        "load": 0,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 1,
+        "distinctTextsRequested": 1,
+        "hangulOnlyTextsRequested": 1,
+        "shownTagLabels": 127,
+        "bound": 5
+      },
+      {
+        "page": "mobile",
+        "load": 0,
+        "posts": 1,
+        "peakConcurrent": 1,
+        "textsRequested": 50,
+        "distinctTextsRequested": 50,
+        "hangulOnlyTextsRequested": 49,
+        "shownTagLabels": 127,
+        "bound": 5
+      }
+    ],
+    "posts": [
+      {
+        "page": "main",
+        "load": 0,
+        "startedAt": 418,
+        "texts": 1,
+        "language": "en",
+        "sample": [
+          "이북"
+        ],
+        "endedAt": 10409,
+        "durationMs": 9991,
+        "status": 200,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "main",
+        "load": 0,
+        "startedAt": 10411,
+        "texts": 50,
+        "language": "en",
+        "sample": [
+          "3D그래픽",
+          "C언어",
+          "객체지향",
+          "건강",
+          "게임개발"
+        ],
+        "endedAt": 21918,
+        "durationMs": 11507,
+        "status": null,
+        "failure": "abandoned by navigation (no response before the page reloaded)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 22154,
+        "texts": 1,
+        "language": "en",
+        "sample": [
+          "이북"
+        ],
+        "endedAt": 34216,
+        "durationMs": 12062,
+        "status": 200,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 34336,
+        "texts": 50,
+        "language": "en",
+        "sample": [
+          "3D그래픽",
+          "C언어",
+          "객체지향",
+          "건강",
+          "게임개발"
+        ],
+        "endedAt": 91347,
+        "durationMs": 57011,
+        "status": 200,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      },
+      {
+        "page": "dark",
+        "load": 0,
+        "startedAt": 35180,
+        "texts": 1,
+        "language": "en",
+        "sample": [
+          "이북"
+        ],
+        "endedAt": 49131,
+        "durationMs": 13951,
+        "status": null,
+        "failure": "abandoned by close (no response before the page closed)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 1
+      },
+      {
+        "page": "mobile",
+        "load": 0,
+        "startedAt": 60327,
+        "texts": 50,
+        "language": "en",
+        "sample": [
+          "이북",
+          "프로그래밍",
+          "디자인",
+          "기획",
+          "디자인시스템"
+        ],
+        "endedAt": 62412,
+        "durationMs": 2085,
+        "status": null,
+        "failure": "abandoned by close (no response before the page closed)",
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 1
+      },
+      {
+        "page": "main",
+        "load": 1,
+        "startedAt": 91352,
+        "texts": 32,
+        "language": "en",
+        "sample": [
+          "역전파",
+          "영상",
+          "영어",
+          "오픈소스",
+          "웹개발"
+        ],
+        "endedAt": 144042,
+        "durationMs": 52690,
+        "status": 200,
+        "failure": null,
+        "inPageInFlightBefore": 0,
+        "globalInFlightBefore": 0
+      }
+    ]
+  },
+  "pageErrors": [],
+  "writes": [
+    "main PUT /api/covers",
+    "main DELETE /api/covers"
+  ],
+  "network": {
+    "maxInFlight": 25,
+    "failed": {},
+    "thumbnails": {
+      "requested": 156,
+      "finished": {
+        "200": 156
+      },
+      "failed": [],
+      "finishedWhileTranslationPending": 156
+    },
+    "covers": {
+      "requested": 4,
+      "finished": {
+        "200": 4
+      },
+      "failed": []
+    }
+  },
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "finalOverrides": 0,
+    "finalKeys": [],
+    "matchesBaseline": true
+  },
+  "durationMs": 144947
+}

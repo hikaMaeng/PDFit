@@ -1,0 +1,133 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "Three.js로 3D 그래픽만들기.pdf",
+  "channel": "chrome",
+  "stubTranslations": true,
+  "steps": {
+    "1_cover_view_card": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "naturalWidth": 360,
+      "naturalHeight": 463,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    },
+    "2_dialog_auto_search": {
+      "verdict": "PASS",
+      "query": "Three.js로 3D 그래픽만들기",
+      "candidates": 1,
+      "failedSources": [],
+      "firstCandidate": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL",
+        "pageUrl": "https://www.yes24.com/product/goods/26079845",
+        "score": 1
+      },
+      "focusInside": true,
+      "focusAfterTab": true
+    },
+    "3_edited_query_research": {
+      "verdict": "PASS",
+      "query": "Three.js 3D",
+      "candidates": 11,
+      "shown": 11
+    },
+    "4_apply_first_candidate": {
+      "verdict": "PASS",
+      "chosen": {
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기",
+        "imageUrl": "https://image.yes24.com/goods/26079845/XL"
+      },
+      "version": "mwd97ous",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd97ous",
+      "naturalWidth": 960,
+      "naturalHeight": 1200,
+      "cardBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "previewBytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "private, max-age=86400",
+        "length": 57095,
+        "magic": "jpeg",
+        "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7"
+      },
+      "listed": {
+        "folder": "이북",
+        "filename": "Three.js로 3D 그래픽만들기.pdf",
+        "version": "mwd97ous",
+        "source": "YES24",
+        "title": "Three.js로 3D 그래픽 만들기"
+      }
+    },
+    "5_reload_persists": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd97ous",
+      "sha256": "e1f51ebafacb9c5ca6a5e73016afadb90997c4f6ee853b79b54a1c7ba836bad7",
+      "view": "covers"
+    },
+    "6_dark_theme": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564&c=mwd97ous",
+      "dialogPaperBackground": "rgb(32, 33, 36)",
+      "restoreVisible": true,
+      "escapeCloses": true
+    },
+    "7_mobile_375": {
+      "verdict": "PASS",
+      "viewport": 375,
+      "paperLeft": 32,
+      "paperRight": 343,
+      "pageOverflow": 0,
+      "listOverflow": 0
+    },
+    "8_restore": {
+      "verdict": "PASS",
+      "src": "/api/folders/%EC%9D%B4%EB%B6%81/files/Three.js%EB%A1%9C%203D%20%EA%B7%B8%EB%9E%98%ED%94%BD%EB%A7%8C%EB%93%A4%EA%B8%B0.pdf/thumbnail?v=1671068814000-142664564",
+      "removed": true,
+      "bytes": {
+        "status": 200,
+        "type": "image/jpeg",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "length": 6031,
+        "magic": "jpeg",
+        "sha256": "d2d11219c8757509e1e0173832a99c661f419dac20482fc1f8e36f7941f9d9c9"
+      }
+    }
+  },
+  "baseline": {
+    "overrides": 0
+  },
+  "pageErrors": [],
+  "writes": [
+    "main PUT /api/covers",
+    "main DELETE /api/covers"
+  ],
+  "translationPosts": 5663,
+  "network": {
+    "maxInFlight": 1451,
+    "failed": {}
+  },
+  "verdict": "PASS",
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "finalOverrides": 0,
+    "matchesBaseline": true
+  }
+}
