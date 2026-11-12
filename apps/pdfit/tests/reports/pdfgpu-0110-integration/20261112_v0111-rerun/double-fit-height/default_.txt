@@ -1,0 +1,22 @@
+{
+  "engine": "legacy",
+  "pageHeight": 792,
+  "widthFitZoom": 72,
+  "fittedZoom": 63,
+  "viewport": {
+    "width": 1216,
+    "height": 714
+  },
+  "scrollWidth": 1216,
+  "scrollHeight": 714,
+  "pages": [
+    {
+      "width": 515,
+      "height": 666
+    },
+    {
+      "width": 515,
+      "height": 666
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"engine":"gpu","naturalSwipe":true,"horizontalSwipe":true,"metrics":{"clientHeight":938,"scrollHeight":1364,"scrollTop":0},"pageAfterSwipe":"1"}

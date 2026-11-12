@@ -2,10 +2,10 @@
   "pdfitVersion": "0.4.7",
   "pdfgpu": {
     "packageName": "@pdfgpu/core",
-    "packageVersion": "0.1.10",
-    "sourceSpec": "file:vendor/pdfgpu-core-0.1.10.tgz",
-    "sourceCommit": "c72558d560fc2fa4187af43b45862e3e10b3427c",
-    "tarball": "pdfgpu-core-0.1.10.tgz",
-    "tarballSha256": "e4fd735f6b3dbfc386940c4febf7a1c0c4f74a018886e99f0577e889e941886b"
+    "packageVersion": "0.1.11",
+    "sourceSpec": "file:vendor/pdfgpu-core-0.1.11.tgz",
+    "sourceCommit": "d9ea8b1a23adb27ee41f66da1934b6296e3bae19",
+    "tarball": "pdfgpu-core-0.1.11.tgz",
+    "tarballSha256": "4bc84e45a458fc21f47aba4336ebafa4d313acf57b275d79f402be1820289ef4"
   }
 }

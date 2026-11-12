@@ -11,9 +11,10 @@ const touchSwipe = process.argv.includes('--touch-swipe');
 const horizontalSwipe = process.argv.includes('--horizontal-swipe');
 const naturalSwipe = process.argv.includes('--natural-swipe') || horizontalSwipe;
 const initialDouble = tabletInitialDouble || desktopInitialDouble;
-// Next two-page row after page 1: PDF.js pairs (1,2),(3,4) by default; @pdfgpu/core lays out
-// the cover alone, (1),(2,3), so its next row starts at page 2.
-const nextSpreadPage = engine === 'gpu' ? '2' : '3';
+// Next two-page row after page 1. Both viewers start from the reader's pairing preference,
+// which defaults to (1,2),(3,4) in a fresh browser, so the next row starts at page 3.
+// (With @pdfgpu/core 0.1.10 the GPU viewer was cover-alone only and this was 2.)
+const nextSpreadPage = '3';
 const savedState = naturalSwipe ? { page: 1, scale: 0.56, fitMode: 'none', viewMode: 'double', inverted: false, uiHidden: false, scrollTop: 0 }
   : initialDouble ? { page: 1, scale: 1, fitMode: 'none', viewMode: 'double', inverted: false, uiHidden: false, scrollTop: 0 } : null;
 

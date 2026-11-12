@@ -7,12 +7,14 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import ViewStreamIcon from '@mui/icons-material/ViewStream';
 import CropPortraitIcon from '@mui/icons-material/CropPortrait';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import type { PdfGpuViewerController, PdfGpuViewerState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
+import { lastSpreadLead } from '../../viewer/spreadPairing.js';
 
 type Props = {
   controller: PdfGpuViewerController | null;
@@ -29,6 +31,7 @@ type Props = {
   onFitHeight: () => void;
   onPageLayoutChange: (mode: 'single' | 'double') => void;
   onToggleContinuousScroll: () => void;
+  onToggleSpreadCover: () => void;
 };
 
 /** Page, zoom, view mode, bookmark, and annotation controls. */
@@ -56,6 +59,11 @@ export function ViewerToolbar(props: Props) {
       <ToggleButton value="single" aria-label={t('singlePage')}><Tooltip title={t('singlePage')} arrow><CropPortraitIcon fontSize="small" /></Tooltip></ToggleButton>
       <ToggleButton value="double" aria-label={t('doublePage')}><Tooltip title={t('doublePage')} arrow><MenuBookIcon fontSize="small" /></Tooltip></ToggleButton>
     </ToggleButtonGroup>
+    {pageLayout === 'double' && (
+      <Tooltip title={t('coverAlone')} arrow>
+        <ToggleButton value="cover-alone" selected={state.spreadPairing === 'alone'} aria-label={t('coverAlone')} aria-pressed={state.spreadPairing === 'alone'} data-testid="spread-cover-alone" onClick={props.onToggleSpreadCover} sx={{ py: 0.25, px: 0.75, border: 'none' }}><AutoStoriesIcon fontSize="small" /></ToggleButton>
+      </Tooltip>
+    )}
     <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
     <Tooltip title={t('continuousScroll')} arrow>
       <ToggleButton value="continuous" selected={continuousScroll} onClick={props.onToggleContinuousScroll} aria-label={t('continuousScroll')} aria-pressed={continuousScroll} sx={{ py: 0.25, px: 0.75, border: 'none' }}><ViewStreamIcon fontSize="small" /></ToggleButton>
@@ -85,6 +93,6 @@ export function ViewerToolbar(props: Props) {
       <TextField size="small" value={pageInput} onChange={(event) => props.onPageInputChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') props.onSubmitPage((event.target as HTMLInputElement).value); }} onBlur={(event) => props.onSubmitPage((event.target as HTMLInputElement).value)} inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': t('pageNumber') }} />
       <Typography variant="caption" color="text.secondary">/ {state.pageCount}</Typography>
     </Box>
-    <Tooltip title={t('nextPage')} arrow><span><IconButton size="small" aria-label={t('nextPage')} title={t('nextPage')} onClick={() => props.onGoToPage(currentPage + pageStep)} disabled={!state.pageCount || currentPage >= state.pageCount}><NavigateNextIcon fontSize="small" /></IconButton></span></Tooltip>
+    <Tooltip title={t('nextPage')} arrow><span><IconButton size="small" aria-label={t('nextPage')} title={t('nextPage')} onClick={() => props.onGoToPage(currentPage + pageStep)} disabled={!state.pageCount || currentPage >= (pageLayout === 'double' ? lastSpreadLead(state.pageCount, state.spreadPairing) : state.pageCount)}><NavigateNextIcon fontSize="small" /></IconButton></span></Tooltip>
   </Box>;
 }

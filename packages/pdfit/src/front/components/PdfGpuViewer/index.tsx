@@ -30,6 +30,14 @@ import { usePdfPan } from './usePdfPan.js';
 import { forwardPageModeWheel } from '../viewerWheel.js';
 import { DEFAULT_VIEWER_ZOOM } from '../PdfViewer/pdfDisplayScale.js';
 import { usePageSwipe } from '../usePageSwipe.js';
+import {
+  nextSpreadToggleMemory,
+  readSpreadCoverPreference,
+  spreadToggleTarget,
+  writeSpreadCoverPreference,
+  type SpreadCover,
+  type SpreadToggleMemory,
+} from '../../viewer/spreadPairing.js';
 
 // see docs/internals.md#webgpu-viewer-contract
 
@@ -59,6 +67,7 @@ const EMPTY_STATE: PdfGpuViewerState = {
   engine: 'in-memory',
   viewMode: 'single',
   spreadPlacement: 'first-right',
+  spreadPairing: 'alone',
   fitMode: 'none',
   scrollMode: 'continuous',
   queueDepth: 0,
@@ -139,9 +148,23 @@ export default function PdfGpuViewer({
   const visibleOverlayBookmarks = bookmarks.filter((bookmark) => state.visiblePages.includes(bookmark.pageIndex));
   const goToPage = useCallback((page: number) => {
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
-    const target = normalizeViewerPage(page, state.pageCount, mode);
+    const target = normalizeViewerPage(page, state.pageCount, mode, state.spreadPairing);
     controller?.scrollToPage(target - 1);
-  }, [controller, state.pageCount, state.scrollMode, state.viewMode]);
+  }, [controller, state.pageCount, state.scrollMode, state.spreadPairing, state.viewMode]);
+  // A pairing switch lands on the new row containing the current page; switching straight
+  // back returns to the page the reader switched from (see spreadPairing.ts).
+  const spreadToggleMemoryRef = useRef<SpreadToggleMemory>(null);
+  useEffect(() => { spreadToggleMemoryRef.current = null; }, [controller]);
+  const selectSpreadCover = useCallback((next: SpreadCover) => {
+    if (!controller) return;
+    const current = controller.getState();
+    const page = current.activePage ?? 1;
+    const target = spreadToggleTarget(spreadToggleMemoryRef.current, page);
+    spreadToggleMemoryRef.current = nextSpreadToggleMemory(spreadToggleMemoryRef.current, page, current.pageCount, next);
+    writeSpreadCoverPreference(next);
+    controller.setSpreadPairing(next);
+    if (target !== page) controller.scrollToPage(target - 1);
+  }, [controller]);
   const pageSwipe = usePageSwipe(
     viewportRef,
     state.scrollMode === 'page' && (annotation.tool === 'select' || annotation.tool === 'bookmark'),
@@ -168,6 +191,8 @@ export default function PdfGpuViewer({
           minZoom: 0.25,
           maxZoom: 5,
           viewMode: initialViewMode === 'double' ? 'spread' : 'single',
+          // Reader's two-page pairing, shared with the PDF.js viewer (default (1,2),(3,4)).
+          spreadPairing: readSpreadCoverPreference(),
           fitMode: initialFitMode === 'height' && initialViewMode === 'double' ? 'page' : initialFitMode ?? 'none',
           scrollMode: initialViewMode === 'scroll' ? 'continuous' : 'page',
           overscanPages: 2,
@@ -243,6 +268,7 @@ export default function PdfGpuViewer({
           page: currentPage,
           pageCount: state.pageCount,
           mode: viewerModeFromParts(state.scrollMode, state.viewMode),
+          pairing: state.spreadPairing,
         }),
         { type: 'key', key: event.key, editableTarget: false },
       );
@@ -253,7 +279,7 @@ export default function PdfGpuViewer({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [controller, currentPage, goToPage, state.pageCount, state.scrollMode, state.viewMode]);
+  }, [controller, currentPage, goToPage, state.pageCount, state.scrollMode, state.spreadPairing, state.viewMode]);
 
   // The saved page is applied when loading reaches 'ready'. Navigation already works while
   // previews are still rendering (and @pdfgpu/core 0.1.10 reaches 'ready' later), so a page
@@ -338,7 +364,7 @@ export default function PdfGpuViewer({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {!uiHidden && (
-        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} />
+        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} onToggleSpreadCover={() => selectSpreadCover(state.spreadPairing === 'alone' ? 'paired' : 'alone')} />
       )}
 
       <Box role="status" aria-label="viewer status" sx={{ position: 'absolute', width: '1px', height: '1px', minWidth: '1px', maxWidth: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }}>

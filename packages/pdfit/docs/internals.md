@@ -446,7 +446,9 @@ AI 태그 잔여 안내를 데스크톱에서는 버튼 왼쪽 같은 줄 가운
 ## viewer-mode-transitions
 단일 페이지와 연속 스크롤은 동일한 페이지 DOM과 캔버스를 재사용한다. 단일 모드는 현재 페이지 이외의 셸을 display:none으로 숨긴다. 전환 시 useLayoutEffect에서 컨테이너 scrollTop을 초기화해 연속 모드의 스크롤 오프셋이 단일 화면을 밀어내지 않게 한다. 두 페이지 모드는 기존 구조와 최근 페이지 렌더 캐시를 사용한다.
 
-두 페이지 모드의 짝은 `front/viewer/spreadPairing.ts`가 정한다. `paired`(1,2),(3,4)가 기본이고 `alone`은 표지 단독(1),(2,3)이다. 행은 왼쪽 페이지(lead)로 표현하고 `goToPage`·이전/다음·`selectPageLayout`이 모두 `spreadLeadPage`로 정규화한다. `@pdfgpu/core@0.1.10`의 `normalizeViewerPage`는 표지 단독만 알기 때문에 두 페이지 모드에서는 공유 reducer의 키·휠 결과에서 방향만 읽고 실제 행은 `stepSpreadRow`로 계산한다. 이 규칙이 없으면 0.1.10에서 (1,2) 다음에 (2,3)이 나와 2쪽이 겹친다(대조 실험 `apps/pdfit/tests/reports/pdfgpu-0110-integration/20261112_key-spread-control/negative-control-head-components.json`).
+두 페이지 모드의 짝은 읽는 사람이 고른다. `paired`(1,2),(3,4)가 기본이고 `alone`은 표지 단독(1),(2,3)이다. 행 규칙은 `@pdfgpu/core@0.1.11`의 `normalizeViewerPage(page, count, 'double', pairing)`와 공유 reducer의 `pairing` 상태(`setPairing` 이벤트)가 정한다. PDF.js 뷰어는 `goToPage`·이전/다음·키·휠을 모두 이 규칙으로 정규화한다. GPU 뷰어는 생성 옵션 `spreadPairing`과 `controller.setSpreadPairing`을 쓴다. `front/viewer/spreadPairing.ts`는 보이는 행, 마지막 행, 저장된 선택(`localStorage` `pdfit.viewer.spreadCover`), 전환 기억만 맡는다. 0.1.10에서는 코어가 표지 단독만 알아서 PDF.js 뷰어가 (1,2) 다음에 (2,3)을 보여 줬다(대조 실험 `apps/pdfit/tests/reports/pdfgpu-0110-integration/20261112_key-spread-control/negative-control-head-components.json`). 0.1.11 전까지는 PDFit 쪽 우회로 막았다.
+
+짝을 바꾸면 현재 페이지가 들어 있는 새 행의 선두로 간다. 그대로 두면 왕복 전환할 때 앞으로 밀린다((2,3) → (1,2) → (1)). 그래서 두 뷰어 모두 `SpreadToggleMemory`(전환 전 페이지와 착지한 선두 하나)를 둔다. 착지한 뒤 이동 없이 다시 바꾸면 전환 전 페이지의 행으로 돌아간다. 범위는 뷰어 인스턴스 하나이고, 이동하면(현재 페이지가 착지 선두와 달라지면) 무효가 된다. GPU 뷰어는 컨트롤러가 바뀔 때 비운다.
 
 GPU 뷰어는 `@pdfgpu/core@0.1.10`부터 코어가 포커스된 뷰포트에 페이지 넘김 키를 직접 연결한다. PDFit의 window 키 리스너는 `defaultPrevented`인 이벤트를 건너뛰어 뷰포트 밖에 포커스가 있을 때만 이동을 맡는다. 이 처리가 없으면 뷰포트 포커스 상태에서 PageDown 한 번에 두 페이지가 넘어간다(같은 대조 실험에서 1→3).
 

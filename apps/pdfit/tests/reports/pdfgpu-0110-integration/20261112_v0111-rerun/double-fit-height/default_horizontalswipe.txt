@@ -1,0 +1,1 @@
+{"engine":"legacy","naturalSwipe":true,"horizontalSwipe":true,"metrics":{"clientHeight":938,"scrollHeight":938,"scrollTop":0},"pageAfterSwipe":"1"}

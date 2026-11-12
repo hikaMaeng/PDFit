@@ -27,12 +27,13 @@ import {
 import type { PdfJsModule } from '../../pdfjs.js';
 import {
   lastSpreadLead,
+  nextSpreadToggleMemory,
   readSpreadCoverPreference,
-  spreadLeadPage,
   spreadRowPages,
-  stepSpreadRow,
+  spreadToggleTarget,
   writeSpreadCoverPreference,
   type SpreadCover,
+  type SpreadToggleMemory,
 } from '../../viewer/spreadPairing.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
@@ -190,7 +191,8 @@ export default function PdfViewer({
   const viewModeRef = useRef(viewMode);
   const pageLayoutRef = useRef(pageLayout);
   const spreadCoverRef = useRef(spreadCover);
-  const interactionRef = useRef(createViewerInteractionState({ mode: viewMode }));
+  const interactionRef = useRef(createViewerInteractionState({ mode: viewMode, pairing: spreadCover }));
+  const spreadToggleMemoryRef = useRef<SpreadToggleMemory>(null);
   useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
@@ -381,8 +383,8 @@ export default function PdfViewer({
     const m = mode ?? viewModeRef.current;
     const total = totalPagesRef.current;
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: m }).state;
-    // Spread rows follow the reader's pairing; @pdfgpu/core's rule is cover-alone only.
-    const target = m === 'double' ? spreadLeadPage(n, total, spreadCoverRef.current) : normalizeViewerPage(n, total, m);
+    // Spread rows follow the reader's pairing (ignored outside double mode).
+    const target = normalizeViewerPage(n, total, m, spreadCoverRef.current);
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setPage', page: target }).state;
     currentPageRef.current = target;
     setCurrentPage(target);
@@ -394,25 +396,22 @@ export default function PdfViewer({
 
   const prevPage = useCallback(() => {
     const m = viewModeRef.current;
-    goToPage(m === 'double' ? stepSpreadRow(currentPageRef.current, totalPagesRef.current, spreadCoverRef.current, -1) : currentPageRef.current - 1);
+    goToPage(m === 'double' ? currentPageRef.current - 2 : currentPageRef.current - 1);
   }, [goToPage]);
 
   const nextPage = useCallback(() => {
     const m = viewModeRef.current;
-    goToPage(m === 'double' ? stepSpreadRow(currentPageRef.current, totalPagesRef.current, spreadCoverRef.current, 1) : currentPageRef.current + 1);
+    goToPage(m === 'double' ? currentPageRef.current + 2 : currentPageRef.current + 1);
   }, [goToPage]);
-  // The shared reducer computes double-page targets with its cover-alone rule. In double
-  // mode only its direction is used; the row itself comes from the reader's pairing.
-  const navigateFromInteraction = useCallback((before: number, target: number) => {
-    if (viewModeRef.current !== 'double') { goToPage(target); return; }
-    if (target > before) nextPage();
-    else if (target < before) prevPage();
-  }, [goToPage, nextPage, prevPage]);
   const selectSpreadCover = useCallback((next: SpreadCover) => {
+    const current = currentPageRef.current;
+    const target = spreadToggleTarget(spreadToggleMemoryRef.current, current);
+    spreadToggleMemoryRef.current = nextSpreadToggleMemory(spreadToggleMemoryRef.current, current, totalPagesRef.current, next);
     spreadCoverRef.current = next;
+    interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setPairing', pairing: next }).state;
     setSpreadCover(next);
     writeSpreadCoverPreference(next);
-    if (viewModeRef.current === 'double') goToPage(currentPageRef.current);
+    if (viewModeRef.current === 'double') goToPage(target);
   }, [goToPage]);
   const pageSwipe = usePageSwipe(containerRef, viewMode !== 'scroll' && (annotation.tool === 'select' || annotation.tool === 'bookmark'), prevPage, nextPage, fitMode === 'height');
 
@@ -694,16 +693,15 @@ export default function PdfViewer({
         key: e.key,
         editableTarget: false,
       });
-      const before = interactionRef.current.page;
       interactionRef.current = transition.state;
       if (transition.preventDefault) e.preventDefault();
       for (const effect of transition.effects) {
-        if (effect.type === 'navigate') navigateFromInteraction(before, effect.page);
+        if (effect.type === 'navigate') goToPage(effect.page);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigateFromInteraction]);
+  }, [goToPage]);
 
   // ── 마우스 휠: 교체되는 viewport와 상위 overlay를 함께 처리한다 ──
   const handleViewerWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -712,18 +710,17 @@ export default function PdfViewer({
       deltaY: event.deltaY,
       ctrlKey: event.ctrlKey,
     });
-    const before = interactionRef.current.page;
     interactionRef.current = transition.state;
     if (transition.preventDefault) event.preventDefault();
     for (const effect of transition.effects) {
-      if (effect.type === 'navigate') navigateFromInteraction(before, effect.page);
+      if (effect.type === 'navigate') goToPage(effect.page);
       if (effect.type === 'zoom') {
         if (effect.direction === 'in') zoomIn();
         else zoomOut();
       }
     }
     if (interactionRef.current.mode === 'scroll' && !event.ctrlKey && annotation.tool === 'select') pan.wheel(event);
-  }, [annotation.tool, navigateFromInteraction, pan.wheel, zoomIn, zoomOut]);
+  }, [annotation.tool, goToPage, pan.wheel, zoomIn, zoomOut]);
 
   // ── 공통 props ────────────────────────────────────────────────
   const basePageProps = { scale, inverted, eager: true as const, noMargin: true as const };

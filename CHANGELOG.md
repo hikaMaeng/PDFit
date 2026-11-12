@@ -11,31 +11,34 @@
 
 ## [0.4.7] - 2026-11-12
 
-PDFit 0.4.7 moves the viewer core to `@pdfgpu/core` 0.1.10 (PDFium 2.15.1, PDFium
+PDFit 0.4.7 moves the viewer core to `@pdfgpu/core` 0.1.11 (PDFium 2.15.1, PDFium
 rasterized in a pool of Web Workers, GPU device-loss recovery, visible-page and
-spread-landing fixes, keyboard paging bound by the core) and lets the reader choose
-the two-page pairing in the PDF.js viewer.
+spread-landing fixes, keyboard paging bound by the core, page-mode scrollbar sync,
+selectable spread pairing) and lets the reader choose the two-page pairing in both
+viewers.
 
 ### Added
 
-- **표지 따로 보기** in the PDF.js viewer's two-page layout: the reader switches at any
-  time between (1,2), (3,4), ... (default, as before) and the cover alone followed by
-  (2,3), (4,5), ... The current page stays in view and the choice is remembered in the
-  browser (`localStorage` key `pdfit.viewer.spreadCover`). The GPU viewer keeps the
-  core's cover-alone layout.
+- **표지 따로 보기** in the two-page layout of both viewers: the reader switches at any
+  time between (1,2), (3,4), ... (default, as before in the PDF.js viewer) and the cover
+  alone followed by (2,3), (4,5), ... The current page stays in view, switching straight
+  back returns to the pages the reader left, and the choice is remembered in the
+  browser (`localStorage` key `pdfit.viewer.spreadCover`). The GPU viewer uses the
+  core's `spreadPairing` option, so it now also opens with (1,2) by default.
 
 ### Changed
 
-- `@pdfgpu/core` is pinned to the upstream `0.1.10` release (tag `v0.1.10`, commit
-  `c72558d`) through `release-contracts/pdfit/v0.4.7.json`. The local
+- `@pdfgpu/core` is pinned to the upstream `0.1.11` release (tag `v0.1.11`, commit
+  `d9ea8b1`) through `release-contracts/pdfit/v0.4.7.json`. The local
   `0.1.9-pdfit.1` colour patch is gone: 0.1.10 fixes the same red/blue swap upstream.
+  An unpaired last page in the GPU two-page view now sits in the left column.
 - The PDF.js viewer's previous/next buttons carry accessible names.
 
 ### Fixed
 
 - PDF.js two-page view with 0.1.10: page moves were normalized by the core's
   cover-alone rule while the view drew (1,2) pairs, so (1,2) was followed by (2,3).
-  Rows now come from the reader's pairing.
+  Rows now come from the core's pairing-aware rules (0.1.11).
 - GPU viewer: with the viewport focused, one PageDown moved two pages, because the core
   now handles paging keys itself and PDFit's window listener handled the same event
   again. PDFit skips events the core already consumed.

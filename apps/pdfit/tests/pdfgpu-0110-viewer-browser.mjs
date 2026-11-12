@@ -1,6 +1,6 @@
-// @pdfgpu/core 0.1.10 반영 검증 (배포된 Free 서버 대상).
+// @pdfgpu/core 0.1.10+ (현재 0.1.11) 반영 검증 (배포된 Free 서버 대상).
 // - 기본(PDF.js) 뷰어: 양쪽 보기 짝을 읽는 사람이 바꿀 수 있고 어느 쪽이든 페이지가 겹치지 않는다.
-// - GPU 뷰어(?engine=gpu): PDFium Web Worker가 뜨고, 키 한 번에 한 페이지만 넘어간다.
+// - GPU 뷰어(?engine=gpu): PDFium Web Worker가 뜨고, 키 한 번에 한 페이지만 넘어가며, 짝 전환(spreadPairing)이 같은 선택을 따른다.
 // 서재 데이터를 바꾸지 않도록 GET/HEAD 이외의 요청은 모두 막고 막은 목록을 기록한다.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -94,6 +94,8 @@ try {
   check('legacy toggle back to paired keeps the current pages in one row', JSON.stringify(backToPaired) === JSON.stringify([[1, 2], [3, 4]].find((row) => row.includes(aloneRows.at(-1)[0])) ?? []), { row: backToPaired, from: aloneRows.at(-1) });
 
   await toggle.click(); await settle();
+  const roundTrip = await legacyShells();
+  check('legacy switching straight back returns to the rows the reader left', JSON.stringify(roundTrip) === JSON.stringify(aloneRows.at(-1)), { row: roundTrip, expected: aloneRows.at(-1) });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('[data-legacy-page-shell="true"]').first().waitFor({ timeout: 60000 });
   // Viewer-state writes are blocked, so the reload comes back in the saved layout; the toggle
@@ -143,6 +145,39 @@ try {
   await page.keyboard.press('PageDown'); await page.waitForTimeout(1200);
   const state2 = await gpuPageText();
   check('gpu PageDown without viewport focus moves exactly one page', !!state1 && !!state2 && state2.page === state1.page + 1, { before: state1, after: state2 });
+
+  // GPU 두 페이지 보기: 짝 전환 (@pdfgpu/core 0.1.11 spreadPairing). 행 선두 = "Pages:" 값.
+  await page.goto(viewerUrl(book.name, '?engine=gpu&page=1'), { waitUntil: 'domcontentloaded' });
+  await area.waitFor({ timeout: 60000 });
+  await page.waitForFunction(() => /Pages:\s*\d+\s*\/\s*[1-9]/.test(document.body.innerText), null, { timeout: 90000 });
+  await page.getByRole('progressbar').waitFor({ state: 'detached', timeout: 30000 }).catch(() => undefined);
+  await page.getByRole('button', { name: '두 페이지 보기', exact: true }).click(); await page.waitForTimeout(800);
+  if (await continuous.count() && (await continuous.first().getAttribute('aria-pressed')) === 'true') await continuous.first().click();
+  await page.waitForTimeout(800);
+  const gpuToggle = page.getByTestId('spread-cover-alone');
+  const gpuNext = page.getByRole('button', { name: '다음 페이지', exact: true });
+  const gpuPrev = page.getByRole('button', { name: '이전 페이지', exact: true });
+  const lead = async () => (await gpuPageText())?.page ?? null;
+  const gpuSettle = () => page.waitForTimeout(900);
+  // The PDF.js part left the preference at 'alone'; the GPU viewer must start from it.
+  const gpuInitialPressed = await gpuToggle.getAttribute('aria-pressed');
+  check('gpu viewer starts with the remembered pairing', gpuInitialPressed === 'true', { ariaPressed: gpuInitialPressed });
+  const gpuAlone = [await lead()];
+  await gpuNext.click(); await gpuSettle(); gpuAlone.push(await lead());
+  await area.focus(); await page.keyboard.press('PageDown'); await gpuSettle(); gpuAlone.push(await lead());
+  await gpuPrev.click(); await gpuSettle(); gpuAlone.push(await lead());
+  check('gpu cover-alone rows lead 1 -> 2 -> 4 -> 2 (button, PageDown, button)', JSON.stringify(gpuAlone) === JSON.stringify([1, 2, 4, 2]), { leads: gpuAlone });
+  await gpuToggle.click(); await gpuSettle();
+  const gpuSwitched = [await lead(), await gpuToggle.getAttribute('aria-pressed')];
+  await gpuToggle.click(); await gpuSettle();
+  const gpuBack = [await lead(), await gpuToggle.getAttribute('aria-pressed')];
+  check('gpu switch alone (2,3) -> paired (1,2) -> back to alone (2,3)', JSON.stringify([gpuSwitched, gpuBack]) === JSON.stringify([[1, 'false'], [2, 'true']]), { switched: gpuSwitched, back: gpuBack });
+  await gpuToggle.click(); await gpuSettle();
+  const gpuPaired = [await lead()];
+  await gpuNext.click(); await gpuSettle(); gpuPaired.push(await lead());
+  await area.focus(); await page.keyboard.press('PageDown'); await gpuSettle(); gpuPaired.push(await lead());
+  check('gpu paired rows lead 1 -> 3 -> 5 (button, PageDown)', JSON.stringify(gpuPaired) === JSON.stringify([1, 3, 5]), { leads: gpuPaired });
+  await page.screenshot({ path: shot('gpu-paired.png') });
 } catch (error) {
   results.error = error instanceof Error ? error.stack : String(error);
   await page.screenshot({ path: shot('error.png') }).catch(() => {});

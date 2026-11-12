@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { normalizeViewerPage } from '@pdfgpu/core';
+import { createViewerInteractionState, reduceViewerInteraction } from '@pdfgpu/core';
 import {
   lastSpreadLead,
+  nextSpreadToggleMemory,
   spreadLeadPage,
   spreadRowPages,
-  stepSpreadRow
+  spreadToggleTarget
 } from '../dist/front/viewer/spreadPairing.js';
 
 // Expected rows are written out from the two pairings the reader can choose, not derived
@@ -16,40 +17,34 @@ const EXPECTED_ROWS = {
   alone: [[1], [2, 3], [4, 5], [6, 7]]
 };
 
-function walkRows(cover) {
-  const rows = [];
-  let lead = spreadLeadPage(1, PAGE_COUNT, cover);
+// Walks rows with the shared key reducer both viewers use (PageDown / PageUp).
+function walk(cover, key, startPage) {
+  let state = createViewerInteractionState({ page: startPage, pageCount: PAGE_COUNT, mode: 'double', pairing: cover });
+  const rows = [spreadRowPages(state.page, PAGE_COUNT, cover)];
   for (let guard = 0; guard < PAGE_COUNT + 2; guard += 1) {
-    rows.push(spreadRowPages(lead, PAGE_COUNT, cover));
-    const next = stepSpreadRow(lead, PAGE_COUNT, cover, 1);
-    if (next === lead) break;
-    lead = next;
+    const before = state.page;
+    state = reduceViewerInteraction(state, { type: 'key', key }).state;
+    if (state.page === before) break;
+    rows.push(spreadRowPages(state.page, PAGE_COUNT, cover));
   }
   return rows;
 }
 
-describe('PDF.js viewer spread pairing', () => {
+describe('two-page spread pairing (PDFit helpers over @pdfgpu/core 0.1.11)', () => {
   for (const cover of ['paired', 'alone']) {
-    it(`${cover}: next walks every row once without overlapping pages`, () => {
-      assert.deepEqual(walkRows(cover), EXPECTED_ROWS[cover]);
+    it(`${cover}: PageDown walks every row once without overlapping pages`, () => {
+      assert.deepEqual(walk(cover, 'PageDown', 1), EXPECTED_ROWS[cover]);
     });
 
-    it(`${cover}: previous walks the same rows backwards`, () => {
-      const rows = [];
-      let lead = lastSpreadLead(PAGE_COUNT, cover);
-      for (let guard = 0; guard < PAGE_COUNT + 2; guard += 1) {
-        rows.unshift(spreadRowPages(lead, PAGE_COUNT, cover));
-        const prev = stepSpreadRow(lead, PAGE_COUNT, cover, -1);
-        if (prev === lead) break;
-        lead = prev;
-      }
-      assert.deepEqual(rows, EXPECTED_ROWS[cover]);
+    it(`${cover}: PageUp walks the same rows backwards`, () => {
+      assert.deepEqual(walk(cover, 'PageUp', lastSpreadLead(PAGE_COUNT, cover)), [...EXPECTED_ROWS[cover]].reverse());
     });
 
     it(`${cover}: any page lands on the row that contains it`, () => {
       for (const row of EXPECTED_ROWS[cover]) {
         for (const page of row) {
-          assert.deepEqual(spreadRowPages(spreadLeadPage(page, PAGE_COUNT, cover), PAGE_COUNT, cover), row, `page ${page}`);
+          assert.deepEqual(spreadRowPages(page, PAGE_COUNT, cover), row, `page ${page}`);
+          assert.equal(spreadLeadPage(page, PAGE_COUNT, cover), row[0], `page ${page}`);
         }
       }
     });
@@ -61,9 +56,19 @@ describe('PDF.js viewer spread pairing', () => {
     assert.deepEqual(spreadRowPages(1, 0, 'paired'), []);
   });
 
-  it('documents why the shared core rule is not used for paired rows', () => {
-    // @pdfgpu/core 0.1.10 normalizes double mode to cover-alone rows only.
-    assert.equal(normalizeViewerPage(3, PAGE_COUNT, 'double'), 2);
-    assert.equal(spreadLeadPage(3, PAGE_COUNT, 'paired'), 3);
+  it('switching straight back returns to the page the reader switched from', () => {
+    // alone (2,3) -> paired lands on (1,2); without memory, back to alone would land on (1).
+    let memory = null;
+    let page = 2;
+    const target1 = spreadToggleTarget(memory, page);
+    memory = nextSpreadToggleMemory(memory, page, PAGE_COUNT, 'paired');
+    page = spreadLeadPage(target1, PAGE_COUNT, 'paired');
+    assert.deepEqual(spreadRowPages(page, PAGE_COUNT, 'paired'), [1, 2]);
+    const target2 = spreadToggleTarget(memory, page);
+    memory = nextSpreadToggleMemory(memory, page, PAGE_COUNT, 'alone');
+    page = spreadLeadPage(target2, PAGE_COUNT, 'alone');
+    assert.deepEqual(spreadRowPages(page, PAGE_COUNT, 'alone'), [2, 3]);
+    // After navigating away the memory no longer applies.
+    assert.equal(spreadToggleTarget(memory, 4), 4);
   });
 });
