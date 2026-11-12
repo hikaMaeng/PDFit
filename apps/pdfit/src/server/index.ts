@@ -58,7 +58,15 @@ const migrated = await migrateSqliteMetadata(path.join(path.dirname(booksRoot), 
 if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
-const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env);
+// Tag classification uses the first Settings AI server that has an LLM model, read on every
+// request so a server added or changed in Settings applies without a restart. SERVICE_AI_*
+// still wins when set. Local reasoning models can need minutes per reply.
+const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
+  resolveAiServer: async () => {
+    const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 300_000 } : null;
+  },
+});
 const app = createPdfitServer({
   metadataStore,
   booksRoot,

@@ -9,6 +9,8 @@ export interface BookTagSuggestionRequest {
     subtitle?: string;
     description?: string;
     tableOfContents?: string;
+    /** Bookstore genre path, broadest first, e.g. ["IT 모바일", "컴퓨터 공학", "소프트웨어 공학"]. */
+    categories?: string[];
   };
   availableTags: string[];
   currentTags: string[];
@@ -76,29 +78,56 @@ function tagForBookstoreCategories(categories: string[]): string | undefined {
   return rules.find(([pattern]) => pattern.test(path))?.[1];
 }
 
-/** Uses the public YES24 product page as a no-key fallback for titles the local classifier cannot identify. */
-export function createYes24PublicPageTagSuggestionProvider(request: typeof fetch = fetch): BookTagSuggestionProvider {
-  // Public bookstore pages can throttle a burst from folder-wide tagging.
-  // Keep those lookups serialized per provider instance while local high-signal
-  // title rules continue to bypass the network entirely.
+/** Book found on the public YES24 pages: the exact-title match and its detail page sections. */
+export interface Yes24PublicBook {
+  itemId: string;
+  matchedTitle: string;
+  categories: string[];
+  description?: string;
+  tableOfContents?: string;
+}
+
+const YES24_SECTION_MAX_CHARS = 2_000;
+
+/** Text of one `infoset_*` section of a YES24 detail page, preferring its plain-text textarea. */
+function yes24DetailSection(html: string, id: string): string | undefined {
+  const start = html.indexOf(`id="${id}"`);
+  if (start < 0) return undefined;
+  const next = html.indexOf('id="infoset_', start + id.length + 4);
+  const segment = html.slice(start, next < 0 ? undefined : next);
+  const textarea = /<textarea\b[^>]*\btxtContentText\b[^>]*>([\s\S]*?)<\/textarea>/i.exec(segment)?.[1];
+  // The textarea holds the section's HTML entity-encoded: restore the markup, then strip it.
+  const raw = textarea !== undefined
+    ? textarea.replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&amp;/gi, '&')
+    : segment.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ');
+  const text = decodeHtmlText(raw);
+  return text ? text.slice(0, YES24_SECTION_MAX_CHARS) : undefined;
+}
+
+/**
+ * Looks a title up on the public YES24 search and detail pages (no key). Throws when no
+ * result matches the title closely enough (score >= 0.72). Lookups made through one
+ * returned function are serialized, because public pages throttle a folder-wide burst.
+ */
+export function createYes24PublicBookLookup(request: typeof fetch = fetch): (title: string) => Promise<Yes24PublicBook> {
   let requestQueue = Promise.resolve();
   const queuedRequest = <T>(action: () => Promise<T>): Promise<T> => {
     const pending = requestQueue.then(action, action);
     requestQueue = pending.then(() => undefined, () => undefined);
     return pending;
   };
-  return async (input) => {
+  return async (title) => {
     const searchUrl = new URL(YES24_PUBLIC_SEARCH_URL);
     searchUrl.searchParams.set('domain', 'BOOK');
-    searchUrl.searchParams.set('query', input.title);
+    searchUrl.searchParams.set('query', title);
     const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; PDFit/0.4.7; book categorization)' };
     const searchResponse = await queuedRequest(() => request(searchUrl, { headers, signal: AbortSignal.timeout(10_000) }));
     if (!searchResponse.ok) throw new Error(`YES24 공개 도서 검색에 실패했습니다 (${searchResponse.status}).`);
     const searchHtml = await searchResponse.text();
     const candidates: Array<{ itemId: string; title: string; score: number }> = [];
     for (const match of searchHtml.matchAll(/<a\b(?=[^>]*\bclass=["'][^"']*\bgd_name\b[^"']*["'])(?=[^>]*\bhref=["']\/product\/goods\/(\d+)["'])[^>]*>([\s\S]*?)<\/a>/gi)) {
-      const title = decodeHtmlText(match[2] ?? '');
-      candidates.push({ itemId: match[1], title, score: scoreBookTitleMatch(input.title, title) });
+      const candidateTitle = decodeHtmlText(match[2] ?? '');
+      candidates.push({ itemId: match[1], title: candidateTitle, score: scoreBookTitleMatch(title, candidateTitle) });
     }
     const match = candidates.sort((left, right) => right.score - left.score)[0];
     if (!match || match.score < 0.72) throw new Error('YES24 공개 검색에서 제목이 일치하는 도서를 찾지 못했습니다.');
@@ -106,8 +135,22 @@ export function createYes24PublicPageTagSuggestionProvider(request: typeof fetch
     if (!detailResponse.ok) throw new Error(`YES24 도서 상세 조회에 실패했습니다 (${detailResponse.status}).`);
     const detailHtml = await detailResponse.text();
     const genreJson = detailHtml.match(/"genre"\s*:\s*(\[[^\]]*\])/i)?.[1];
-    const categories = genreJson ? (JSON.parse(genreJson) as unknown[]).filter((value): value is string => typeof value === 'string') : [];
-    const tag = tagForBookstoreCategories(categories);
+    let categories: string[] = [];
+    try {
+      categories = genreJson ? (JSON.parse(genreJson) as unknown[]).filter((value): value is string => typeof value === 'string') : [];
+    } catch { /* malformed genre JSON: classify from the text sections */ }
+    const description = yes24DetailSection(detailHtml, 'infoset_introduce');
+    const tableOfContents = yes24DetailSection(detailHtml, 'infoset_toc');
+    return { itemId: match.itemId, matchedTitle: match.title, categories, ...(description ? { description } : {}), ...(tableOfContents ? { tableOfContents } : {}) };
+  };
+}
+
+/** Uses the public YES24 product page as a no-key fallback for titles the local classifier cannot identify. */
+export function createYes24PublicPageTagSuggestionProvider(request: typeof fetch = fetch): BookTagSuggestionProvider {
+  const lookup = createYes24PublicBookLookup(request);
+  return async (input) => {
+    const book = await lookup(input.title);
+    const tag = tagForBookstoreCategories(book.categories);
     return tag ? [tag] : [];
   };
 }
@@ -366,19 +409,39 @@ export function createYes24TagSuggestionProvider(
   };
 }
 
-/** Resolves the identical deployment contract used by local and hosted Docker runtimes. */
+export interface TagSuggestionRuntimeOptions {
+  /**
+   * AI server resolved on every request, for example from the Settings database, so a
+   * server added or changed there applies without a restart. Used only when SERVICE_AI_*
+   * is empty; null means "no AI server". It is trusted local configuration, so the
+   * HTTPS rule for SERVICE_AI_BASE_URL does not apply to it.
+   */
+  resolveAiServer?: () => Promise<OpenAiCompatibleTagSuggestionConfig | null>;
+}
+
+/**
+ * Resolves the identical deployment contract used by local and hosted Docker runtimes.
+ *
+ * Order for one book:
+ *   1. No AI server and no YES24 key: deterministic title rules first (no network).
+ *   2. YES24 key: official Goods API detail, judged by the AI server (or title rules).
+ *   3. No key: public YES24 search and detail pages. With an AI server, the AI judges
+ *      the category from the description, table of contents and genre path; the
+ *      bookstore genre rules decide only when the AI returns nothing usable.
+ *   4. AI server on the title alone, then title rules, then the Wikidata subject.
+ */
 export function createTagSuggestionProviderFromEnvironment(
   environment: TagSuggestionEnvironment,
   request: typeof fetch = fetch,
+  options: TagSuggestionRuntimeOptions = {},
 ): BookTagSuggestionProvider {
   const baseUrl = environment.SERVICE_AI_BASE_URL?.trim();
   const model = environment.SERVICE_AI_MODEL?.trim();
   const apiKey = environment.SERVICE_AI_API_KEY?.trim();
   const yes24ApiKey = environment.YES24_API_KEY?.trim();
   const localClassifier = createLocalTitleTagSuggestionProvider();
-  let classifier: BookTagSuggestionProvider;
-  if (!baseUrl && !model && !apiKey) classifier = localClassifier;
-  else {
+  let environmentClassifier: BookTagSuggestionProvider | null = null;
+  if (baseUrl || model || apiKey) {
     if (!baseUrl || !model || !apiKey) {
       throw new Error('SERVICE_AI_BASE_URL, SERVICE_AI_MODEL, and SERVICE_AI_API_KEY must be configured together.');
     }
@@ -386,32 +449,62 @@ export function createTagSuggestionProviderFromEnvironment(
     if (parsedUrl.protocol !== 'https:' && parsedUrl.hostname !== '127.0.0.1' && parsedUrl.hostname !== 'localhost') {
       throw new Error('SERVICE_AI_BASE_URL must use HTTPS unless it targets the local host.');
     }
-    classifier = createOpenAiCompatibleTagSuggestionProvider(
+    environmentClassifier = createOpenAiCompatibleTagSuggestionProvider(
       { baseUrl, model, headers: { Authorization: `Bearer ${apiKey}` } },
       request,
     );
   }
-  const bookstoreFallback = createYes24PublicPageTagSuggestionProvider(request);
+  const publicLookup = createYes24PublicBookLookup(request);
   const subjectFallback = createWikidataSubjectTagSuggestionProvider(request);
-  const primary = yes24ApiKey ? createYes24TagSuggestionProvider({ apiKey: yes24ApiKey }, classifier, request) : classifier;
+  const resolveClassifier = async (): Promise<BookTagSuggestionProvider | null> => {
+    if (environmentClassifier) return environmentClassifier;
+    const server = options.resolveAiServer ? await options.resolveAiServer().catch(() => null) : null;
+    return server ? createOpenAiCompatibleTagSuggestionProvider(server, request) : null;
+  };
+
   return async (input) => {
+    const classifier = await resolveClassifier();
     // In the zero-configuration runtime, deterministic high-signal title rules
     // avoid making every bulk item wait for a public bookstore page request.
     // Unknown titles still continue to the exact-title bookstore lookup below.
-    if (!baseUrl && !yes24ApiKey) {
+    if (!classifier && !yes24ApiKey) {
       const local = await localClassifier(input);
       if (local.length > 0) return local;
     }
-    if (!yes24ApiKey) {
+    if (yes24ApiKey) {
       try {
-        const bookstoreTag = await bookstoreFallback(input);
-        if (bookstoreTag.length > 0) return bookstoreTag;
-      } catch { /* continue with configured AI or deterministic title classification */ }
+        const suggested = await createYes24TagSuggestionProvider({ apiKey: yes24ApiKey }, classifier ?? localClassifier, request)(input);
+        if (suggested.length > 0) return suggested;
+      } catch { /* continue with deterministic and bookstore fallbacks */ }
+    } else {
+      let book: Yes24PublicBook | null = null;
+      try { book = await publicLookup(input.title); } catch { /* no exact-title match or the page is unavailable */ }
+      if (book) {
+        if (classifier) {
+          try {
+            const suggested = await classifier({
+              ...input,
+              bookstoreMetadata: {
+                source: 'YES24',
+                matchedTitle: book.matchedTitle,
+                ...(book.categories.length > 0 ? { categories: book.categories } : {}),
+                ...(book.description ? { description: book.description } : {}),
+                ...(book.tableOfContents ? { tableOfContents: book.tableOfContents } : {}),
+              },
+            });
+            if (suggested.length > 0) return suggested;
+          } catch { /* AI unavailable or invalid: the bookstore genre still decides */ }
+        }
+        const genreTag = tagForBookstoreCategories(book.categories);
+        if (genreTag) return [genreTag];
+      }
+      if (classifier) {
+        try {
+          const suggested = await classifier(input);
+          if (suggested.length > 0) return suggested;
+        } catch { /* continue with deterministic fallbacks */ }
+      }
     }
-    try {
-      const suggested = await primary(input);
-      if (suggested.length > 0) return suggested;
-    } catch { /* continue with deterministic and bookstore fallbacks */ }
     const local = await localClassifier(input);
     if (local.length > 0) return local;
     const subject = await subjectFallback(input);

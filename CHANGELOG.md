@@ -8,6 +8,11 @@
   cover finds the book on YES24 and Open Library and replaces the rendered first page
   with the chosen cover; "Restore first page" undoes it. `GET/PUT/DELETE /api/covers`,
   `GET /api/covers/candidates`, `GET /api/covers/preview`.
+- Automatic tag classification uses the first Settings AI server with an LLM model
+  (Free app; `SERVICE_AI_*` still wins when set). The model judges from the matched
+  public YES24 book's description, table of contents and genre path, and the genre
+  rule decides when the model fails. `createYes24PublicBookLookup`,
+  `TagSuggestionRuntimeOptions.resolveAiServer`.
 
 ## [0.4.7] - 2026-11-12
 
