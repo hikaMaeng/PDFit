@@ -9,6 +9,8 @@
   contents, reusing the library's existing tag names. It used to apply the category
   only. The table of contents sent to the model grows from 2,000 to 6,000 characters.
   The folder route adds `assignedTags`.
+- The Free app waits up to 600 s (was 300 s) for an automatic-tag reply from the Settings
+  AI server, and asks it for `reasoning_effort: "low"`.
 - A tag page's cards and rows show every tag of a book, including the page's own tag.
 
 ### Fixed

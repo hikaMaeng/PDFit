@@ -64,7 +64,8 @@ await settingsStore.ensureSchema();
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
   resolveAiServer: async () => {
     const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
-    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 300_000, reasoningEffort: 'low' } : null;
+    // 600 s: the 4-6 tag prompt took 113-141 s on a shared local reasoning model and once passed 300 s.
+    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 600_000, reasoningEffort: 'low' } : null;
   },
 });
 const app = createPdfitServer({
