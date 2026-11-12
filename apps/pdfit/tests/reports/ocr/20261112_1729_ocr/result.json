@@ -1,0 +1,601 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "channel": "chrome",
+  "locale": "ko-KR",
+  "visionWaitMs": 360000,
+  "startedAtIso": "2026-11-12T08:29:58.085Z",
+  "steps": {
+    "2_find_digital_pdf": {
+      "verdict": "PASS",
+      "chosen": "Git for Teams.pdf",
+      "pageIndex": 49,
+      "probes": [
+        {
+          "filename": "Git for Teams.pdf",
+          "pageIndex": 49,
+          "status": 200,
+          "source": "text-layer",
+          "cached": true,
+          "pageCount": 398,
+          "durationMs": 11,
+          "wallMs": 19,
+          "chars": 1350,
+          "nonBlankChars": 1017,
+          "head": "캐노니컬 Ca non i c al , 세프Ch ef , 퍼핏Pu pp c[ ， 구글Goog le, 닷넷 . NCt은 모두 일종의 변형된 저작권 "
+        }
+      ],
+      "stepMs": 19
+    },
+    "3a_page_ocr_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "pageNumberInput": "50",
+      "title": "50페이지 텍스트",
+      "ariaLabel": "페이지 텍스트 읽기",
+      "roleDialog": 1,
+      "requestBody": {
+        "folder": "이북",
+        "filename": "Git for Teams.pdf",
+        "pageIndex": 49
+      },
+      "browserResponse": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "durationMs": 5,
+        "chars": 1350
+      },
+      "panel": {
+        "timeline": [
+          {
+            "atMs": 42,
+            "status": "done",
+            "slowHint": false
+          }
+        ],
+        "final": "done",
+        "finalAtMs": 42,
+        "slowHintAtMs": null,
+        "waitedMs": 42
+      },
+      "ui": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 1350
+      },
+      "durationLabel": "0.0 s",
+      "expected": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "chars": 1350,
+        "durationMs": 5
+      },
+      "textEqualsApi": true,
+      "clipboardEqualsText": false,
+      "clipboardChars": 1389,
+      "stepMs": 6136
+    },
+    "4a_clip_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "page": 50,
+      "capture": {
+        "status": 201,
+        "id": "63c22bb2-9601-4f5a-a527-ae33035e26d4",
+        "ocr": {
+          "status": "pending",
+          "text": null,
+          "source": null,
+          "error": null,
+          "updatedAt": null
+        },
+        "pageIndex": 49,
+        "rect": {
+          "x": 47.1359961844123,
+          "y": 217.2842258102198,
+          "width": 377.0879885532369,
+          "height": 85.67633306855562
+        },
+        "imageMimeType": "image/png",
+        "imageBase64Chars": 51104,
+        "drag": {
+          "from": {
+            "x": 450.4,
+            "y": 360.2
+          },
+          "to": {
+            "x": 1053.6,
+            "y": 497.3
+          },
+          "canvas": {
+            "x": 375,
+            "y": 12.5,
+            "width": 754,
+            "height": 1045
+          }
+        }
+      },
+      "badge": {
+        "final": "done",
+        "waitedMs": 5047,
+        "timedOut": false,
+        "timeline": [
+          {
+            "id": "63c22bb2-9601-4f5a-a527-ae33035e26d4",
+            "status": "pending",
+            "atMs": 1801
+          }
+        ]
+      },
+      "listPollsAfterCaptureMs": [
+        1315,
+        1602,
+        1620,
+        6622
+      ],
+      "listPollIntervalsMs": [
+        287,
+        18,
+        5002
+      ],
+      "server": {
+        "status": "done",
+        "source": "text-layer",
+        "chars": 111,
+        "error": null,
+        "updatedAt": "Thu Nov 12 2026 08:30:08 GMT+0000 (Coordinated Universal Time)",
+        "text": "2기요 배포라이선스\n\n프로젝트의 저작권 관련 문제가 끝나면, 다음은 배포 라이선스를 설정해야 한다. 배포 라이선\n스란 프로젝트를 어떻게 사용하면 되는지 또는 안 되는지에 대해서 명확히 하는 것이다 ."
+      },
+      "subset": {
+        "clipLines": 3,
+        "missingLines": [],
+        "pageChars": 1350
+      },
+      "dialog": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 111,
+        "textEqualsServer": true
+      },
+      "retry": {
+        "status": 202,
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 21,
+              "status": "pending",
+              "slowHint": false
+            },
+            {
+              "atMs": 5271,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 5271,
+          "slowHintAtMs": null,
+          "waitedMs": 5271
+        },
+        "final": {
+          "status": "done",
+          "source": "text-layer",
+          "sourceLabel": "PDF 텍스트",
+          "copy": true,
+          "retry": true,
+          "retryDisabled": false,
+          "unavailable": null,
+          "failed": null,
+          "empty": null,
+          "textChars": 111
+        },
+        "serverStatus": "done",
+        "serverUpdatedAt": "Thu Nov 12 2026 08:30:13 GMT+0000 (Coordinated Universal Time)",
+        "listPollsAfterClickMs": [
+          5095
+        ]
+      },
+      "stepMs": 13864
+    },
+    "5_page_ocr_dark_mobile": {
+      "verdict": "PASS",
+      "dark": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 1352,
+          "y": 8,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 52,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 52,
+          "slowHintAtMs": null,
+          "waitedMs": 52
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 1440,
+          "paperLeft": 270,
+          "paperRight": 1170,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "paperBackground": "rgb(32, 33, 36)"
+        }
+      },
+      "mobile": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 287,
+          "y": 12.90625,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 3,
+              "status": "pending",
+              "slowHint": false
+            },
+            {
+              "atMs": 303,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 303,
+          "slowHintAtMs": null,
+          "waitedMs": 303
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 375,
+          "paperLeft": 32,
+          "paperRight": 343,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "paperBackground": "rgb(255, 255, 255)"
+        }
+      },
+      "stepMs": 10759
+    },
+    "3b_page_ocr_scanned_cached": {
+      "verdict": "PASS",
+      "filename": "Three.js로 3D 그래픽만들기.pdf",
+      "pageNumberInput": "21",
+      "title": "21페이지 텍스트",
+      "requestBody": {
+        "folder": "이북",
+        "filename": "Three.js로 3D 그래픽만들기.pdf",
+        "pageIndex": 20
+      },
+      "browserResponse": {
+        "status": 200,
+        "source": "vision",
+        "cached": true,
+        "durationMs": 11,
+        "chars": 711
+      },
+      "panel": {
+        "timeline": [
+          {
+            "atMs": 2,
+            "status": "pending",
+            "slowHint": false
+          },
+          {
+            "atMs": 567,
+            "status": "done",
+            "slowHint": false
+          }
+        ],
+        "final": "done",
+        "finalAtMs": 567,
+        "slowHintAtMs": null,
+        "waitedMs": 567
+      },
+      "ui": {
+        "status": "done",
+        "source": "vision",
+        "sourceLabel": "AI 인식",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 711
+      },
+      "durationLabel": "0.0 s",
+      "expected": {
+        "source": "vision",
+        "cached": true,
+        "chars": 711
+      },
+      "textEqualsApi": true,
+      "stepMs": 11492
+    },
+    "3c_page_ocr_scanned_uncached": {
+      "verdict": "FAIL",
+      "error": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at F:\\dev\\pdfit\\apps\\pdfit\\tests\\ocr-browser.mjs:491:20\n    at async runStep (F:\\dev\\pdfit\\apps\\pdfit\\tests\\ocr-browser.mjs:46:19)\n    at async file:///F:/dev/pdfit/apps/pdfit/tests/ocr-browser.mjs:475:3",
+      "stepMs": 668108
+    },
+    "4b_clip_scanned": {
+      "verdict": "PASS",
+      "filename": "Three.js로 3D 그래픽만들기.pdf",
+      "page": 21,
+      "pageNumberInput": "21",
+      "capture": {
+        "status": 201,
+        "id": "30f19323-b70c-4a4c-92dc-06d962a41cfb",
+        "ocr": {
+          "status": "pending",
+          "text": null,
+          "source": null,
+          "error": null,
+          "updatedAt": null
+        },
+        "pageIndex": 20,
+        "rect": {
+          "x": 61.862401832014186,
+          "y": 165.72,
+          "width": 391.79519633597164,
+          "height": 132.57599084638363
+        },
+        "imageMimeType": "image/png",
+        "imageBase64Chars": 74656,
+        "drag": {
+          "from": {
+            "x": 490.94,
+            "y": 314
+          },
+          "to": {
+            "x": 1013.0600000000001,
+            "y": 490.8
+          },
+          "canvas": {
+            "x": 408.5,
+            "y": 93,
+            "width": 687,
+            "height": 884
+          }
+        }
+      },
+      "captureAtRunMs": 714679,
+      "badge": {
+        "first": "pending",
+        "final": "done",
+        "waitedMs": 169519,
+        "timedOut": false,
+        "timeline": [
+          {
+            "id": "30f19323-b70c-4a4c-92dc-06d962a41cfb",
+            "status": "pending",
+            "atMs": 323
+          },
+          {
+            "id": "30f19323-b70c-4a4c-92dc-06d962a41cfb",
+            "status": "done",
+            "atMs": 170012
+          }
+        ]
+      },
+      "listPollsRunMs": [
+        730943,
+        731061,
+        736078,
+        741079,
+        746077,
+        751076,
+        756076,
+        761077,
+        766077,
+        771078,
+        776078,
+        781076,
+        786076,
+        791076,
+        796077,
+        801077,
+        806075,
+        811075,
+        816076,
+        821075,
+        826074,
+        831075,
+        836076,
+        841074,
+        846076,
+        851081,
+        856081,
+        861086,
+        866090,
+        871080,
+        876088,
+        881089,
+        886089,
+        891076,
+        896082,
+        901077
+      ],
+      "listPollIntervalsMs": [
+        118,
+        5017,
+        5001,
+        4998,
+        4999,
+        5000,
+        5001,
+        5000,
+        5001,
+        5000,
+        4998,
+        5000,
+        5000,
+        5001,
+        5000,
+        4998,
+        5000,
+        5001,
+        4999,
+        4999,
+        5001,
+        5001,
+        4998,
+        5002,
+        5005,
+        5000,
+        5005,
+        5004,
+        4990,
+        5008,
+        5001,
+        5000,
+        4987,
+        5006,
+        4995
+      ],
+      "server": {
+        "status": "done",
+        "source": "vision",
+        "chars": 249,
+        "error": null,
+        "updatedAt": "Thu Nov 12 2026 08:44:57 GMT+0000 (Coordinated Universal Time)",
+        "textHead": "지난 몇 년간 브라우저는 복잡한 애플리케이션과 그래픽을 제공할 수 있는 더 강력한 플랫폼으로 성장해 왔다. 대부분의 최신 브라우저들은 웹GLWebGL을 채택했다. 웹GL은 브라우저에서 아름다운 2D 애니메이션과 그래픽을 만들 수 있을 뿐만 아니라, GPU를 사용하여 아름답고 성능 좋은 3D 애니메이션까지 만들 수 있게 되었다.\n\n하지만 웹GL로 직접 프로그"
+      },
+      "dialog": {
+        "status": "done",
+        "source": "vision",
+        "sourceLabel": "AI 인식",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 249,
+        "textEqualsServer": true
+      },
+      "stepMs": 190698
+    }
+  },
+  "bugs": [],
+  "observations": [],
+  "baseline": {
+    "bookmarks": 9,
+    "ids": [
+      "2b012952-7b9e-4059-ab8b-68484bd3c32e",
+      "3aee82cc-fd85-46bb-9eb6-09c557bb48ca",
+      "80f31fcf-ae4c-4008-b5d9-e995a20ebda9",
+      "89850439-e959-49f4-b73e-18bd9888efc8",
+      "9f4ce90a-5605-4990-b401-0f712f6183bf",
+      "b2d0bd7a-94f3-441a-bcd2-3c856d9a4472",
+      "ee4de034-bb1d-4710-8b03-07547a135daf",
+      "f33598b8-55c9-4ec3-9913-408bd868a903",
+      "ff8a56b8-c16a-4eb2-873c-d86ffd31ca00"
+    ]
+  },
+  "verdict": "FAIL",
+  "pageErrors": [],
+  "consoleErrors": [
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "viewer: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "viewer: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "blockedWrites": [
+    "main PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "dark PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "mobile PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "main PUT /api/viewer-state/이북/Three.js로 3D 그래픽만들기.pdf",
+    "main PUT /api/viewer-state/이북/Three.js로 3D 그래픽만들기.pdf",
+    "main PUT /api/viewer-state/이북/Three.js로 3D 그래픽만들기.pdf"
+  ],
+  "allowedWrites": [
+    "main POST /api/folders/refresh @922",
+    "main POST /api/settings/translations @972",
+    "main POST /api/ocr/page @5436",
+    "main POST /api/settings/translations @7529",
+    "main POST /api/bookmarks/이북/Git for Teams.pdf @9447",
+    "main POST /api/bookmarks/63c22bb2-9601-4f5a-a527-ae33035e26d4/ocr @15255",
+    "dark POST /api/folders/refresh @21089",
+    "dark POST /api/settings/translations @21131",
+    "dark POST /api/ocr/page @25121",
+    "mobile POST /api/folders/refresh @26002",
+    "mobile POST /api/settings/translations @26190",
+    "mobile POST /api/ocr/page @30408",
+    "main POST /api/folders/refresh @31573",
+    "main POST /api/settings/translations @31619",
+    "main POST /api/ocr/page @36935",
+    "main POST /api/folders/refresh @43120",
+    "main POST /api/settings/translations @43309",
+    "main POST /api/ocr/page @48354",
+    "main POST /api/ocr/page @65771",
+    "main POST /api/folders/refresh @711733",
+    "main POST /api/settings/translations @711921",
+    "main POST /api/bookmarks/이북/Three.js로 3D 그래픽만들기.pdf @728107",
+    "main POST /api/settings/translations @731104",
+    "main POST /api/settings/translations @848631"
+  ],
+  "cleanup": {
+    "deleted": [
+      {
+        "id": "63c22bb2-9601-4f5a-a527-ae33035e26d4",
+        "status": 204
+      },
+      {
+        "id": "30f19323-b70c-4a4c-92dc-06d962a41cfb",
+        "status": 204
+      }
+    ],
+    "errors": [],
+    "startCount": 9,
+    "finalCount": 9,
+    "matchesBaseline": true
+  },
+  "durationMs": 901730
+}

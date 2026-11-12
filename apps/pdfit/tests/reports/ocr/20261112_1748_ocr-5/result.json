@@ -1,0 +1,177 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "channel": "chrome",
+  "locale": "ko-KR",
+  "visionWaitMs": 360000,
+  "skipVision": false,
+  "startedAtIso": "2026-11-12T08:48:21.970Z",
+  "steps": {
+    "2_find_digital_pdf": {
+      "verdict": "PASS",
+      "chosen": "Git for Teams.pdf",
+      "pageIndex": 49,
+      "probes": [
+        {
+          "filename": "Git for Teams.pdf",
+          "pageIndex": 49,
+          "status": 200,
+          "source": "text-layer",
+          "cached": true,
+          "pageCount": 398,
+          "durationMs": 6,
+          "wallMs": 13,
+          "chars": 1350,
+          "nonBlankChars": 1017,
+          "head": "캐노니컬 Ca non i c al , 세프Ch ef , 퍼핏Pu pp c[ ， 구글Goog le, 닷넷 . NCt은 모두 일종의 변형된 저작권 "
+        }
+      ],
+      "stepMs": 13
+    },
+    "3a_page_ocr_digital": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=5"
+    },
+    "4a_clip_digital": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=5"
+    },
+    "5_page_ocr_dark_mobile": {
+      "verdict": "FAIL",
+      "dark": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 1352,
+          "y": 8,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 56,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 56,
+          "slowHintAtMs": null,
+          "waitedMs": 56
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 1440,
+          "paperLeft": 270,
+          "paperRight": 1170,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 1,
+            "source": 1,
+            "copy": 1,
+            "retry": 1
+          },
+          "paperBackground": "rgb(32, 33, 36)"
+        }
+      },
+      "mobile": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 287,
+          "y": 12.90625,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 69,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 69,
+          "slowHintAtMs": null,
+          "waitedMs": 69
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 375,
+          "paperLeft": 32,
+          "paperRight": 343,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 3,
+            "source": 1,
+            "copy": 3,
+            "retry": 2
+          },
+          "paperBackground": "rgb(255, 255, 255)"
+        }
+      },
+      "error": "Error: mobile 패널 머리줄 \"heading\" 글자가 한 줄이어야 한다 {\"heading\":3,\"source\":1,\"copy\":3,\"retry\":2}\n    at failWith (file:///F:/dev/pdfit/apps/pdfit/tests/ocr-browser.mjs:65:54)\n    at file:///F:/dev/pdfit/apps/pdfit/tests/ocr-browser.mjs:478:29\n    at async runStep (file:///F:/dev/pdfit/apps/pdfit/tests/ocr-browser.mjs:54:19)\n    at async file:///F:/dev/pdfit/apps/pdfit/tests/ocr-browser.mjs:422:3",
+      "stepMs": 8583
+    },
+    "3b_page_ocr_scanned_cached": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=5"
+    },
+    "3c_page_ocr_scanned_uncached": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=5"
+    },
+    "4b_clip_scanned": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=5"
+    }
+  },
+  "bugs": [],
+  "observations": [],
+  "onlySteps": [
+    "5"
+  ],
+  "baseline": {
+    "bookmarks": 9,
+    "ids": [
+      "2b012952-7b9e-4059-ab8b-68484bd3c32e",
+      "3aee82cc-fd85-46bb-9eb6-09c557bb48ca",
+      "80f31fcf-ae4c-4008-b5d9-e995a20ebda9",
+      "89850439-e959-49f4-b73e-18bd9888efc8",
+      "9f4ce90a-5605-4990-b401-0f712f6183bf",
+      "b2d0bd7a-94f3-441a-bcd2-3c856d9a4472",
+      "ee4de034-bb1d-4710-8b03-07547a135daf",
+      "f33598b8-55c9-4ec3-9913-408bd868a903",
+      "ff8a56b8-c16a-4eb2-873c-d86ffd31ca00"
+    ]
+  },
+  "verdict": "FAIL",
+  "pageErrors": [],
+  "consoleErrors": [],
+  "blockedWrites": [
+    "dark PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "mobile PUT /api/viewer-state/이북/Git for Teams.pdf"
+  ],
+  "allowedWrites": [
+    "dark POST /api/folders/refresh @1115",
+    "dark POST /api/settings/translations @1299",
+    "dark POST /api/ocr/page @4635",
+    "mobile POST /api/folders/refresh @5687",
+    "mobile POST /api/settings/translations @5732",
+    "mobile POST /api/ocr/page @8670"
+  ],
+  "cleanup": {
+    "deleted": [],
+    "errors": [],
+    "startCount": 9,
+    "finalCount": 9,
+    "matchesBaseline": true
+  },
+  "durationMs": 9215
+}

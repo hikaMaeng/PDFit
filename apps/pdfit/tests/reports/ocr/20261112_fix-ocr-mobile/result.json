@@ -1,0 +1,383 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "channel": "chrome",
+  "locale": "ko-KR",
+  "visionWaitMs": 360000,
+  "skipVision": true,
+  "startedAtIso": "2026-11-12T08:52:24.739Z",
+  "steps": {
+    "2_find_digital_pdf": {
+      "verdict": "PASS",
+      "chosen": "Git for Teams.pdf",
+      "pageIndex": 49,
+      "probes": [
+        {
+          "filename": "Git for Teams.pdf",
+          "pageIndex": 49,
+          "status": 200,
+          "source": "text-layer",
+          "cached": true,
+          "pageCount": 398,
+          "durationMs": 9,
+          "wallMs": 30,
+          "chars": 1350,
+          "nonBlankChars": 1017,
+          "head": "캐노니컬 Ca non i c al , 세프Ch ef , 퍼핏Pu pp c[ ， 구글Goog le, 닷넷 . NCt은 모두 일종의 변형된 저작권 "
+        }
+      ],
+      "stepMs": 30
+    },
+    "3a_page_ocr_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "pageNumberInput": "50",
+      "title": "50페이지 텍스트",
+      "ariaLabel": "페이지 텍스트 읽기",
+      "roleDialog": 1,
+      "requestBody": {
+        "folder": "이북",
+        "filename": "Git for Teams.pdf",
+        "pageIndex": 49
+      },
+      "browserResponse": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "durationMs": 5,
+        "chars": 1350
+      },
+      "panel": {
+        "timeline": [
+          {
+            "atMs": 3,
+            "status": "done",
+            "slowHint": false
+          }
+        ],
+        "final": "done",
+        "finalAtMs": 3,
+        "slowHintAtMs": null,
+        "waitedMs": 3
+      },
+      "ui": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 1350
+      },
+      "durationLabel": "0.0 s",
+      "expected": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "chars": 1350,
+        "durationMs": 6
+      },
+      "textEqualsApi": true,
+      "clipboardEqualsText": true,
+      "clipboardChars": 1389,
+      "stepMs": 5370
+    },
+    "4a_clip_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "page": 50,
+      "capture": {
+        "status": 201,
+        "id": "ca9c2e1a-633a-40c2-b7b9-0678ab54740b",
+        "ocr": {
+          "status": "pending",
+          "text": null,
+          "source": null,
+          "error": null,
+          "updatedAt": null
+        },
+        "pageIndex": 49,
+        "rect": {
+          "x": 47.1359961844123,
+          "y": 217.2842258102198,
+          "width": 377.0879885532369,
+          "height": 85.67633306855562
+        },
+        "imageMimeType": "image/png",
+        "imageBase64Chars": 51104,
+        "drag": {
+          "from": {
+            "x": 450.4,
+            "y": 360.2
+          },
+          "to": {
+            "x": 1053.6,
+            "y": 497.3
+          },
+          "canvas": {
+            "x": 375,
+            "y": 12.5,
+            "width": 754,
+            "height": 1045
+          }
+        }
+      },
+      "badge": {
+        "final": "done",
+        "waitedMs": 4976,
+        "timedOut": false,
+        "timeline": [
+          {
+            "id": "ca9c2e1a-633a-40c2-b7b9-0678ab54740b",
+            "status": "pending",
+            "atMs": 1868
+          },
+          {
+            "id": "ca9c2e1a-633a-40c2-b7b9-0678ab54740b",
+            "status": "done",
+            "atMs": 6807
+          }
+        ]
+      },
+      "listPollsAfterCaptureMs": [
+        1395,
+        1666,
+        1694,
+        6696
+      ],
+      "listPollIntervalsMs": [
+        271,
+        28,
+        5002
+      ],
+      "server": {
+        "status": "done",
+        "source": "text-layer",
+        "chars": 111,
+        "error": null,
+        "updatedAt": "2026-11-12T08:52:34.725Z",
+        "text": "2기요 배포라이선스\n\n프로젝트의 저작권 관련 문제가 끝나면, 다음은 배포 라이선스를 설정해야 한다. 배포 라이선\n스란 프로젝트를 어떻게 사용하면 되는지 또는 안 되는지에 대해서 명확히 하는 것이다 ."
+      },
+      "subset": {
+        "clipLines": 3,
+        "missingLines": [],
+        "pageChars": 1350
+      },
+      "dialog": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 111,
+        "textEqualsServer": true
+      },
+      "retry": {
+        "status": 202,
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 16,
+              "status": "pending",
+              "slowHint": false
+            },
+            {
+              "atMs": 5263,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 5263,
+          "slowHintAtMs": null,
+          "waitedMs": 5264
+        },
+        "final": {
+          "status": "done",
+          "source": "text-layer",
+          "sourceLabel": "PDF 텍스트",
+          "copy": true,
+          "retry": true,
+          "retryDisabled": false,
+          "unavailable": null,
+          "failed": null,
+          "empty": null,
+          "textChars": 111
+        },
+        "serverStatus": "done",
+        "serverUpdatedAt": "2026-11-12T08:52:39.989Z",
+        "listPollsAfterClickMs": [
+          5090
+        ]
+      },
+      "stepMs": 14206
+    },
+    "5_page_ocr_dark_mobile": {
+      "verdict": "PASS",
+      "dark": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 1352,
+          "y": 8,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 26,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 26,
+          "slowHintAtMs": null,
+          "waitedMs": 26
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 1440,
+          "paperLeft": 270,
+          "paperRight": 1170,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 1,
+            "source": 1,
+            "copy": 1,
+            "retry": 1
+          },
+          "paperBackground": "rgb(32, 33, 36)"
+        }
+      },
+      "mobile": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 287,
+          "y": 12.90625,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 2,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 2,
+          "slowHintAtMs": null,
+          "waitedMs": 2
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 375,
+          "paperLeft": 32,
+          "paperRight": 343,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 1,
+            "source": 1,
+            "copy": 1,
+            "retry": 1
+          },
+          "paperBackground": "rgb(255, 255, 255)"
+        }
+      },
+      "stepMs": 9037
+    },
+    "3b_page_ocr_scanned_cached": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=3a,4a,5"
+    },
+    "3c_page_ocr_scanned_uncached": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=3a,4a,5"
+    },
+    "4b_clip_scanned": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_STEPS=3a,4a,5"
+    }
+  },
+  "bugs": [],
+  "observations": [],
+  "onlySteps": [
+    "3a",
+    "4a",
+    "5"
+  ],
+  "baseline": {
+    "bookmarks": 9,
+    "ids": [
+      "2b012952-7b9e-4059-ab8b-68484bd3c32e",
+      "3aee82cc-fd85-46bb-9eb6-09c557bb48ca",
+      "80f31fcf-ae4c-4008-b5d9-e995a20ebda9",
+      "89850439-e959-49f4-b73e-18bd9888efc8",
+      "9f4ce90a-5605-4990-b401-0f712f6183bf",
+      "b2d0bd7a-94f3-441a-bcd2-3c856d9a4472",
+      "ee4de034-bb1d-4710-8b03-07547a135daf",
+      "f33598b8-55c9-4ec3-9913-408bd868a903",
+      "ff8a56b8-c16a-4eb2-873c-d86ffd31ca00"
+    ]
+  },
+  "verdict": "PASS",
+  "pageErrors": [],
+  "consoleErrors": [
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "clips: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "blockedWrites": [
+    "main PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "main PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "dark PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "mobile PUT /api/viewer-state/이북/Git for Teams.pdf"
+  ],
+  "allowedWrites": [
+    "main POST /api/folders/refresh @693",
+    "main POST /api/settings/translations @1132",
+    "main POST /api/ocr/page @5038",
+    "main POST /api/settings/translations @7044",
+    "main POST /api/bookmarks/이북/Git for Teams.pdf @8858",
+    "main POST /api/bookmarks/ca9c2e1a-633a-40c2-b7b9-0678ab54740b/ocr @14754",
+    "dark POST /api/folders/refresh @20552",
+    "dark POST /api/settings/translations @20596",
+    "dark POST /api/ocr/page @23881",
+    "mobile POST /api/folders/refresh @24479",
+    "mobile POST /api/settings/translations @24764",
+    "mobile POST /api/ocr/page @28640"
+  ],
+  "cleanup": {
+    "deleted": [
+      {
+        "id": "ca9c2e1a-633a-40c2-b7b9-0678ab54740b",
+        "status": 204
+      }
+    ],
+    "errors": [],
+    "startCount": 9,
+    "finalCount": 9,
+    "matchesBaseline": true
+  },
+  "durationMs": 29222
+}
