@@ -29,6 +29,8 @@ Use `/settings` for AI server configuration; the database is embedded in the ima
 
 Folder and tag pages have a list/cover toggle at the right of the toolbar. The cover view shows a card grid with each PDF's first page, title, tags, last-opened time, size, and the same actions as the list. Covers are JPEGs rendered by the server, not by the browser: an hourly background task renders the first page of every PDF that has no thumbnail for its current modification time and size, and stores it under `/app/data/thumbnails`. A card whose cover is not rendered yet shows "Preparing cover…"; opening the view moves the visible covers to the front of the queue. The chosen view is stored per browser in `localStorage` key `pdfit.library.view`.
 
+The image-search button under a cover ("Use a real book cover") replaces the rendered first page with the real book's cover. The dialog searches YES24 and Open Library for the filename without `.pdf`. The title can be edited and searched again. Candidates are ordered by title match. Clicking one downloads it and shows it on every card for that file. "Restore first page" brings back the rendered page. The chosen cover survives edits to the PDF and follows the file when it is moved; deleting the file deletes it. Another open tab picks up a changed cover when it becomes visible again.
+
 ## Background tasks
 
 The standalone server runs periodic jobs on one shared schedule and one pool of worker

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Real book covers** in the cover view: an image-search button under each local
+  cover finds the book on YES24 and Open Library and replaces the rendered first page
+  with the chosen cover; "Restore first page" undoes it. `GET/PUT/DELETE /api/covers`,
+  `GET /api/covers/candidates`, `GET /api/covers/preview`.
+
 ## [0.4.7] - 2026-11-12
 
 PDFit 0.4.7 moves the viewer core to `@pdfgpu/core` 0.1.10 (PDFium 2.15.1, PDFium

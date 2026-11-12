@@ -177,6 +177,34 @@ Mounted only when `backgroundTasks` is configured.
 `v` is the file's modification time in whole milliseconds and its size, both taken
 from the folder or tag listing. A hit by `v` does not touch the library volume.
 
+A real-book cover the user chose (below) replaces the rendered page in this response.
+The client then adds `c=<version>`: with `c` equal to the stored version the response
+is `immutable`, without it `no-cache`. The type follows the stored image
+(`image/jpeg`, `image/png` or `image/webp`).
+
+## Real-book cover endpoints (local runtime)
+
+Mounted with the thumbnail routes (`backgroundTasks`). Images are stored under
+`<thumbnailRoot>/covers` as `<sha1(folder NUL filename)>.<version>.<ext>` plus a
+`<hash>.json` record. They do not depend on the PDF's modification stamp. Deleting or
+moving the file through the folders API deletes or moves its cover.
+
+| Method and path | Body or query | Result |
+| --- | --- | --- |
+| `GET /api/covers` | | `{ overrides: [{ folder, filename, version, source, title }] }` |
+| `GET /api/covers/candidates` | `q` (1-200 chars) | `{ candidates: [{ source, title, authors?, imageUrl, pageUrl, score }], failedSources }`, best `scoreBookTitleMatch` first |
+| `GET /api/covers/preview` | `url` | The candidate image through the server |
+| `PUT /api/covers` | `{ folder, filename, imageUrl, source, title, pageUrl? }` | Downloads and applies; `{ folder, filename, version, source, title }`; emits `folders-changed` |
+| `DELETE /api/covers` | `folder`, `filename` | `{ removed }`; the rendered first page returns |
+
+Sources are the public YES24 book search (`image.yes24.com/goods/<id>/XL`) and Open
+Library `search.json` (`covers.openlibrary.org/b/id/<id>-L.jpg`). A source that fails
+is listed in `failedSources` and does not hide the other. Images are downloaded only
+over HTTPS from `image.yes24.com`, `covers.openlibrary.org`, `archive.org` and
+`*.us.archive.org`. Redirects are followed by hand and each hop is checked against the
+same list. The body must be a JPEG, PNG or WebP by its leading bytes, between 1 KB and
+8 MB. No AI model is involved: the user picks the candidate.
+
 `GET /api/tasks/status` returns the scheduler state: `intervalMs`, `concurrency`,
 `planCount`, `planning`, `nextPlanAt`, `pending`, `active`, one entry per task type
 (`planned`, `pending`, `running`, `completedSincePlan`, `failedSincePlan`,

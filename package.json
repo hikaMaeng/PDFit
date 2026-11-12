@@ -33,6 +33,7 @@
     "test:pdfgpu": "node scripts/sync-pdfgpu.mjs && node scripts/verify-release-contract.mjs && npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/pdfgpu-integration.test.mjs packages/pdfit/tests/spread-pairing.test.mjs",
     "test:tasks": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/background-tasks.test.mjs",
     "test:ai-tags": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/ai-tagging.test.mjs",
+    "test:covers": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/real-covers.test.mjs",
     "release:stage": "node scripts/release-stage.mjs"
   },
   "devDependencies": {

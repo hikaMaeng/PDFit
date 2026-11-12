@@ -265,6 +265,17 @@ const rows = {
   aiTagsAdded: ['Classification tag added: {tags}', '분류 태그를 추가했습니다: {tags}', '已添加 AI 标签：{tags}', 'Etiquetas de IA añadidas: {tags}', 'AI टैग जोड़े गए: {tags}', 'تمت إضافة وسوم الذكاء الاصطناعي: {tags}', 'Tags IA ajoutés : {tags}', 'Tags de IA adicionadas: {tags}'],
   aiTagsAlreadyApplied: ['No new tags were needed.', '추가할 새 태그가 없습니다.', '无需添加新标签。', 'No se necesitaban etiquetas nuevas.', 'किसी नए टैग की आवश्यकता नहीं थी।', 'لا توجد وسوم جديدة مطلوبة.', 'Aucun nouveau tag n’était nécessaire.', 'Nenhuma tag nova foi necessária.'],
   aiTaggingFailed: ['Automatic classification failed.', '자동 분류에 실패했습니다.', 'AI 自动标记失败。', 'Error en el etiquetado automático con IA.', 'AI ऑटो-टैग विफल रहा।', 'فشل الوسم التلقائي بالذكاء الاصطناعي.', 'Échec des tags automatiques par IA.', 'Falha nas tags automáticas por IA.'],
+  realCover: ['Use a real book cover', '실제 책 표지로 바꾸기', '使用真实书籍封面', 'Usar la portada real del libro', 'असली पुस्तक कवर लगाएँ', 'استخدام غلاف الكتاب الحقيقي', 'Utiliser la vraie couverture', 'Usar a capa real do livro'],
+  realCoverQuery: ['Book title', '책 제목', '书名', 'Título del libro', 'पुस्तक का शीर्षक', 'عنوان الكتاب', 'Titre du livre', 'Título do livro'],
+  realCoverSearch: ['Search covers', '표지 검색', '搜索封面', 'Buscar portadas', 'कवर खोजें', 'البحث عن الأغلفة', 'Rechercher des couvertures', 'Pesquisar capas'],
+  realCoverSearching: ['Searching covers…', '표지를 찾는 중…', '正在搜索封面…', 'Buscando portadas…', 'कवर खोजे जा रहे हैं…', 'جارٍ البحث عن الأغلفة…', 'Recherche des couvertures…', 'Pesquisando capas…'],
+  realCoverEmpty: ['No covers found. Try a different title.', '표지를 찾지 못했습니다. 제목을 바꿔 다시 검색하세요.', '未找到封面。请换个书名再试。', 'No se encontraron portadas. Prueba con otro título.', 'कोई कवर नहीं मिला। दूसरा शीर्षक आज़माएँ।', 'لم يتم العثور على أغلفة. جرّب عنوانًا آخر.', 'Aucune couverture trouvée. Essayez un autre titre.', 'Nenhuma capa encontrada. Tente outro título.'],
+  realCoverApply: ['Use cover: {title} ({source})', '이 표지 사용: {title} ({source})', '使用此封面：{title}（{source}）', 'Usar portada: {title} ({source})', 'यह कवर लगाएँ: {title} ({source})', 'استخدام الغلاف: {title} ({source})', 'Utiliser la couverture : {title} ({source})', 'Usar capa: {title} ({source})'],
+  realCoverApplying: ['Applying cover…', '표지를 적용하는 중…', '正在应用封面…', 'Aplicando portada…', 'कवर लगाया जा रहा है…', 'جارٍ تطبيق الغلاف…', 'Application de la couverture…', 'Aplicando capa…'],
+  realCoverRestore: ['Restore first page', '첫 페이지 표지로 되돌리기', '恢复为第一页', 'Restaurar primera página', 'पहला पृष्ठ वापस लाएँ', 'استعادة الصفحة الأولى', 'Rétablir la première page', 'Restaurar primeira página'],
+  realCoverMatch: ['Title match {score}%', '제목 일치 {score}%', '书名匹配 {score}%', 'Coincidencia {score}%', 'शीर्षक मिलान {score}%', 'تطابق العنوان {score}%', 'Correspondance {score} %', 'Correspondência {score}%'],
+  realCoverFailedSources: ['Could not reach: {sources}', '연결하지 못한 출처: {sources}', '无法连接：{sources}', 'No se pudo acceder a: {sources}', 'इन तक नहीं पहुँच सके: {sources}', 'تعذر الوصول إلى: {sources}', 'Inaccessible : {sources}', 'Não foi possível acessar: {sources}'],
+  realCoverError: ['Could not change the cover. {reason}', '표지를 바꾸지 못했습니다. {reason}', '无法更换封面。{reason}', 'No se pudo cambiar la portada. {reason}', 'कवर नहीं बदला जा सका। {reason}', 'تعذر تغيير الغلاف. {reason}', 'Impossible de changer la couverture. {reason}', 'Não foi possível alterar a capa. {reason}'],
 } as const;
 
 export type PdfitMessageKey = keyof typeof rows;

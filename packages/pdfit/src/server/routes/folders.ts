@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
 import type { FilesystemService } from '../services/types.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
+import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
 
 type ReqWithParams = { params: Record<string, string> };
 
@@ -67,6 +68,8 @@ export function createFoldersRouter(
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed') => void,
   thumbnails?: FolderThumbnailProvider,
+  /** Real-book covers chosen by the user; they replace the rendered first page. */
+  covers?: CoverOverrideStore,
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
@@ -216,10 +219,21 @@ export function createFoldersRouter(
   //   200 image/jpeg       the thumbnail (immutable when `v` matched, revalidated otherwise)
   //   202 {state:'queued'} not rendered yet; this request moved it to the front of the queue
   //   404 {state}          `failed` (rendering failed recently) or `missing` (no such PDF)
+  //   A real-book cover the user chose wins over the rendered page. With `c` equal to
+  //   its version the response is immutable; without it the client is revalidated.
   router.get('/:name/files/:filename/thumbnail', async (req: Request, res: Response) => {
     if (!thumbnails) { res.status(404).json({ error: 'Thumbnails are not enabled.' }); return; }
     const folder = decodeRouteParam(req.params.name);
     const filename = decodeRouteParam(req.params.filename);
+    const override = covers ? await covers.get(folder, filename).catch(() => null) : null;
+    if (override) {
+      res.setHeader('Cache-Control', req.query.c === override.version ? 'public, max-age=31536000, immutable' : 'no-cache');
+      res.type(override.type);
+      res.sendFile(override.path, (error) => {
+        if (error && !res.headersSent) res.status(404).json({ state: 'missing' });
+      });
+      return;
+    }
     const stamp = typeof req.query.v === 'string' && THUMBNAIL_STAMP_PATTERN.test(req.query.v) ? req.query.v : null;
     const send = (filePath: string, cacheControl: string) => {
       res.setHeader('Cache-Control', cacheControl);
@@ -271,6 +285,7 @@ export function createFoldersRouter(
       const filename = sanitizeName(decodeRouteParam(req.params.filename));
       filesystem.deleteFile(folder, filename);
       await metadataMutation?.purgeFile(folder, filename);
+      await covers?.remove(folder, filename).catch(() => false);
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       res.json({ ok: true });
@@ -293,6 +308,7 @@ export function createFoldersRouter(
 
     try {
       filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
+      await covers?.move({ folder: fromFolder, filename: sanitizeName(filename) }, { folder: toFolder, filename: sanitizeName(filename) }).catch(() => false);
       await refresh?.();
       await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
       notifyChange?.('folders-changed');

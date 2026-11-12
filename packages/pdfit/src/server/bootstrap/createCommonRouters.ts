@@ -21,6 +21,8 @@ import { createPdfitTaskScheduler, type PdfitTaskSchedulerOptions } from '../tas
 import type { TaskScheduler } from '../tasks/taskScheduler.js';
 import { createThumbnailStore } from '../thumbnails/thumbnailStore.js';
 import { createThumbnailService, THUMBNAIL_TASK_TYPE } from '../thumbnails/thumbnailTask.js';
+import { createCoverOverrideStore, type CoverOverrideStore } from '../covers/coverOverrideStore.js';
+import { createCoversRouter } from '../routes/covers.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -95,6 +97,8 @@ export function createPdfitCommonRouterAssembly(options: {
   // registering its definition here; thumbnails are the first.
   let tasks: TaskScheduler | undefined;
   let thumbnails: ReturnType<typeof createThumbnailService> | undefined;
+  // Real-book covers live beside the rendered thumbnails and exist wherever they do.
+  let covers: CoverOverrideStore | undefined;
   if (options.backgroundTasks) {
     const background = options.backgroundTasks;
     const scheduler = createPdfitTaskScheduler(background);
@@ -106,6 +110,7 @@ export function createPdfitCommonRouterAssembly(options: {
       log: (message) => console.log(`[tasks] ${message}`),
     });
     scheduler.register(thumbnails.definition);
+    covers = createCoverOverrideStore(path.join(background.thumbnailRoot, 'covers'));
     if (background.autoStart ?? true) scheduler.start();
     tasks = scheduler;
   }
@@ -125,7 +130,9 @@ export function createPdfitCommonRouterAssembly(options: {
         options.maxUploadBytes,
         (event) => watcher.bus.emit('change', event),
         thumbnailService,
+        covers,
       ) },
+      ...(covers ? [{ path: '/api/covers', router: createCoversRouter({ filesystem, store: covers, notifyChange: (event) => watcher.bus.emit('change', event) }) }] : []),
       ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, () => ({ thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null } })) }] : []),
       ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
