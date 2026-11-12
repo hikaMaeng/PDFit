@@ -136,6 +136,7 @@ const rows = {
   continuousScroll: ['Continuous scroll', '연속 스크롤', '连续滚动', 'Desplazamiento continuo', 'लगातार स्क्रॉल', 'تمرير مستمر', 'Défilement continu', 'Rolagem contínua'],
   singlePage: ['Single-page view', '한 페이지 보기', '单页视图', 'Vista de una página', 'एक पेज दृश्य', 'عرض صفحة واحدة', 'Vue page unique', 'Visualização de uma página'],
   doublePage: ['Two-page view', '두 페이지 보기', '双页视图', 'Vista de dos páginas', 'दो पेज दृश्य', 'عرض صفحتين', 'Vue deux pages', 'Visualização de duas páginas'],
+  coverAlone: ['Show cover page alone', '표지 따로 보기', '封面单独显示', 'Mostrar la portada sola', 'कवर पेज अलग दिखाएँ', 'عرض صفحة الغلاف منفردة', 'Afficher la couverture seule', 'Mostrar a capa sozinha'],
   pdfLoading: ['Loading PDF...', 'PDF 로딩 중...', '正在加载 PDF…', 'Cargando PDF...', 'PDF लोड हो रहा है...', 'جارٍ تحميل PDF...', 'Chargement du PDF...', 'Carregando PDF...'],
   bookBookmarks: ['Book bookmarks', '클립', '书籍书签', 'Marcadores del libro', 'पुस्तक बुकमार्क', 'إشارات الكتاب', 'Signets du livre', 'Marcadores do livro'],
   dragToCapture: ['Drag on a page to capture.', '페이지에서 드래그하여 캡처하세요.', '在页面上拖动以截图。', 'Arrastra sobre una página para capturar.', 'कैप्चर करने के लिए पेज पर खींचें।', 'اسحب على الصفحة لالتقاطها.', 'Faites glisser sur une page pour capturer.', 'Arraste sobre uma página para capturar.'],

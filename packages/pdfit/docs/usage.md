@@ -58,6 +58,12 @@ and zoom controls. Enter a number in the zoom percentage field to apply an exact
 scale. Fit actions are momentary commands rather than on/off states. The left
 annotation rail labels its cursor tool **선택·이동**.
 
+In the PDF.js viewer's two-page layout, the **표지 따로 보기** toggle next to the
+layout buttons switches the pairing at any time: off shows (1,2), (3,4), ...; on
+shows the cover alone, then (2,3), (4,5), ... The current page stays in view and the
+choice is remembered in this browser. The GPU viewer (`?engine=gpu`) always shows the
+cover alone.
+
 태블릿에서 연속 스크롤을 끈 경우, 문서를 왼쪽 또는 위로 밀면 다음
 페이지(두 페이지 보기에서는 다음 묶음), 오른쪽 또는 아래로 밀면 이전 페이지로 이동합니다.
 확대해서 페이지 내부가 스크롤되는 경우에는 밀어서 문서 내부를 먼저 이동하고,

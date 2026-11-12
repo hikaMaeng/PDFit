@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: the turned page must not snap back to the saved page
+
+'1' !== '2'
+
+    at file:///F:/dev/pdfit/apps/pdfit/tests/viewer-double-fit-height-browser.mjs:109:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '1',
+  expected: '2',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v26.4.0

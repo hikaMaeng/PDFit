@@ -11,6 +11,9 @@ const touchSwipe = process.argv.includes('--touch-swipe');
 const horizontalSwipe = process.argv.includes('--horizontal-swipe');
 const naturalSwipe = process.argv.includes('--natural-swipe') || horizontalSwipe;
 const initialDouble = tabletInitialDouble || desktopInitialDouble;
+// Next two-page row after page 1: PDF.js pairs (1,2),(3,4) by default; @pdfgpu/core lays out
+// the cover alone, (1),(2,3), so its next row starts at page 2.
+const nextSpreadPage = engine === 'gpu' ? '2' : '3';
 const savedState = naturalSwipe ? { page: 1, scale: 0.56, fitMode: 'none', viewMode: 'double', inverted: false, uiHidden: false, scrollTop: 0 }
   : initialDouble ? { page: 1, scale: 1, fitMode: 'none', viewMode: 'double', inverted: false, uiHidden: false, scrollTop: 0 } : null;
 
@@ -34,7 +37,7 @@ function createPdf() {
 }
 
 const pdfBytes = createPdf();
-const browser = await chromium.launch({ headless: true, args: engine === 'gpu' ? ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] : [] });
+const browser = await chromium.launch({ headless: true, ...(process.env.PDFIT_TEST_CHANNEL ? { channel: process.env.PDFIT_TEST_CHANNEL } : {}), args: engine === 'gpu' ? ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] : [] });
 const context = await browser.newContext({ locale: 'ko-KR', viewport: largeTablet ? { width: 1024, height: 1366 } : tabletInitialDouble || touchSwipe || naturalSwipe ? { width: 768, height: 1024 } : { width: 1280, height: 800 }, hasTouch: tabletInitialDouble || touchSwipe || naturalSwipe });
 const page = await context.newPage();
 const fulfillJson = (route, value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
@@ -98,7 +101,12 @@ try {
     } else {
       await swipe(x, bounds.y + bounds.height * 0.75, x, bounds.y + bounds.height * 0.35);
     }
-    await waitForZoom(pageNumber, (value) => value === '3');
+    await waitForZoom(pageNumber, (value) => value === nextSpreadPage);
+    // A page turned while previews are still loading must stay turned once loading finishes
+    // (the GPU viewer used to re-apply the saved page 1 on 'ready').
+    await page.getByRole('progressbar').waitFor({ state: 'detached', timeout: 30_000 }).catch(() => undefined);
+    await page.waitForTimeout(1500);
+    assert.equal(await pageNumber.inputValue(), nextSpreadPage, 'the turned page must not snap back to the saved page');
     if (horizontalSwipe) {
       await swipe(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.5, bounds.x + bounds.width * 0.75, bounds.y + bounds.height * 0.5);
       await waitForZoom(pageNumber, (value) => value === '1');
@@ -146,7 +154,7 @@ try {
     await page.getByRole('button', { name: '두 페이지 보기' }).click();
     await page.getByRole('button', { name: '세로 높이 맞춤' }).click();
     await swipe(fromY, toY);
-    await waitForZoom(pageNumber, (value) => value === '3');
+    await waitForZoom(pageNumber, (value) => value === nextSpreadPage);
     await continuousButton.click();
     assert.equal(await surface.evaluate((element) => getComputedStyle(element).touchAction), 'auto', 'continuous scrolling should keep native touch panning');
     console.log(JSON.stringify({ engine, touchSwipe, singleForwardAndBack: true, spreadPageAfterForward: await pageNumber.inputValue() }));

@@ -1,10 +1,10 @@
 {
   "packageName": "@pdfgpu/core",
-  "packageVersion": "0.1.9-pdfit.1",
+  "packageVersion": "0.1.10",
   "sourceRepo": "sibling:pdfgpu",
-  "sourceCommit": "249af2298cde015b42383494266943135990558c",
+  "sourceCommit": "c72558d560fc2fa4187af43b45862e3e10b3427c",
   "sourceDirty": false,
-  "sourceSpec": "file:vendor/pdfgpu-core-0.1.9-pdfit.1.tgz",
-  "tarball": "pdfgpu-core-0.1.9-pdfit.1.tgz",
-  "tarballSha256": "adc0a0b255d293becd39e1fad281da9ec338e75ee3080f5dd6d82e4ef200dc4b"
+  "sourceSpec": "file:vendor/pdfgpu-core-0.1.10.tgz",
+  "tarball": "pdfgpu-core-0.1.10.tgz",
+  "tarballSha256": "e4fd735f6b3dbfc386940c4febf7a1c0c4f74a018886e99f0577e889e941886b"
 }

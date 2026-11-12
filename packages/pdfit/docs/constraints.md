@@ -35,7 +35,7 @@
   source tree during the build and must
   not copy or alias `pdfgpu/src` into `packages/pdfit/src`.
 * The PDFium WASM asset is supplied by the pdfgpu package's pinned
-  `@embedpdf/pdfium@2.14.0` dependency; the viewer must not depend on a runtime
+  `@embedpdf/pdfium` dependency (`2.15.1` since `@pdfgpu/core@0.1.10`); the viewer must not depend on a runtime
   CDN fetch.
 * The source commit and tarball SHA-256 in `packages/pdfit/vendor/pdfgpu-build.json`
   must match the installed `@pdfgpu/core` version before build or release.
@@ -72,5 +72,24 @@ pinned PDFGPU package, source commit, and artifact digest.
   the updated `v0.4.4` contract.
 * Release `0.4.6` adds `release-contracts/pdfit/v0.4.6.json`; it keeps the same
   `@pdfgpu/core@0.1.9-pdfit.1` package, source commit, and artifact digest.
+* Release `0.4.7` adds `release-contracts/pdfit/v0.4.7.json`; it pins the upstream
+  `@pdfgpu/core@0.1.10` (tag `v0.1.10`, source commit
+  `c72558d560fc2fa4187af43b45862e3e10b3427c`, tarball SHA-256
+  `e4fd735f6b3dbfc386940c4febf7a1c0c4f74a018886e99f0577e889e941886b`) and drops the
+  local `0.1.9-pdfit.1` colour patch, because 0.1.10 fixes the same red/blue swap
+  upstream (`FPDF_REVERSE_BYTE_ORDER` kept, conversion only fills alpha).
+* Consumer: `PdfGpuViewer` window key listener. Invariant: since `@pdfgpu/core@0.1.10`
+  the core binds the paging keys on its focused viewport and calls `preventDefault`
+  when it navigates; PDFit's window listener ignores events that are already
+  `defaultPrevented` (and modifier/editable-target keys), so one key press moves one
+  page or row.
+* Consumer: PDF.js (`PdfViewer`) two-page layout. Invariant: spread pairing is a reader
+  choice (`front/viewer/spreadPairing.ts`): `paired` (1,2),(3,4)... (default, the
+  pre-0.4.7 behaviour) or `alone` (1),(2,3),(4,5)... It is stored per browser in
+  `localStorage` key `pdfit.viewer.spreadCover`. `@pdfgpu/core`'s `normalizeViewerPage`
+  is cover-alone only since 0.1.10, so the PDF.js viewer must not use it to choose
+  spread rows; in double mode it uses only the direction of the shared reducer's
+  key/wheel navigation. The GPU viewer stays cover-alone until `@pdfgpu/core` offers a
+  pairing option.
 * AI automatic tagging sends only the title derived from the filename, the fixed bookstore taxonomy, and existing tag names. Model output is untrusted and restricted to one to three shared taxonomy values. Titles, authors, proper nouns, and arbitrary title tokens must never become generated categories.
 * Folder-wide automatic tagging classifies at most three books concurrently, then persists successful relations in one storage batch. It reports classifier failures without discarding successful results. Empty remote-AI configuration falls back to the deterministic shared title classifier; partially configured remote credentials fail at startup.

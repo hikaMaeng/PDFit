@@ -1,6 +1,6 @@
 {
   "name": "@pdfit/pdfit",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "private": true,
   "type": "module",
   "exports": {
@@ -57,7 +57,7 @@
     "@mui/icons-material": "5.16.0",
     "@mui/material": "5.16.0",
     "@napi-rs/canvas": "1.0.6",
-    "@pdfgpu/core": "file:vendor/pdfgpu-core-0.1.9-pdfit.1.tgz",
+    "@pdfgpu/core": "file:vendor/pdfgpu-core-0.1.10.tgz",
     "cors": "2.8.5",
     "express": "4.22.2",
     "multer": "2.2.0",

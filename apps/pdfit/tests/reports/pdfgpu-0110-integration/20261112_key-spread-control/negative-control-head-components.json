@@ -1,0 +1,26 @@
+{
+  "legacyDoublePageDownRows": [
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      4,
+      5
+    ],
+    [
+      6,
+      7
+    ]
+  ],
+  "gpuFocusedPageDown": {
+    "before": 1,
+    "after": 3,
+    "focused": "pdfgpu-scroll-area"
+  },
+  "blockedWrites": 7
+}

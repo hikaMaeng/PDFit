@@ -1,0 +1,22 @@
+{
+  "engine": "gpu",
+  "pageHeight": 792,
+  "widthFitZoom": 74,
+  "fittedZoom": 68,
+  "viewport": {
+    "width": 1216,
+    "height": 714
+  },
+  "scrollWidth": 1216,
+  "scrollHeight": 1439,
+  "pages": [
+    {
+      "width": 552,
+      "height": 714
+    },
+    {
+      "width": 552,
+      "height": 714
+    }
+  ]
+}

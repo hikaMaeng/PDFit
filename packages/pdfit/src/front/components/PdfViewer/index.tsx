@@ -11,6 +11,7 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import ViewStreamIcon from '@mui/icons-material/ViewStream';
 import CropPortraitIcon from '@mui/icons-material/CropPortrait';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
@@ -24,6 +25,15 @@ import {
   reduceViewerInteraction,
 } from '@pdfgpu/core';
 import type { PdfJsModule } from '../../pdfjs.js';
+import {
+  lastSpreadLead,
+  readSpreadCoverPreference,
+  spreadLeadPage,
+  spreadRowPages,
+  stepSpreadRow,
+  writeSpreadCoverPreference,
+  type SpreadCover,
+} from '../../viewer/spreadPairing.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
 import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
@@ -143,6 +153,8 @@ export default function PdfViewer({
   const [fitMode, setFitMode] = useState<FitMode>(initialFitMode ?? 'none');
   const [pageLayout, setPageLayout] = useState<PageLayout>(initialViewMode === 'double' ? 'double' : 'single');
   const [continuousScroll, setContinuousScroll] = useState(initialViewMode === 'scroll');
+  // Spread pairing is a reader choice, not a fixed rule: (1,2),(3,4) or cover alone (1),(2,3).
+  const [spreadCover, setSpreadCover] = useState<SpreadCover>(() => readSpreadCoverPreference());
   const viewMode: ViewMode = continuousScroll ? 'scroll' : pageLayout;
   const [localInverted, setLocalInverted] = useState(initialInverted ?? false);
   const inverted = controlledInverted ?? localInverted;
@@ -168,20 +180,22 @@ export default function PdfViewer({
   const annotationPageIndices = useMemo(() => {
     if (continuousScroll) return pages.map((_, pageIndex) => pageIndex);
     if (pageLayout === 'single') return [Math.max(0, currentPage - 1)];
-    if (pageLayout === 'double') return [Math.max(0, currentPage - 1), currentPage].filter((pageIndex) => pageIndex < totalPages);
+    if (pageLayout === 'double') return spreadRowPages(currentPage, totalPages, spreadCover).map((page) => page - 1);
     return pages.map((_, pageIndex) => pageIndex);
-  }, [continuousScroll, currentPage, pageLayout, pages, totalPages]);
+  }, [continuousScroll, currentPage, pageLayout, pages, spreadCover, totalPages]);
 
   // 최신 상태를 이벤트 핸들러 내부에서 참조하기 위한 refs
   const currentPageRef = useRef(currentPage);
   const totalPagesRef = useRef(totalPages);
   const viewModeRef = useRef(viewMode);
   const pageLayoutRef = useRef(pageLayout);
+  const spreadCoverRef = useRef(spreadCover);
   const interactionRef = useRef(createViewerInteractionState({ mode: viewMode }));
   useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
   useEffect(() => { pageLayoutRef.current = pageLayout; }, [pageLayout]);
+  useEffect(() => { spreadCoverRef.current = spreadCover; }, [spreadCover]);
   useEffect(() => { setZoomInput(String(Math.round(scale * 100))); }, [scale]);
   useEffect(() => {
     interactionRef.current = reduceViewerInteraction(interactionRef.current, {
@@ -367,7 +381,8 @@ export default function PdfViewer({
     const m = mode ?? viewModeRef.current;
     const total = totalPagesRef.current;
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: m }).state;
-    const target = normalizeViewerPage(n, total, m);
+    // Spread rows follow the reader's pairing; @pdfgpu/core's rule is cover-alone only.
+    const target = m === 'double' ? spreadLeadPage(n, total, spreadCoverRef.current) : normalizeViewerPage(n, total, m);
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setPage', page: target }).state;
     currentPageRef.current = target;
     setCurrentPage(target);
@@ -379,12 +394,25 @@ export default function PdfViewer({
 
   const prevPage = useCallback(() => {
     const m = viewModeRef.current;
-    goToPage(m === 'double' ? currentPageRef.current - 2 : currentPageRef.current - 1);
+    goToPage(m === 'double' ? stepSpreadRow(currentPageRef.current, totalPagesRef.current, spreadCoverRef.current, -1) : currentPageRef.current - 1);
   }, [goToPage]);
 
   const nextPage = useCallback(() => {
     const m = viewModeRef.current;
-    goToPage(m === 'double' ? currentPageRef.current + 2 : currentPageRef.current + 1);
+    goToPage(m === 'double' ? stepSpreadRow(currentPageRef.current, totalPagesRef.current, spreadCoverRef.current, 1) : currentPageRef.current + 1);
+  }, [goToPage]);
+  // The shared reducer computes double-page targets with its cover-alone rule. In double
+  // mode only its direction is used; the row itself comes from the reader's pairing.
+  const navigateFromInteraction = useCallback((before: number, target: number) => {
+    if (viewModeRef.current !== 'double') { goToPage(target); return; }
+    if (target > before) nextPage();
+    else if (target < before) prevPage();
+  }, [goToPage, nextPage, prevPage]);
+  const selectSpreadCover = useCallback((next: SpreadCover) => {
+    spreadCoverRef.current = next;
+    setSpreadCover(next);
+    writeSpreadCoverPreference(next);
+    if (viewModeRef.current === 'double') goToPage(currentPageRef.current);
   }, [goToPage]);
   const pageSwipe = usePageSwipe(containerRef, viewMode !== 'scroll' && (annotation.tool === 'select' || annotation.tool === 'bookmark'), prevPage, nextPage, fitMode === 'height');
 
@@ -547,10 +575,7 @@ export default function PdfViewer({
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: interactionMode }).state;
     setPageLayout(next);
     if (next === 'double') {
-      const odd = currentPageRef.current % 2 === 0
-        ? currentPageRef.current - 1
-        : currentPageRef.current;
-      goToPage(odd, interactionMode);
+      goToPage(currentPageRef.current, interactionMode);
       setFitMode('width');
       setTimeout(() => setScale(calcScale('width', next)), 0);
       return;
@@ -669,15 +694,16 @@ export default function PdfViewer({
         key: e.key,
         editableTarget: false,
       });
+      const before = interactionRef.current.page;
       interactionRef.current = transition.state;
       if (transition.preventDefault) e.preventDefault();
       for (const effect of transition.effects) {
-        if (effect.type === 'navigate') goToPage(effect.page);
+        if (effect.type === 'navigate') navigateFromInteraction(before, effect.page);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goToPage]);
+  }, [navigateFromInteraction]);
 
   // ── 마우스 휠: 교체되는 viewport와 상위 overlay를 함께 처리한다 ──
   const handleViewerWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -686,25 +712,27 @@ export default function PdfViewer({
       deltaY: event.deltaY,
       ctrlKey: event.ctrlKey,
     });
+    const before = interactionRef.current.page;
     interactionRef.current = transition.state;
     if (transition.preventDefault) event.preventDefault();
     for (const effect of transition.effects) {
-      if (effect.type === 'navigate') goToPage(effect.page);
+      if (effect.type === 'navigate') navigateFromInteraction(before, effect.page);
       if (effect.type === 'zoom') {
         if (effect.direction === 'in') zoomIn();
         else zoomOut();
       }
     }
     if (interactionRef.current.mode === 'scroll' && !event.ctrlKey && annotation.tool === 'select') pan.wheel(event);
-  }, [annotation.tool, goToPage, pan.wheel, zoomIn, zoomOut]);
+  }, [annotation.tool, navigateFromInteraction, pan.wheel, zoomIn, zoomOut]);
 
   // ── 공통 props ────────────────────────────────────────────────
   const basePageProps = { scale, inverted, eager: true as const, noMargin: true as const };
 
   const isPrevDisabled = currentPage <= 1;
   const isNextDisabled = viewMode === 'double'
-    ? currentPage + 1 >= totalPages
+    ? currentPage >= lastSpreadLead(totalPages, spreadCover)
     : currentPage >= totalPages;
+  const showSpreadRightPage = spreadRowPages(currentPage, totalPages, spreadCover).length === 2;
 
   // 플레이스홀더 크기 (scale 적용)
   const bv = baseVpRef.current;
@@ -753,6 +781,17 @@ export default function PdfViewer({
               <Tooltip title={t('doublePage')} arrow enterDelay={0} enterNextDelay={0}><MenuBookIcon fontSize="small" /></Tooltip>
             </ToggleButton>
           </ToggleButtonGroup>
+          {pageLayout === 'double' && !continuousScroll && (
+            <Tooltip title={t('coverAlone')} arrow enterDelay={0} enterNextDelay={0}>
+              <ToggleButton
+                value="cover-alone" selected={spreadCover === 'alone'} aria-label={t('coverAlone')} aria-pressed={spreadCover === 'alone'}
+                data-testid="spread-cover-alone" onClick={() => selectSpreadCover(spreadCover === 'alone' ? 'paired' : 'alone')}
+                sx={{ py: 0.25, px: 0.75, border: 'none' }}
+              >
+                <AutoStoriesIcon fontSize="small" />
+              </ToggleButton>
+            </Tooltip>
+          )}
 
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
@@ -811,7 +850,7 @@ export default function PdfViewer({
           <Box sx={{ flex: 1 }} />
 
           <Tooltip title={`${t('previousPage')} (←/PageUp)`} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" onClick={prevPage} disabled={isPrevDisabled}><NavigateBeforeIcon fontSize="small" /></IconButton></span>
+            <span><IconButton size="small" aria-label={t('previousPage')} onClick={prevPage} disabled={isPrevDisabled}><NavigateBeforeIcon fontSize="small" /></IconButton></span>
           </Tooltip>
           <Box data-testid="viewer-page-indicator" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <TextField
@@ -826,7 +865,7 @@ export default function PdfViewer({
             <Typography variant="caption" color="text.secondary">/ {totalPages}</Typography>
           </Box>
           <Tooltip title={`${t('nextPage')} (→/PageDown)`} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" onClick={nextPage} disabled={isNextDisabled}><NavigateNextIcon fontSize="small" /></IconButton></span>
+            <span><IconButton size="small" aria-label={t('nextPage')} onClick={nextPage} disabled={isNextDisabled}><NavigateNextIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         </Box>
       )}
@@ -949,7 +988,7 @@ export default function PdfViewer({
             </Box>
           )}
           {/* 우측 페이지 */}
-          {currentPage < totalPages && (
+          {showSpreadRightPage && (
             pages[currentPage] ? (
               <Box ref={(element) => { pageRefs.current[currentPage] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={currentPage}>
                 <PdfPage

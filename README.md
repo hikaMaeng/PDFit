@@ -44,7 +44,7 @@ Requirements: Node.js 20 or newer with npm, and Docker Desktop (or Docker Engine
 Install the released launcher directly from the GitHub repository with npm:
 
 ```bash
-npm install https://github.com/hikaMaeng/PDFit.git#v0.4.6
+npm install https://github.com/hikaMaeng/PDFit.git#v0.4.7
 ```
 
 After installation, run the launcher with `npx`:
@@ -74,14 +74,14 @@ To see all launcher options, run:
 npx pdfit --help
 ```
 
-To use a different release, replace `v0.4.6` in the install command with the desired Git tag.
+To use a different release, replace `v0.4.7` in the install command with the desired Git tag.
 
 ### Install from a source checkout
 
 For development or local source changes, clone the repository and install its npm workspace dependencies:
 
 ```bash
-git clone --branch v0.4.6 https://github.com/hikaMaeng/PDFit.git
+git clone --branch v0.4.7 https://github.com/hikaMaeng/PDFit.git
 cd PDFit
 npm install
 npm run deploy:standalone

@@ -230,9 +230,14 @@ export default function PdfGpuViewer({
   }, [inverted, state.pageCount, state.renderQuality]);
 
   useEffect(() => {
+    // @pdfgpu/core >= 0.1.10 binds the same paging keys on its focused viewport and calls
+    // preventDefault when it navigates. This window listener covers focus outside the
+    // viewport only; handling an already-consumed event would page twice.
     const handleKey = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement | null)?.tagName;
-      if (!controller || !state.pageCount || tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const editable = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (!controller || !state.pageCount || editable) return;
       const transition = reduceViewerInteraction(
         createViewerInteractionState({
           page: currentPage,
@@ -250,11 +255,25 @@ export default function PdfGpuViewer({
     return () => window.removeEventListener('keydown', handleKey);
   }, [controller, currentPage, goToPage, state.pageCount, state.scrollMode, state.viewMode]);
 
+  // The saved page is applied when loading reaches 'ready'. Navigation already works while
+  // previews are still rendering (and @pdfgpu/core 0.1.10 reaches 'ready' later), so a page
+  // turn made before 'ready' must win: re-applying the saved page then yanked the reader back.
+  // Key: the controller instance (one per opened document); set when the active page leaves
+  // page 1 before the first apply; cleared when the controller changes.
+  const movedBeforeInitialViewRef = useRef<PdfGpuViewerController | null>(null);
+  useEffect(() => {
+    if (!controller || state.loadPhase === 'ready') return;
+    if (initialViewAppliedRef.current?.controller === controller) return;
+    if ((state.activePage ?? 1) !== 1) movedBeforeInitialViewRef.current = controller;
+  }, [controller, state.activePage, state.loadPhase]);
+
   useEffect(() => {
     if (!controller || state.loadPhase !== 'ready') return;
     const applied = initialViewAppliedRef.current;
     if (applied?.controller === controller && applied.page === initialPage && applied.scrollTop === initialScrollTop) return;
+    const firstApply = applied?.controller !== controller;
     initialViewAppliedRef.current = { controller, page: initialPage, scrollTop: initialScrollTop };
+    if (firstApply && movedBeforeInitialViewRef.current === controller) return;
     if (initialPage != null) goToPage(initialPage);
     if (initialScrollTop && initialScrollTop > 0 && viewportRef.current) {
       viewportRef.current.scrollTop = initialScrollTop;

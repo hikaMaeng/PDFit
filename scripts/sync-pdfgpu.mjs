@@ -8,7 +8,7 @@ const sourceRoot = resolve(process.env.PDFGPU_SOURCE_DIR ?? join(repoRoot, '..',
 const packageDir = join(sourceRoot, 'packages', 'pdfgpu');
 const targetDir = join(repoRoot, 'packages', 'pdfit', 'vendor');
 const manifestPath = join(targetDir, 'pdfgpu-build.json');
-const expectedVersion = process.env.PDFGPU_VERSION ?? '0.1.9-pdfit.1';
+const expectedVersion = process.env.PDFGPU_VERSION ?? '0.1.10';
 const sourceSpec = `file:vendor/pdfgpu-core-${expectedVersion}.tgz`;
 const releaseTarball = `pdfgpu-core-${expectedVersion}.tgz`;
 // Release verification consumes the committed byte-for-byte artifact. Explicitly opt in

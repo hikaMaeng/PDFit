@@ -1,6 +1,6 @@
 {
   "name": "pdfit-workspace",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "private": true,
   "bin": {
     "pdfit": "bin/pdfit.mjs"
@@ -30,7 +30,7 @@
     "test:background-sync": "npm run test:background-sync --workspace=service",
     "test:optimistic-library": "npm run test:optimistic-library --workspace=service",
     "test:optimistic-upload": "npm run test:optimistic-upload --workspace=service",
-    "test:pdfgpu": "node scripts/sync-pdfgpu.mjs && node scripts/verify-release-contract.mjs && npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/pdfgpu-integration.test.mjs",
+    "test:pdfgpu": "node scripts/sync-pdfgpu.mjs && node scripts/verify-release-contract.mjs && npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/pdfgpu-integration.test.mjs packages/pdfit/tests/spread-pairing.test.mjs",
     "test:tasks": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/background-tasks.test.mjs",
     "test:ai-tags": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/ai-tagging.test.mjs",
     "release:stage": "node scripts/release-stage.mjs"

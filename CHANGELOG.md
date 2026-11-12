@@ -2,7 +2,40 @@
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-11-12
+
+PDFit 0.4.7 moves the viewer core to `@pdfgpu/core` 0.1.10 (PDFium 2.15.1, PDFium
+rasterized in a pool of Web Workers, GPU device-loss recovery, visible-page and
+spread-landing fixes, keyboard paging bound by the core) and lets the reader choose
+the two-page pairing in the PDF.js viewer.
+
+### Added
+
+- **표지 따로 보기** in the PDF.js viewer's two-page layout: the reader switches at any
+  time between (1,2), (3,4), ... (default, as before) and the cover alone followed by
+  (2,3), (4,5), ... The current page stays in view and the choice is remembered in the
+  browser (`localStorage` key `pdfit.viewer.spreadCover`). The GPU viewer keeps the
+  core's cover-alone layout.
+
+### Changed
+
+- `@pdfgpu/core` is pinned to the upstream `0.1.10` release (tag `v0.1.10`, commit
+  `c72558d`) through `release-contracts/pdfit/v0.4.7.json`. The local
+  `0.1.9-pdfit.1` colour patch is gone: 0.1.10 fixes the same red/blue swap upstream.
+- The PDF.js viewer's previous/next buttons carry accessible names.
+
 ### Fixed
+
+- PDF.js two-page view with 0.1.10: page moves were normalized by the core's
+  cover-alone rule while the view drew (1,2) pairs, so (1,2) was followed by (2,3).
+  Rows now come from the reader's pairing.
+- GPU viewer: with the viewport focused, one PageDown moved two pages, because the core
+  now handles paging keys itself and PDFit's window listener handled the same event
+  again. PDFit skips events the core already consumed.
+- GPU viewer: a page turned while previews were still loading snapped back to the saved
+  page when loading finished. A turn made before the saved page is applied now wins.
+- Display-name translation waits up to 300 s for a reply instead of aborting after 20 s,
+  so a local reasoning model can answer.
 
 - The cover card's info overlay always showed "Last page: —". It read the `reading_progress`
   record, which the viewer never writes, instead of the page the viewer saves in its viewer

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   createViewerInteractionState,
   normalizeDetailDpi,
@@ -18,11 +18,27 @@ describe('PDFit pdfgpu artifact integration', () => {
     assert.deepEqual(viewerModeParts('double'), { scrollMode: 'page', viewMode: 'spread' });
   });
 
-  it('keeps PDFium in native BGRA order before the single RGBA conversion', () => {
+  it('converts PDFium pixels to ImageData without swapping red and blue', async () => {
+    // 0.1.9 rendered with FPDF_REVERSE_BYTE_ORDER (R,G,B,x) and then swapped bytes 0 and 2,
+    // so red showed as blue. PDFit carried a local 0.1.9-pdfit.1 patch for that; 0.1.10
+    // fixes it upstream by keeping the flag and only filling alpha.
     const entry = fileURLToPath(import.meta.resolve('@pdfgpu/core'));
-    const engine = readFileSync(join(dirname(entry), 'engine', 'pdfiumEngine.js'), 'utf8');
-    assert.match(engine, /const RENDER_FLAGS = 0;/);
-    assert.doesNotMatch(engine, /const RENDER_FLAGS = 16;/);
+    const engineDir = join(dirname(entry), 'engine');
+    const core = readFileSync(join(engineDir, 'pdfiumCore.js'), 'utf8');
+    assert.match(core, /const RENDER_FLAGS = FPDF_REVERSE_BYTE_ORDER;/);
+    const { FPDF_REVERSE_BYTE_ORDER, pdfiumRgbxToRgba } = await import(pathToFileURL(join(engineDir, 'pixels.js')).href);
+    assert.equal(FPDF_REVERSE_BYTE_ORDER, 0x10);
+    // red, green, blue pixels as PDFium writes them with the flag (x = unspecified byte)
+    const rgbx = new Uint8ClampedArray([255, 0, 0, 7, 0, 255, 0, 0, 0, 0, 255, 99]);
+    assert.deepEqual([...pdfiumRgbxToRgba(rgbx)], [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255]);
+  });
+
+  it('ships the PDFium worker next to the engine that loads it', () => {
+    const entry = fileURLToPath(import.meta.resolve('@pdfgpu/core'));
+    const engineDir = join(dirname(entry), 'engine');
+    const engine = readFileSync(join(engineDir, 'pdfiumEngine.js'), 'utf8');
+    assert.match(engine, /new Worker\(new URL\('\.\/pdfiumWorkerMain\.js', import\.meta\.url\)/);
+    assert.ok(existsSync(join(engineDir, 'pdfiumWorkerMain.js')));
   });
 
   it('keeps interaction behavior framework-independent at the app boundary', () => {
