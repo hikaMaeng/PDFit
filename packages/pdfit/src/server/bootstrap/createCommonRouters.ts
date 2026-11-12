@@ -23,6 +23,12 @@ import { createThumbnailStore } from '../thumbnails/thumbnailStore.js';
 import { createThumbnailService, THUMBNAIL_TASK_TYPE } from '../thumbnails/thumbnailTask.js';
 import { createCoverOverrideStore, type CoverOverrideStore } from '../covers/coverOverrideStore.js';
 import { createCoversRouter } from '../routes/covers.js';
+import fs from 'node:fs';
+import { createOcrService, PAGE_TEXT_TASK_TYPE, type OcrService } from '../ocr/ocrService.js';
+import { createOcrRouter } from '../routes/ocr.js';
+import type { VisionOcrServer } from '../ocr/visionOcr.js';
+import { thumbnailSourceStamp } from '../thumbnails/thumbnailStore.js';
+import type { BookmarkOcrQueue } from '../api/bookmarks/index.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -47,6 +53,13 @@ export interface PdfitBackgroundTaskOptions extends PdfitTaskSchedulerOptions {
   thumbnailRoot: string;
   /** Set false to build the scheduler without starting its timers. */
   autoStart?: boolean;
+  /** Cached page OCR results. Default: `ocr` beside `thumbnailRoot`. */
+  ocrCacheRoot?: string;
+  /**
+   * Vision model for clips and pages without a PDF text layer, resolved on every use.
+   * Without it, such areas are marked `unavailable`; text-layer OCR still runs.
+   */
+  resolveVisionServer?: () => Promise<VisionOcrServer | null>;
 }
 
 /** Builds the canonical PDFit metadata, bookmark, viewer-state, and event routes. */
@@ -55,6 +68,7 @@ export function createPdfitMetadataRouterMounts(
   eventBus: EventEmitter,
   suggestBookTags?: BookTagSuggestionProvider,
   automaticTagUsage?: AutomaticTagUsage,
+  bookmarkOcr?: BookmarkOcrQueue,
 ): PdfitServerRouterMount[] {
   return [
     { path: '/api/progress', router: createProgressRouter(metadataStore) },
@@ -62,7 +76,7 @@ export function createPdfitMetadataRouterMounts(
     { path: '/api/search', router: createSearchRouter(metadataStore) },
     { path: '/api/events', router: createEventsRouter(eventBus) },
     { path: '/api/viewer-state', router: createViewerStateRouter(metadataStore) },
-    { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore) },
+    { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore, bookmarkOcr) },
     { path: '/api/annotations', router: createAnnotationsRouter(metadataStore) },
   ];
 }
@@ -99,6 +113,7 @@ export function createPdfitCommonRouterAssembly(options: {
   let thumbnails: ReturnType<typeof createThumbnailService> | undefined;
   // Real-book covers live beside the rendered thumbnails and exist wherever they do.
   let covers: CoverOverrideStore | undefined;
+  let ocr: OcrService | undefined;
   if (options.backgroundTasks) {
     const background = options.backgroundTasks;
     const scheduler = createPdfitTaskScheduler(background);
@@ -111,6 +126,35 @@ export function createPdfitCommonRouterAssembly(options: {
     });
     scheduler.register(thumbnails.definition);
     covers = createCoverOverrideStore(path.join(background.thumbnailRoot, 'covers'));
+    const store = options.metadataStore;
+    const resolveSourcePath = async (folder: string, filename: string) => {
+      try {
+        const sourcePath = path.resolve(filesystem.getFolderPath(folder), path.basename(filename));
+        return (await fs.promises.stat(sourcePath)).isFile() ? sourcePath : null;
+      } catch {
+        return null;
+      }
+    };
+    ocr = createOcrService({
+      resolveSourcePath,
+      sourceStamp: async (sourcePath) => { const stat = await fs.promises.stat(sourcePath); return thumbnailSourceStamp(stat.mtimeMs, stat.size); },
+      submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
+      resolveVisionServer: background.resolveVisionServer,
+      cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
+      bookmarks: store.getBookmark && store.listBookmarksWithOcrStatus && store.setBookmarkOcr ? {
+        getBookmark: (id) => store.getBookmark!(id),
+        listBookmarksWithOcrStatus: (status, limit) => store.listBookmarksWithOcrStatus!(status, limit),
+        setBookmarkOcr: async (id, value) => {
+          const saved = await store.setBookmarkOcr!(id, value);
+          if (saved && value.status !== 'pending') watcher.bus.emit('change', 'bookmarks-changed');
+          return saved;
+        },
+        // imageUrl is `/api/bookmark-assets/<image_path>`; the file sits under the asset root.
+        imagePath: (bookmark) => path.join(bookmarkAssetRoot, decodeURIComponent(bookmark.imageUrl.replace(/^\/api\/bookmark-assets\//, ''))),
+      } : undefined,
+      log: (message) => console.log(`[ocr] ${message}`),
+    });
+    scheduler.register(ocr.definition);
     if (background.autoStart ?? true) scheduler.start();
     tasks = scheduler;
   }
@@ -133,8 +177,9 @@ export function createPdfitCommonRouterAssembly(options: {
         covers,
       ) },
       ...(covers ? [{ path: '/api/covers', router: createCoversRouter({ filesystem, store: covers, notifyChange: (event) => watcher.bus.emit('change', event) }) }] : []),
+      ...(ocr ? [{ path: '/api/ocr', router: createOcrRouter(ocr) }] : []),
       ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, () => ({ thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null } })) }] : []),
-      ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags),
+      ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags, undefined, ocr),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
     ],
   };

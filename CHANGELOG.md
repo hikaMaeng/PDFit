@@ -21,6 +21,11 @@
   public YES24 book's description, table of contents and genre path, and the genre
   rule decides when the model fails. `createYes24PublicBookLookup`,
   `TagSuggestionRuntimeOptions.resolveAiServer`.
+- OCR on the server (local runtime). A saved clip bookmark is read in the background,
+  from the PDF text layer inside the clip, or by the Settings vision model when the
+  clip has no text layer. `BookmarkRecord.ocr`; `POST /api/bookmarks/:id/ocr` retries.
+  `POST /api/ocr/page` reads one page the same way and caches the result per file
+  state. A `page-text` task runs in the shared worker pool.
 
 ## [0.4.7] - 2026-11-12
 

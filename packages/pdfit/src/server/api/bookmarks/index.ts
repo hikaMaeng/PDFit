@@ -2,6 +2,13 @@ import { Router, type Request, type RequestHandler, type Response, type Router a
 import type { CreateBookmarkRequest, UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from '../../routes/metadataStoreResolver.js';
 
+/** Clip OCR hook (local runtime). Absent where the runtime does not run OCR. */
+export interface BookmarkOcrQueue {
+  enqueueBookmark(bookmark: import('../../../common/protocol/bookmarks/index.js').BookmarkRecord): Promise<boolean>;
+}
+
+const BOOKMARK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function validColor(value: unknown): value is string { return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value); }
 function validRequest(value: unknown): value is CreateBookmarkRequest {
   if (!value || typeof value !== 'object') return false;
@@ -19,14 +26,32 @@ function asyncRoute(handler: (req: Request, res: Response) => Promise<unknown>):
   return (req, res, next) => { void handler(req, res).catch(next); };
 }
 
-export function createBookmarksRouter(storeResolver: MetadataStoreResolver): ExpressRouter {
+export function createBookmarksRouter(storeResolver: MetadataStoreResolver, ocr?: BookmarkOcrQueue): ExpressRouter {
   const router = Router();
   router.get('/', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listAllBookmarks())));
   router.get('/:folder/:filename', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listBookmarks(req.params.folder, req.params.filename, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined))));
+  // Reads the clip's text again, for example after an AI server was configured.
+  // Registered before the create route, which would otherwise take `/<id>/ocr` as
+  // folder `<id>` and file `ocr`. A non-UUID id falls through to that route.
+  router.post('/:id/ocr', (req, res, next) => { if (!BOOKMARK_ID_PATTERN.test(req.params.id)) { next(); return; } asyncRoute(async () => {
+    const store = await resolveMetadataStore(storeResolver, req);
+    if (!ocr || !store.getBookmark || !store.setBookmarkOcr) return res.status(501).json({ error: 'Clip OCR is not available in this runtime.' });
+    const bookmark = await store.getBookmark(req.params.id);
+    if (!bookmark) return res.status(404).json({ error: 'bookmark not found' });
+    if (!(await ocr.enqueueBookmark(bookmark))) return res.status(404).json({ error: 'The clip\'s PDF is not in the local library.' });
+    return res.status(202).json({ status: 'pending' });
+  })(req, res, next); });
   router.post('/:folder/:filename', asyncRoute(async (req, res) => {
     if (!validRequest(req.body)) return res.status(400).json({ error: 'invalid bookmark' });
     const store = await resolveMetadataStore(storeResolver, req);
-    return res.status(201).json(await store.createBookmark(req.params.folder, req.params.filename, req.body, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined));
+    const driveFileId = typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined;
+    const created = await store.createBookmark(req.params.folder, req.params.filename, req.body, driveFileId);
+    // OCR runs after the response: the clip is saved even when no text can be read.
+    if (ocr && !driveFileId && store.setBookmarkOcr) {
+      const queued = await ocr.enqueueBookmark(created).catch(() => false);
+      if (queued) return res.status(201).json({ ...created, ocr: { status: 'pending', text: null, source: null, error: null, updatedAt: null } });
+    }
+    return res.status(201).json(created);
   }));
   router.patch('/:id', asyncRoute(async (req, res) => {
     const body = req.body as UpdateBookmarkRequest;

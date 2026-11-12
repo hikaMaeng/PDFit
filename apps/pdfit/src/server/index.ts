@@ -80,7 +80,19 @@ const app = createPdfitServer({
   viewerIndexFile: path.join('viewer', 'index.html'),
   maxUploadBytes,
   suggestBookTags,
-  backgroundTasks: { thumbnailRoot: thumbnailsRoot, ...taskSchedulerOptions },
+  backgroundTasks: {
+    thumbnailRoot: thumbnailsRoot,
+    ...taskSchedulerOptions,
+    // Clips and pages without a PDF text layer are read by a vision model: a Settings server
+    // with a `vision` model first, otherwise the first one with an `llm` model (multimodal
+    // models such as Qwen accept images there too).
+    resolveVisionServer: async () => {
+      const servers = await settingsStore.listAiServers();
+      const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
+      const model = server?.models.vision || server?.models.llm;
+      return server && model ? { baseUrl: server.url, model, headers: server.headers, timeoutMs: 300_000 } : null;
+    },
+  },
 });
 
 // Establish the first database connections and load the two initial read

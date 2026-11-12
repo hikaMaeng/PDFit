@@ -94,6 +94,10 @@ export interface MetadataStore {
   createBookmark(folder: string, filename: string, bookmark: import('../common/protocol/bookmarks/index.js').CreateBookmarkRequest, driveFileId?: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord>;
   updateBookmark(id: string, update: import('../common/protocol/bookmarks/index.js').UpdateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
   deleteBookmark(id: string): Promise<void>;
+  /** Clip OCR (local runtime). Optional: a store without them keeps clips without text. */
+  getBookmark?(id: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
+  listBookmarksWithOcrStatus?(status: import('../common/protocol/bookmarks/index.js').BookmarkOcr['status'], limit: number): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;
+  setBookmarkOcr?(id: string, ocr: Omit<import('../common/protocol/bookmarks/index.js').BookmarkOcr, 'updatedAt'>): Promise<boolean>;
   listAnnotations(documentId: string): Promise<import('../common/protocol/annotations/index.js').Annotation[]>;
   createAnnotation(annotation: import('../common/protocol/annotations/index.js').CreateAnnotationRequest): Promise<import('../common/protocol/annotations/index.js').Annotation>;
   updateAnnotation(id: string, update: import('../common/protocol/annotations/index.js').UpdateAnnotationRequest): Promise<import('../common/protocol/annotations/index.js').Annotation | null>;

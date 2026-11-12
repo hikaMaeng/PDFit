@@ -17,6 +17,8 @@
 * `DELETE /api/tags/:tag` — removes a tag and its association from every book
 * `GET /api/search/books?q=` — book title search against the metadata database (substring, titles only)
 * `/api/covers` — real-book covers: `GET` list, `GET /candidates?q=`, `GET /preview?url=`, `PUT` apply, `DELETE` restore (contract in `packages/pdfit/docs/api.md`)
+* `POST /api/ocr/page` — text of one page: PDF text layer, else the Settings vision model on a rendering; cached per file state
+* `POST /api/bookmarks/:id/ocr` — read a clip's text again; clips are read automatically after they are saved (contract in `packages/pdfit/docs/api.md`, "OCR")
 * `/api/settings/ai-servers` — AI server CRUD
 * `POST /api/settings/translations` — display-name translation through the first AI server that has an `llm` model; the upstream chat-completions call aborts after 300 s (reasoning models on a local server can take minutes)
 

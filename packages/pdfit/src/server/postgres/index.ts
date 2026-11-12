@@ -14,7 +14,23 @@ import type {
 } from '../../shared/index.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
 import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
-import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+import type { BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
+
+function bookmarkOcrFromRow(row: Record<string, unknown>): BookmarkOcr | null {
+  const status = row.ocr_status;
+  if (typeof status !== 'string' || !BOOKMARK_OCR_STATUSES.has(status as BookmarkOcr['status'])) return null;
+  const source = row.ocr_source === 'text-layer' || row.ocr_source === 'vision' ? row.ocr_source : null;
+  return {
+    status: status as BookmarkOcr['status'],
+    text: row.ocr_text == null ? null : String(row.ocr_text),
+    source,
+    error: row.ocr_error == null ? null : String(row.ocr_error),
+    updatedAt: row.ocr_updated_at == null ? null : String(row.ocr_updated_at),
+  };
+}
 import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';
 
 export class PostgresMetadataStore implements MetadataStore {
@@ -375,12 +391,12 @@ export class PostgresMetadataStore implements MetadataStore {
   }
 
   async listBookmarks(folder: string, filename: string): Promise<BookmarkRecord[]> {
-    const result = await this.db.query('SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at FROM bookmarks WHERE folder = $1 AND filename = $2 ORDER BY page_index, created_at', [folder, filename]);
+    const result = await this.db.query('SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at FROM bookmarks WHERE folder = $1 AND filename = $2 ORDER BY page_index, created_at', [folder, filename]);
     return result.rows.map((row) => this.bookmarkFromRow(row));
   }
 
   async listAllBookmarks(): Promise<BookmarkRecord[]> {
-    const result = await this.db.query('SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at FROM bookmarks ORDER BY created_at DESC');
+    const result = await this.db.query('SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at FROM bookmarks ORDER BY created_at DESC');
     return result.rows.map((row) => this.bookmarkFromRow(row));
   }
 
@@ -391,12 +407,12 @@ export class PostgresMetadataStore implements MetadataStore {
     const input = Buffer.from(bookmark.imageBase64.replace(/^data:[^,]+,/, ''), 'base64');
     const output = path.join(bookDir, 'capture.jpg');
     await sharp(input).jpeg({ quality: 90 }).toFile(output);
-    const result = await this.db.query('INSERT INTO bookmarks (id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at', [id, folder, filename, bookmark.pageIndex, bookmark.rect.x, bookmark.rect.y, bookmark.rect.width, bookmark.rect.height, bookmark.borderColor, bookmark.fillColor ?? null, bookmark.fillOpacity ?? 0.2, bookmark.comment ?? null, 'image/jpeg', `${id}/capture.jpg`]);
+    const result = await this.db.query('INSERT INTO bookmarks (id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at', [id, folder, filename, bookmark.pageIndex, bookmark.rect.x, bookmark.rect.y, bookmark.rect.width, bookmark.rect.height, bookmark.borderColor, bookmark.fillColor ?? null, bookmark.fillOpacity ?? 0.2, bookmark.comment ?? null, 'image/jpeg', `${id}/capture.jpg`]);
     return this.bookmarkFromRow(result.rows[0]);
   }
 
   async updateBookmark(id: string, update: UpdateBookmarkRequest): Promise<BookmarkRecord | null> {
-    const result = await this.db.query('UPDATE bookmarks SET border_color = COALESCE($2, border_color), fill_color = CASE WHEN $3::boolean THEN $4 ELSE fill_color END, fill_opacity = COALESCE($5, fill_opacity), comment = CASE WHEN $6::boolean THEN $7 ELSE comment END, updated_at = NOW() WHERE id = $1 RETURNING id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at', [id, update.borderColor ?? null, update.fillColor !== undefined, update.fillColor ?? null, update.fillOpacity ?? null, update.comment !== undefined, update.comment ?? null]);
+    const result = await this.db.query('UPDATE bookmarks SET border_color = COALESCE($2, border_color), fill_color = CASE WHEN $3::boolean THEN $4 ELSE fill_color END, fill_opacity = COALESCE($5, fill_opacity), comment = CASE WHEN $6::boolean THEN $7 ELSE comment END, updated_at = NOW() WHERE id = $1 RETURNING id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at', [id, update.borderColor ?? null, update.fillColor !== undefined, update.fillColor ?? null, update.fillOpacity ?? null, update.comment !== undefined, update.comment ?? null]);
     return result.rows[0] ? this.bookmarkFromRow(result.rows[0]) : null;
   }
 
@@ -416,8 +432,26 @@ export class PostgresMetadataStore implements MetadataStore {
     }
   }
 
+  async getBookmark(id: string): Promise<BookmarkRecord | null> {
+    if (!UUID_PATTERN.test(id)) return null;
+    const result = await this.db.query(`SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, ${'comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at'} FROM bookmarks WHERE id = $1`, [id]);
+    return result.rows[0] ? this.bookmarkFromRow(result.rows[0]) : null;
+  }
+
+  async listBookmarksWithOcrStatus(status: BookmarkOcr['status'], limit: number): Promise<BookmarkRecord[]> {
+    const result = await this.db.query(`SELECT id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, ${'comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at'} FROM bookmarks WHERE ocr_status = $1 ORDER BY created_at LIMIT $2`, [status, Math.max(1, Math.min(1000, Math.trunc(limit)))]);
+    return result.rows.map((row) => this.bookmarkFromRow(row));
+  }
+
+  /** Writes the OCR state only; it does not touch updated_at, which tracks user edits. */
+  async setBookmarkOcr(id: string, ocr: Omit<BookmarkOcr, 'updatedAt'>): Promise<boolean> {
+    if (!UUID_PATTERN.test(id) || !BOOKMARK_OCR_STATUSES.has(ocr.status)) return false;
+    const result = await this.db.query('UPDATE bookmarks SET ocr_status = $2, ocr_text = $3, ocr_source = $4, ocr_error = $5, ocr_updated_at = NOW() WHERE id = $1', [id, ocr.status, ocr.text, ocr.source, ocr.error]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   private bookmarkFromRow(row: Record<string, unknown>): BookmarkRecord {
-    return { id: String(row.id), folder: String(row.folder), filename: String(row.filename), pageIndex: Number(row.page_index), rect: { x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height) }, borderColor: String(row.border_color), fillColor: row.fill_color == null ? null : String(row.fill_color), fillOpacity: Number(row.fill_opacity), comment: row.comment == null ? null : String(row.comment), imageMimeType: 'image/jpeg', imageUrl: `/api/bookmark-assets/${String(row.image_path)}`, createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
+    return { id: String(row.id), folder: String(row.folder), filename: String(row.filename), pageIndex: Number(row.page_index), rect: { x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height) }, borderColor: String(row.border_color), fillColor: row.fill_color == null ? null : String(row.fill_color), fillOpacity: Number(row.fill_opacity), comment: row.comment == null ? null : String(row.comment), imageMimeType: 'image/jpeg', imageUrl: `/api/bookmark-assets/${String(row.image_path)}`, createdAt: String(row.created_at), updatedAt: String(row.updated_at), ocr: bookmarkOcrFromRow(row) };
   }
 
   async listAnnotations(documentId: string): Promise<Annotation[]> {
@@ -555,6 +589,12 @@ export class PostgresMetadataStore implements MetadataStore {
       END $$;
       ALTER TABLE bookmarks ADD CONSTRAINT bookmarks_absolute_rect_check CHECK (x >= 0 AND y >= 0 AND width > 0 AND height > 0);
       CREATE INDEX IF NOT EXISTS idx_bookmarks_book_page ON bookmarks (folder, filename, page_index);
+      ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_status TEXT;
+      ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_text TEXT;
+      ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_source TEXT;
+      ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_error TEXT;
+      ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_updated_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_ocr_pending ON bookmarks (created_at) WHERE ocr_status = 'pending';
       CREATE TABLE IF NOT EXISTS annotations (
         id UUID PRIMARY KEY,
         document_id TEXT NOT NULL,

@@ -205,6 +205,51 @@ over HTTPS from `image.yes24.com`, `covers.openlibrary.org`, `archive.org` and
 same list. The body must be a JPEG, PNG or WebP by its leading bytes, between 1 KB and
 8 MB. No AI model is involved: the user picks the candidate.
 
+## OCR (local runtime)
+
+Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps:
+
+1. **PDF text layer** (`source: "text-layer"`). A `page-text` task in the shared worker
+   pool reads the page with PDF.js. For a clip, only items whose centre lies inside
+   the clip rectangle count; the rectangle is the bookmark's `rect`, in PDF points with a
+   top-left origin. Items become lines when the baseline moves by more than half their
+   height or the item ends a line. A gap over 15% of the height becomes a space.
+2. **Vision model** (`source: "vision"`), only when step 1 found no non-blank character
+   (scanned pages). A clip sends its saved capture JPEG. A page sends a 1600 px wide
+   JPEG rendering of the page (at most 4x the PDF size). The model comes from
+   `backgroundTasks.resolveVisionServer()`, called on every use. The Free app picks the
+   first Settings server with a `vision` model, else the first with an `llm` model,
+   with a 300 s limit. Vision requests run one at a time.
+
+`POST /api/ocr/page` `{ folder, filename, pageIndex }` (0-based) returns
+`{ text, source, cached, pageIndex, pageCount, durationMs }`. `source` is `none` when
+the page has no text layer and no vision model is configured. Errors: `400` invalid
+body or page out of range, `404` file not found, `502` task or model failure.
+Results are cached in `<ocrCacheRoot>/<sha1(folder NUL filename)>.<mtimeMs-size>.p<index>.json`,
+by default `ocr` beside `thumbnailRoot` (`/app/data/ocr`). Saving a result deletes that
+file's results for older stamps. Results for deleted files are not collected. `none`
+is not cached, so configuring a vision model applies to the next request. A waiting
+request is re-planned by every periodic plan and gives up after 10 minutes.
+
+Clip bookmarks (`POST /api/bookmarks/:folder/:filename`, local files only) are queued
+after the clip is saved. The `201` response carries `ocr.status: "pending"`. When
+OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }`:
+
+| `status` | Meaning |
+| --- | --- |
+| `pending` | Queued. A restart leaves it pending and the next plan queues it again |
+| `done` | `text` holds the clip text; `source` says which step read it |
+| `unavailable` | No text layer and no vision model configured |
+| `failed` | `error` holds the reason (task error, model HTTP status, timeout) |
+
+`failed` and `unavailable` are not retried on their own. `POST /api/bookmarks/:id/ocr`
+queues the clip again (`202`; `404` unknown id or the PDF is no longer local; `501` where the
+store has no OCR methods). Finishing emits the `bookmarks-changed` server event. OCR state is stored in
+`bookmarks.ocr_status`, `ocr_text`, `ocr_source`, `ocr_error` and `ocr_updated_at`; writing
+it does not change `updated_at`, which tracks user edits. The `MetadataStore` methods are
+optional (`getBookmark`, `listBookmarksWithOcrStatus`, `setBookmarkOcr`). A store without
+them saves clips without OCR.
+
 `GET /api/tasks/status` returns the scheduler state: `intervalMs`, `concurrency`,
 `planCount`, `planning`, `nextPlanAt`, `pending`, `active`, one entry per task type
 (`planned`, `pending`, `running`, `completedSincePlan`, `failedSincePlan`,
