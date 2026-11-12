@@ -40,10 +40,11 @@ export default function OcrTextPanel({ state, onRetry, retrying = false, testId,
     : null;
 
   return <Box component="section" aria-labelledby={`${testId}-heading`} data-testid={testId} data-ocr-status={state.status} sx={{ display: 'grid', gap: 1 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 30 }}>
-      <Typography id={`${testId}-heading`} variant="subtitle2" component="h3">{t('ocrText')}</Typography>
+    {/* Each item keeps its one line; a narrow screen moves whole items to the next row. */}
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1, rowGap: .5, minHeight: 30, '& > *': { flexShrink: 0 }, '& .MuiButton-root': { whiteSpace: 'nowrap' } }}>
+      <Typography id={`${testId}-heading`} variant="subtitle2" component="h3" sx={{ whiteSpace: 'nowrap' }}>{t('ocrText')}</Typography>
       {state.status === 'done' ? <Chip size="small" variant="outlined" label={state.source === 'vision' ? t('ocrSourceVision') : t('ocrSourceTextLayer')} data-testid={`${testId}-source`} data-source={state.source} /> : null}
-      <Box sx={{ flex: 1 }} />
+      <Box sx={{ flex: '1 0 0' }} />
       {state.status === 'done' && state.text ? <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => void copy(state.text)} data-testid={`${testId}-copy`}>{copied ? t('ocrCopied') : t('ocrCopy')}</Button> : null}
       {state.status !== 'pending' ? retryButton : null}
     </Box>

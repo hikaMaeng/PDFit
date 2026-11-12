@@ -19,6 +19,13 @@ import type { BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmark
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
 
+/** TIMESTAMPTZ arrives as a Date; String(date) is not ISO 8601. */
+function isoTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function bookmarkOcrFromRow(row: Record<string, unknown>): BookmarkOcr | null {
   const status = row.ocr_status;
   if (typeof status !== 'string' || !BOOKMARK_OCR_STATUSES.has(status as BookmarkOcr['status'])) return null;
@@ -28,7 +35,7 @@ function bookmarkOcrFromRow(row: Record<string, unknown>): BookmarkOcr | null {
     text: row.ocr_text == null ? null : String(row.ocr_text),
     source,
     error: row.ocr_error == null ? null : String(row.ocr_error),
-    updatedAt: row.ocr_updated_at == null ? null : String(row.ocr_updated_at),
+    updatedAt: isoTimestamp(row.ocr_updated_at),
   };
 }
 import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';

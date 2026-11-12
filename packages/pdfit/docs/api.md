@@ -233,7 +233,7 @@ request is re-planned by every periodic plan and gives up after 10 minutes.
 
 Clip bookmarks (`POST /api/bookmarks/:folder/:filename`, local files only) are queued
 after the clip is saved. The `201` response carries `ocr.status: "pending"`. When
-OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }`:
+OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }` (`updatedAt` ISO 8601):
 
 | `status` | Meaning |
 | --- | --- |
