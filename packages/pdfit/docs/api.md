@@ -231,6 +231,12 @@ file's results for older stamps. Results for deleted files are not collected. `n
 is not cached, so configuring a vision model applies to the next request. A waiting
 request is re-planned by every periodic plan and gives up after 10 minutes.
 
+The front-end client (`front/api/ocr.ts`) separates a failure the server reported from one
+it never saw: a fetch that threw, or a `502`/`503`/`504` whose body is not this API's JSON,
+is a gateway or a restarting runtime answering, and is retried after 1, 2, 4, 8 and 15
+seconds (about 30 s in all) before `OcrUnreachableError` reaches the caller. A JSON error
+from the runtime is not retried.
+
 Clip bookmarks (`POST /api/bookmarks/:folder/:filename`, local files only) are queued
 after the clip is saved. The `201` response carries `ocr.status: "pending"`. When
 OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }` (`updatedAt` ISO 8601):

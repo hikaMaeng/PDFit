@@ -20,7 +20,11 @@ export function createOcrRouter(ocr: OcrService): Router {
     } catch (error) {
       const status = (error as { status?: number }).status;
       const message = error instanceof Error ? error.message : String(error);
-      res.status(status === 404 ? 404 : /outside 1\.\./.test(message) ? 400 : 502).json({ error: message });
+      const code = status === 404 ? 404 : /outside 1\.\./.test(message) ? 400 : 502;
+      // Without this line a failed read leaves only `ERROR POST /page 502` in the log,
+      // which does not say whether the runtime or a gateway in front of it answered.
+      if (code === 502) console.log(`[ocr] page ${pageIndex} of ${folder}/${filename} failed: ${message}`);
+      res.status(code).json({ error: message });
     }
   });
   return router;

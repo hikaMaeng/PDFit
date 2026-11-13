@@ -1,0 +1,108 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "filename": "딥러닝을 위한 수학.pdf",
+  "pageNumber": 24,
+  "channel": "chrome",
+  "locale": "ko-KR",
+  "startedAtIso": "2026-11-13T02:09:13.278Z",
+  "steps": {
+    "1_open_viewer": {
+      "verdict": "PASS",
+      "url": "http://127.0.0.1:15203/viewer/%EC%9D%B4%EB%B6%81/%EB%94%A5%EB%9F%AC%EB%8B%9D%EC%9D%84%20%EC%9C%84%ED%95%9C%20%EC%88%98%ED%95%99.pdf?page=24",
+      "screenshot": "viewer.png",
+      "stepMs": 513
+    },
+    "2_recovers_after_two_gateway_502": {
+      "verdict": "PASS",
+      "attempts": [
+        {
+          "at": 1014,
+          "served": "gateway-502"
+        },
+        {
+          "at": 2023,
+          "served": "gateway-502"
+        },
+        {
+          "at": 4027,
+          "served": "server"
+        }
+      ],
+      "timeline": [
+        {
+          "at": 1025,
+          "status": "pending",
+          "failed": null,
+          "source": null
+        },
+        {
+          "at": 4717,
+          "status": "done",
+          "failed": null,
+          "source": "text-layer"
+        }
+      ],
+      "final": {
+        "status": "done",
+        "failed": null,
+        "source": "text-layer"
+      },
+      "screenshot": "recovered.png",
+      "stepMs": 4175
+    },
+    "3_gives_up_with_korean_message": {
+      "verdict": "PASS",
+      "attempts": [
+        {
+          "at": 5158,
+          "served": "gateway-502"
+        },
+        {
+          "at": 6177,
+          "served": "gateway-502"
+        },
+        {
+          "at": 8182,
+          "served": "gateway-502"
+        },
+        {
+          "at": 12194,
+          "served": "gateway-502"
+        },
+        {
+          "at": 20203,
+          "served": "gateway-502"
+        },
+        {
+          "at": 35208,
+          "served": "gateway-502"
+        }
+      ],
+      "timeline": [
+        {
+          "at": 5167,
+          "status": "pending",
+          "failed": null,
+          "source": null
+        },
+        {
+          "at": 35270,
+          "status": "failed",
+          "failed": "텍스트를 읽지 못했습니다. 서버에 연결하지 못했습니다. 다시 시작하는 중일 수 있으니 잠시 후 다시 시도하세요.",
+          "source": null
+        }
+      ],
+      "final": {
+        "status": "failed",
+        "failed": "텍스트를 읽지 못했습니다. 서버에 연결하지 못했습니다. 다시 시작하는 중일 수 있으니 잠시 후 다시 시도하세요.",
+        "source": null
+      },
+      "screenshot": "gave-up.png",
+      "stepMs": 30552
+    }
+  },
+  "finishedAtIso": "2026-11-13T02:09:48.937Z",
+  "totalMs": 35659,
+  "verdict": "PASS"
+}

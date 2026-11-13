@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
-import { recognizePageText } from '../api/ocr.js';
+import { OcrUnreachableError, recognizePageText } from '../api/ocr.js';
 import OcrTextPanel, { type OcrPanelState } from './OcrTextPanel.js';
 
 type Props = {
@@ -38,10 +38,13 @@ export default function PageOcrDialog({ open, folder, filename, page, onClose }:
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setState({ status: 'failed', error: error instanceof Error ? error.message : String(error) });
+        // The request never reached the runtime even after the retries: say so in the
+        // reader's language instead of showing the gateway's `HTTP 502`.
+        const reason = error instanceof OcrUnreachableError ? t('ocrUnreachable') : error instanceof Error ? error.message : String(error);
+        setState({ status: 'failed', error: reason });
       })
       .finally(() => window.clearTimeout(slow));
-  }, [filename, folder, page]);
+  }, [filename, folder, page, t]);
 
   useEffect(() => {
     if (!open) { abortRef.current?.abort(); return; }

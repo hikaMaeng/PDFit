@@ -1,0 +1,423 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "channel": "chrome",
+  "locale": "ko-KR",
+  "visionWaitMs": 360000,
+  "skipVision": true,
+  "startedAtIso": "2026-11-13T02:09:58.604Z",
+  "steps": {
+    "2_find_digital_pdf": {
+      "verdict": "PASS",
+      "chosen": "Git for Teams.pdf",
+      "pageIndex": 49,
+      "probes": [
+        {
+          "filename": "Git for Teams.pdf",
+          "pageIndex": 49,
+          "status": 200,
+          "source": "text-layer",
+          "cached": true,
+          "pageCount": 398,
+          "durationMs": 6,
+          "wallMs": 13,
+          "chars": 1350,
+          "nonBlankChars": 1017,
+          "head": "캐노니컬 Ca non i c al , 세프Ch ef , 퍼핏Pu pp c[ ， 구글Goog le, 닷넷 . NCt은 모두 일종의 변형된 저작권 "
+        }
+      ],
+      "stepMs": 13
+    },
+    "3a_page_ocr_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "pageNumberInput": "50",
+      "title": "50페이지 텍스트",
+      "ariaLabel": "페이지 텍스트 읽기",
+      "roleDialog": 1,
+      "requestBody": {
+        "folder": "이북",
+        "filename": "Git for Teams.pdf",
+        "pageIndex": 49
+      },
+      "browserResponse": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "durationMs": 6,
+        "chars": 1350
+      },
+      "panel": {
+        "timeline": [
+          {
+            "atMs": 3,
+            "status": "done",
+            "slowHint": false
+          }
+        ],
+        "final": "done",
+        "finalAtMs": 3,
+        "slowHintAtMs": null,
+        "waitedMs": 3
+      },
+      "ui": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 1350
+      },
+      "durationLabel": "0.0 s",
+      "expected": {
+        "status": 200,
+        "source": "text-layer",
+        "cached": true,
+        "chars": 1350,
+        "durationMs": 4
+      },
+      "textEqualsApi": true,
+      "clipboardEqualsText": true,
+      "clipboardChars": 1389,
+      "stepMs": 5437
+    },
+    "4a_clip_digital": {
+      "verdict": "PASS",
+      "filename": "Git for Teams.pdf",
+      "page": 50,
+      "capture": {
+        "status": 201,
+        "id": "ccb59f78-b84e-4976-97a2-62ae4a3359c8",
+        "ocr": {
+          "status": "pending",
+          "text": null,
+          "source": null,
+          "error": null,
+          "updatedAt": null
+        },
+        "pageIndex": 49,
+        "rect": {
+          "x": 47.1359961844123,
+          "y": 217.2842258102198,
+          "width": 377.0879885532369,
+          "height": 85.67633306855562
+        },
+        "imageMimeType": "image/png",
+        "imageBase64Chars": 51104,
+        "drag": {
+          "from": {
+            "x": 450.4,
+            "y": 360.2
+          },
+          "to": {
+            "x": 1053.6,
+            "y": 497.3
+          },
+          "canvas": {
+            "x": 375,
+            "y": 12.5,
+            "width": 754,
+            "height": 1045
+          }
+        }
+      },
+      "badge": {
+        "final": "done",
+        "waitedMs": 5025,
+        "timedOut": false,
+        "timeline": [
+          {
+            "id": "ccb59f78-b84e-4976-97a2-62ae4a3359c8",
+            "status": "pending",
+            "atMs": 1282
+          },
+          {
+            "id": "ccb59f78-b84e-4976-97a2-62ae4a3359c8",
+            "status": "done",
+            "atMs": 6202
+          }
+        ]
+      },
+      "listPollsAfterCaptureMs": [
+        944,
+        1148,
+        1161,
+        6173
+      ],
+      "listPollIntervalsMs": [
+        204,
+        13,
+        5012
+      ],
+      "server": {
+        "status": "done",
+        "source": "text-layer",
+        "chars": 111,
+        "error": null,
+        "updatedAt": "2026-11-13T02:10:07.319Z",
+        "text": "2기요 배포라이선스\n\n프로젝트의 저작권 관련 문제가 끝나면, 다음은 배포 라이선스를 설정해야 한다. 배포 라이선\n스란 프로젝트를 어떻게 사용하면 되는지 또는 안 되는지에 대해서 명확히 하는 것이다 ."
+      },
+      "subset": {
+        "clipLines": 3,
+        "missingLines": [],
+        "pageChars": 1350
+      },
+      "dialog": {
+        "status": "done",
+        "source": "text-layer",
+        "sourceLabel": "PDF 텍스트",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 111,
+        "textEqualsServer": true
+      },
+      "retry": {
+        "status": 202,
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 10,
+              "status": "pending",
+              "slowHint": false
+            },
+            {
+              "atMs": 5204,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 5204,
+          "slowHintAtMs": null,
+          "waitedMs": 5204
+        },
+        "final": {
+          "status": "done",
+          "source": "text-layer",
+          "sourceLabel": "PDF 텍스트",
+          "copy": true,
+          "retry": true,
+          "retryDisabled": false,
+          "unavailable": null,
+          "failed": null,
+          "empty": null,
+          "textChars": 111
+        },
+        "serverStatus": "done",
+        "serverUpdatedAt": "2026-11-13T02:10:12.781Z",
+        "listPollsAfterClickMs": [
+          5171
+        ]
+      },
+      "stepMs": 13082
+    },
+    "5_page_ocr_dark_mobile": {
+      "verdict": "PASS",
+      "dark": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 1352,
+          "y": 8,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 3,
+              "status": "pending",
+              "slowHint": false
+            },
+            {
+              "atMs": 295,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 295,
+          "slowHintAtMs": null,
+          "waitedMs": 295
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 1440,
+          "paperLeft": 270,
+          "paperRight": 1170,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 1,
+            "source": 1,
+            "copy": 1,
+            "retry": 1
+          },
+          "paperBackground": "rgb(32, 33, 36)"
+        }
+      },
+      "mobile": {
+        "title": "50페이지 텍스트",
+        "buttonBox": {
+          "x": 287,
+          "y": 12.90625,
+          "width": 30,
+          "height": 30
+        },
+        "panel": {
+          "timeline": [
+            {
+              "atMs": 2,
+              "status": "done",
+              "slowHint": false
+            }
+          ],
+          "final": "done",
+          "finalAtMs": 2,
+          "slowHintAtMs": null,
+          "waitedMs": 2
+        },
+        "source": "text-layer",
+        "textChars": 1350,
+        "textEqualsApi": true,
+        "geometry": {
+          "viewport": 375,
+          "paperLeft": 32,
+          "paperRight": 343,
+          "pageOverflow": 0,
+          "textOverflowX": 0,
+          "headerLines": {
+            "heading": 1,
+            "source": 1,
+            "copy": 1,
+            "retry": 1
+          },
+          "paperBackground": "rgb(255, 255, 255)"
+        }
+      },
+      "stepMs": 9999
+    },
+    "3b_page_ocr_scanned_cached": {
+      "verdict": "PASS",
+      "filename": "Three.js로 3D 그래픽만들기.pdf",
+      "pageNumberInput": "21",
+      "title": "21페이지 텍스트",
+      "requestBody": {
+        "folder": "이북",
+        "filename": "Three.js로 3D 그래픽만들기.pdf",
+        "pageIndex": 20
+      },
+      "browserResponse": {
+        "status": 200,
+        "source": "vision",
+        "cached": true,
+        "durationMs": 11,
+        "chars": 711
+      },
+      "panel": {
+        "timeline": [
+          {
+            "atMs": 45,
+            "status": "done",
+            "slowHint": false
+          }
+        ],
+        "final": "done",
+        "finalAtMs": 45,
+        "slowHintAtMs": null,
+        "waitedMs": 45
+      },
+      "ui": {
+        "status": "done",
+        "source": "vision",
+        "sourceLabel": "AI 인식",
+        "copy": true,
+        "retry": true,
+        "retryDisabled": false,
+        "unavailable": null,
+        "failed": null,
+        "empty": null,
+        "textChars": 711
+      },
+      "durationLabel": "0.0 s",
+      "expected": {
+        "source": "vision",
+        "cached": true,
+        "chars": 711
+      },
+      "textEqualsApi": true,
+      "stepMs": 5464
+    },
+    "3c_page_ocr_scanned_uncached": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_SKIP_VISION=1"
+    },
+    "4b_clip_scanned": {
+      "verdict": "SKIP",
+      "reason": "PDFIT_TEST_SKIP_VISION=1"
+    }
+  },
+  "bugs": [],
+  "observations": [],
+  "onlySteps": [],
+  "baseline": {
+    "bookmarks": 1,
+    "ids": [
+      "2b012952-7b9e-4059-ab8b-68484bd3c32e"
+    ]
+  },
+  "verdict": "PASS",
+  "pageErrors": [],
+  "consoleErrors": [
+    "viewer: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "clips: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "dark: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "mobile: Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+    "viewer: Failed to load resource: the server responded with a status of 502 (Bad Gateway)"
+  ],
+  "blockedWrites": [
+    "main PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "dark PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "mobile PUT /api/viewer-state/이북/Git for Teams.pdf",
+    "main PUT /api/viewer-state/이북/Three.js로 3D 그래픽만들기.pdf"
+  ],
+  "allowedWrites": [
+    "main POST /api/folders/refresh @853",
+    "main POST /api/settings/translations @901",
+    "main POST /api/ocr/page @4888",
+    "main POST /api/settings/translations @6749",
+    "main POST /api/bookmarks/이북/Git for Teams.pdf @7995",
+    "main POST /api/bookmarks/ccb59f78-b84e-4976-97a2-62ae4a3359c8/ocr @13688",
+    "dark POST /api/folders/refresh @19406",
+    "dark POST /api/settings/translations @20015",
+    "dark POST /api/ocr/page @23596",
+    "mobile POST /api/folders/refresh @24696",
+    "mobile POST /api/settings/translations @25054",
+    "mobile POST /api/ocr/page @28783",
+    "main POST /api/folders/refresh @29239",
+    "main POST /api/settings/translations @29286",
+    "main POST /api/ocr/page @33012"
+  ],
+  "cleanup": {
+    "deleted": [
+      {
+        "id": "ccb59f78-b84e-4976-97a2-62ae4a3359c8",
+        "status": 204
+      }
+    ],
+    "errors": [],
+    "startCount": 1,
+    "finalCount": 1,
+    "matchesBaseline": true
+  },
+  "durationMs": 34640
+}
