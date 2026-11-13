@@ -13,6 +13,10 @@ export const PAGE_TEXT_TASK_SCRIPT_URL = new URL(import.meta.url.endsWith('.ts')
 /** Above the periodic backlog, like an interactive thumbnail request. */
 const INTERACTIVE_PRIORITY = INTERACTIVE_TASK_PRIORITY;
 const PAGE_RENDER = { width: 1600, quality: 85 } as const;
+/** A clip is re-rendered from the PDF for the vision model (at most 4x, so ~1600 px for a column-wide clip) instead of sending its screen capture. */
+const CLIP_RENDER = { width: 1600, quality: 90 } as const;
+/** Bumped when the text-layer rules change, so cached page results made under older rules are not served. */
+const PAGE_CACHE_VERSION = 'v2';
 /** A waiting caller gives up after this long (queue wait plus the text task). */
 const PAGE_TEXT_WAIT_MS = 10 * 60 * 1000;
 const PENDING_BOOKMARKS_PER_PLAN = 200;
@@ -110,16 +114,26 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     if (!store || !id) return;
     try {
       if (!outcome.ok) throw new Error(outcome.error.message);
-      if (meaningfulLength(outcome.result.text) > 0) {
-        await store.setBookmarkOcr(id, { status: 'done', text: outcome.result.text, source: 'text-layer', error: null });
+      const result = outcome.result;
+      const layerText = meaningfulLength(result.text) > 0 ? result.text : null;
+      if (layerText !== null && !result.untrusted) {
+        await store.setBookmarkOcr(id, { status: 'done', text: layerText, source: 'text-layer', error: null });
         return;
       }
-      const bookmark = await store.getBookmark(id);
-      if (!bookmark) return;
-      const bytes = await fs.readFile(store.imagePath(bookmark));
-      const text = await vision({ bytes, type: 'image/jpeg' });
+      // No text, or a garbled hidden OCR layer: read the area with the vision model, from a
+      // fresh high-resolution rendering, else from the saved screen capture.
+      let image: { bytes: Buffer; type: VisionImageType };
+      if (result.image) image = { bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' };
+      else {
+        const bookmark = await store.getBookmark(id);
+        if (!bookmark) return;
+        image = { bytes: await fs.readFile(store.imagePath(bookmark)), type: 'image/jpeg' };
+      }
+      const text = await vision(image);
       if (text === null) {
-        await store.setBookmarkOcr(id, { status: 'unavailable', text: null, source: null, error: 'No AI server with a vision or LLM model is configured.' });
+        // Without a vision server a garbled layer still beats nothing.
+        if (layerText !== null) await store.setBookmarkOcr(id, { status: 'done', text: layerText, source: 'text-layer', error: null });
+        else await store.setBookmarkOcr(id, { status: 'unavailable', text: null, source: null, error: 'No AI server with a vision or LLM model is configured.' });
         return;
       }
       await store.setBookmarkOcr(id, { status: 'done', text, source: 'vision', error: null });
@@ -163,7 +177,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     const sourcePath = await options.resolveSourcePath(bookmark.folder, bookmark.filename);
     if (!sourcePath) return null;
     const rect: PageTextRect = { ...bookmark.rect };
-    return { sourcePath, pageIndex: bookmark.pageIndex, rect, folder: bookmark.folder, filename: bookmark.filename, bookmarkId: bookmark.id };
+    return { sourcePath, pageIndex: bookmark.pageIndex, rect, render: CLIP_RENDER, folder: bookmark.folder, filename: bookmark.filename, bookmarkId: bookmark.id };
   }
 
   function runPageText(key: string, payload: PageTextOcrPayload): Promise<PageTextTaskResult> {
@@ -201,7 +215,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const started = Date.now();
       const sourcePath = await options.resolveSourcePath(folder, filename);
       if (!sourcePath) throw Object.assign(new Error('File not found.'), { status: 404 });
-      const stamp = await options.sourceStamp(sourcePath);
+      const stamp = `${PAGE_CACHE_VERSION}-${await options.sourceStamp(sourcePath)}`;
       const cacheName = pageOcrCacheName(folder, filename, stamp, pageIndex);
       const cachePath = path.join(options.cacheRoot, cacheName);
       try {
@@ -213,10 +227,12 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const result = await runPageText(key, { sourcePath, pageIndex, render: PAGE_RENDER, folder, filename });
       let text = result.text;
       let source: PageOcrResult['source'] = 'text-layer';
-      if (meaningfulLength(text) === 0) {
+      const hasLayerText = meaningfulLength(text) > 0;
+      if (!hasLayerText || result.untrusted) {
         const recognized = result.image ? await vision({ bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' }) : null;
-        text = recognized ?? '';
-        source = recognized === null ? 'none' : 'vision';
+        if (recognized !== null) { text = recognized; source = 'vision'; }
+        // Without a vision server a garbled layer is still returned as the layer's text.
+        else if (!hasLayerText) { text = ''; source = 'none'; }
       }
       const record = { text, source, pageIndex, pageCount: result.pageCount };
       // `none` is not cached, so configuring a vision model takes effect on the next request.

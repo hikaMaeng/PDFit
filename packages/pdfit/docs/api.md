@@ -214,9 +214,18 @@ Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps
    the clip rectangle count; the rectangle is the bookmark's `rect`, in PDF points with a
    top-left origin. Items become lines when the baseline moves by more than half their
    height or the item ends a line. A gap over 15% of the height becomes a space.
-2. **Vision model** (`source: "vision"`), only when step 1 found no non-blank character
-   (scanned pages). A clip sends its saved capture JPEG. A page sends a 1600 px wide
-   JPEG rendering of the page (at most 4x the PDF size). The model comes from
+   The task also reports `textLayer`: `visible` (digital text) or `hidden` (the page
+   draws its text invisibly, rendering mode 3: an OCR layer someone put over a scan).
+   A hidden layer is checked for OCR damage (`server/ocr/textLayerQuality.ts`): runs of
+   split Latin words ("pr i ntf"), CJK ideographs, stand-alone jamo, "댜", full-width
+   marks, weighted per 100 characters; at or above `HIDDEN_LAYER_GARBLE_LIMIT` (1.0) the
+   layer is `untrusted`. A visible layer is always trusted.
+2. **Vision model** (`source: "vision"`), when step 1 found no non-blank character
+   (scanned pages) or only an untrusted hidden layer. The same task renders the area
+   from the PDF: 1600 px wide for a page or a clip, at most 4x the PDF size (a
+   column-wide clip reaches about 1600 px; its screen capture is used only if no
+   rendering exists). Without a vision server an untrusted layer's text is returned
+   as `text-layer` rather than nothing. The model comes from
    `backgroundTasks.resolveVisionServer()`, called on every use. The Free app picks the
    first Settings server with a `vision` model, else the first with an `llm` model,
    with a 300 s limit. Vision requests run one at a time.
@@ -225,7 +234,8 @@ Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps
 `{ text, source, cached, pageIndex, pageCount, durationMs }`. `source` is `none` when
 the page has no text layer and no vision model is configured. Errors: `400` invalid
 body or page out of range, `404` file not found, `502` task or model failure.
-Results are cached in `<ocrCacheRoot>/<sha1(folder NUL filename)>.<mtimeMs-size>.p<index>.json`,
+Results are cached in `<ocrCacheRoot>/<sha1(folder NUL filename)>.v2-<mtimeMs-size>.p<index>.json`
+(`v2`: results made before the hidden-layer check are not served and are deleted on the next save),
 by default `ocr` beside `thumbnailRoot` (`/app/data/ocr`). Saving a result deletes that
 file's results for older stamps. Results for deleted files are not collected. `none`
 is not cached, so configuring a vision model applies to the next request. A waiting

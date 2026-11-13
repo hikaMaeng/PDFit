@@ -115,7 +115,7 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     const second = await service.recognizePage('A', 'text.pdf', 0);
     assert.equal(second.cached, true);
     assert.equal(scheduler.submitted.length, 1, 'the cached result needs no task');
-    await fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'text.pdf', '1-1', 0)));
+    await fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'text.pdf', 'v2-1-1', 0)));
 
     const scanned = await service.recognizePage('A', 'blank.pdf', 0);
     assert.equal(scanned.source, 'vision');
@@ -131,7 +131,7 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     const none = await service.recognizePage('A', 'blank.pdf', 0);
     assert.equal(none.source, 'none');
     assert.equal(none.text, '');
-    await assert.rejects(fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'blank.pdf', '1-1', 0))), 'an unreadable page is not cached');
+    await assert.rejects(fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'blank.pdf', 'v2-1-1', 0))), 'an unreadable page is not cached');
 
     await assert.rejects(service.recognizePage('A', 'missing.pdf', 0), /File not found/);
   } finally {
@@ -201,7 +201,7 @@ test('clip OCR: text layer, then the clip image through the vision model, with f
     records.set('v', bookmark('v', 'blank.pdf', { x: 0, y: 0, width: 300, height: 100 }));
     await service.enqueueBookmark(records.get('v'));
     assert.deepEqual(await settle('v'), { status: 'done', text: '클립 글자', source: 'vision', error: null, updatedAt: 'now' });
-    assert.match(network.calls[0].messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/, 'the saved clip image is what the model reads');
+    assert.match(network.calls[0].messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/, 'a JPEG of the clip area is what the model reads');
 
     vision = null;
     records.set('u', bookmark('u', 'blank.pdf', { x: 0, y: 0, width: 300, height: 100 }));
@@ -263,5 +263,96 @@ test('bookmark and OCR routes: create queues OCR, retry, page endpoint validatio
     assert.equal((await post('/api/ocr/page', { folder: 'A', filename: 'missing.pdf', pageIndex: 0 })).status, 404);
   } finally {
     server.close();
+  }
+});
+
+test('text-layer quality: digital and clean hidden layers are kept, a garbled hidden layer is not', async () => {
+  const { garbleSignals, isUntrustedTextLayer, HIDDEN_LAYER_GARBLE_LIMIT } = await import('../dist/server/ocr/textLayerQuality.js');
+  assert.equal(HIDDEN_LAYER_GARBLE_LIMIT, 1);
+  // Typical hidden-OCR damage, written for this test.
+  const garbled = '형식 지정자는 pr i ntf 함수에서 왔댜 캐노니컬 Ca non i c al 원주율 亢 사용，';
+  const signals = garbleSignals(garbled);
+  assert.equal(signals.spacedLatin, 8, 'pr i ntf (3) + Ca non i c al (5)');
+  assert.equal(signals.han, 1);
+  assert.equal(signals.dya, 1);
+  assert.equal(signals.odd, 1);
+  assert.ok(signals.per100 >= 1);
+  assert.equal(isUntrustedTextLayer('hidden', garbled), true);
+  assert.equal(isUntrustedTextLayer('visible', garbled), false, 'a digital layer is always trusted');
+  const clean = '이 함수는 printf 형식을 따른다. 클린 코드와 Git for Teams 같은 책을 읽는다.';
+  assert.equal(garbleSignals(clean).per100, 0);
+  assert.equal(isUntrustedTextLayer('hidden', clean), false);
+  assert.equal(isUntrustedTextLayer('none', ''), false);
+});
+
+test('a garbled hidden OCR layer goes to the vision model on a fresh rendering; without one the layer is kept', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-ocr-hidden-'));
+  try {
+    const garbledPdf = path.join(base, 'garbled.pdf');
+    const cleanPdf = path.join(base, 'clean.pdf');
+    const visiblePdf = path.join(base, 'visible.pdf');
+    await fs.writeFile(garbledPdf, buildPdf({ label: 'pr i ntf Ca non i c al', hiddenText: true }));
+    await fs.writeFile(cleanPdf, buildPdf({ label: 'PDFit clean text', hiddenText: true }));
+    await fs.writeFile(visiblePdf, buildPdf({ label: 'pr i ntf Ca non i c al' }));
+
+    const hidden = await pageTextTask.run({ sourcePath: garbledPdf, pageIndex: 0, rect: { x: 0, y: 160, width: 300, height: 60 }, render: { width: 1600, quality: 80 } });
+    assert.equal(hidden.textLayer, 'hidden');
+    assert.equal(hidden.untrusted, true);
+    assert.ok(hidden.image, 'an untrusted area is rendered');
+    assert.equal(hidden.image.width, 1200, '300 pt wide area at the 4x cap');
+    const cleanResult = await pageTextTask.run({ sourcePath: cleanPdf, pageIndex: 0, render: { width: 400, quality: 80 } });
+    assert.deepEqual([cleanResult.textLayer, cleanResult.untrusted, cleanResult.image], ['hidden', false, undefined]);
+    const visible = await pageTextTask.run({ sourcePath: visiblePdf, pageIndex: 0, render: { width: 400, quality: 80 } });
+    assert.deepEqual([visible.textLayer, visible.untrusted, visible.image], ['visible', false, undefined], 'digital text is trusted even when it looks odd');
+
+    const files = { 'garbled.pdf': garbledPdf, 'clean.pdf': cleanPdf };
+    const records = new Map();
+    const store = {
+      listBookmarksWithOcrStatus: async () => [],
+      getBookmark: async (id) => records.get(id) ?? null,
+      setBookmarkOcr: async (id, ocr) => { records.get(id).ocr = ocr; return true; },
+      imagePath: () => { throw new Error('the screen capture must not be read when a rendering exists'); },
+    };
+    let network = visionFetch({ answer: 'printf canonical' });
+    let vision = visionServer;
+    let service;
+    const scheduler = inlineScheduler(() => service);
+    service = createOcrService({
+      resolveSourcePath: async (_folder, filename) => files[filename] ?? null,
+      sourceStamp: async () => '1-1',
+      submit: scheduler.submit,
+      resolveVisionServer: async () => vision,
+      cacheRoot: path.join(base, 'ocr'),
+      bookmarks: store,
+      request: (...args) => network.request(...args),
+    });
+    const settle = async (id) => { for (let i = 0; i < 300 && records.get(id).ocr?.status === 'pending'; i += 1) await new Promise((resolve) => setTimeout(resolve, 10)); return records.get(id).ocr; };
+    const clip = (id, filename) => ({ id, folder: 'A', filename, pageIndex: 0, rect: { x: 0, y: 160, width: 300, height: 60 } });
+
+    records.set('g', clip('g', 'garbled.pdf'));
+    await service.enqueueBookmark(records.get('g'));
+    assert.deepEqual(await settle('g'), { status: 'done', text: 'printf canonical', source: 'vision', error: null });
+    const sent = Buffer.from(network.calls[0].messages[0].content[1].image_url.url.split(',')[1], 'base64');
+    assert.deepEqual([...sent.subarray(0, 3)], [0xff, 0xd8, 0xff], 'the rendered clip area is sent');
+    assert.equal(scheduler.submitted[0].payload.render.width, 1600, 'clips ask for a 1600 px rendering');
+
+    records.set('c', clip('c', 'clean.pdf'));
+    network = visionFetch();
+    await service.enqueueBookmark(records.get('c'));
+    assert.deepEqual(await settle('c'), { status: 'done', text: 'PDFit clean text', source: 'text-layer', error: null });
+    assert.equal(network.calls.length, 0, 'a clean hidden layer needs no vision call');
+
+    vision = null;
+    records.set('n', clip('n', 'garbled.pdf'));
+    await service.enqueueBookmark(records.get('n'));
+    assert.deepEqual(await settle('n'), { status: 'done', text: 'pr i ntf Ca non i c al', source: 'text-layer', error: null }, 'without a vision server the garbled layer is still returned');
+
+    vision = visionServer;
+    network = visionFetch({ answer: 'printf canonical' });
+    const page = await service.recognizePage('A', 'garbled.pdf', 0);
+    assert.deepEqual([page.source, page.text], ['vision', 'printf canonical']);
+    await fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'garbled.pdf', 'v2-1-1', 0)));
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
   }
 });

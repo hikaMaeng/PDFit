@@ -3,14 +3,16 @@
  *
  * Reads one page's PDF text layer with PDF.js, optionally only the items whose centre
  * lies inside a rectangle given in PDF page points with a top-left origin (the clip
- * bookmark coordinate space). When the area has no text layer and `render` is set, it
- * renders the same area to a JPEG for the vision model instead. Rendering is skipped
- * when text was found, so digital PDFs never pay for it.
+ * bookmark coordinate space). When `render` is set and the area has no text, or only a
+ * hidden OCR layer that fails the quality check (textLayerQuality.ts), it also renders
+ * the area to a JPEG for the vision model. A visible (digital) text layer is always
+ * trusted, so digital PDFs never pay for rendering.
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { defineTask } from '../tasks/taskProtocol.js';
+import { garbleSignals, isUntrustedTextLayer, type GarbleSignals } from './textLayerQuality.js';
 
 export interface PageTextRect { x: number; y: number; width: number; height: number }
 
@@ -20,7 +22,7 @@ export interface PageTextTaskPayload {
   pageIndex: number;
   /** Area in PDF points, top-left origin. Omit for the whole page. */
   rect?: PageTextRect;
-  /** Render the area when it has no text: target width in pixels. */
+  /** Render the area when it has no trusted text: target width in pixels (at most 4x the PDF size). */
   render?: { width: number; quality: number };
 }
 
@@ -32,7 +34,13 @@ export interface PageTextTaskResult {
   pageCount: number;
   pageWidth: number;
   pageHeight: number;
-  /** Present only when the area had no text and `render` was requested. */
+  /** `hidden`: the page draws its text invisibly (rendering mode 3), an OCR layer over a scan. */
+  textLayer: 'visible' | 'hidden' | 'none';
+  /** OCR-error signals of `text`; 0 for an empty area. */
+  garble: GarbleSignals;
+  /** A hidden layer whose text fails the quality check: prefer the vision model. */
+  untrusted: boolean;
+  /** Present when `render` was requested and the area had no text or untrusted text. */
   image?: { jpegBase64: string; width: number; height: number };
 }
 
@@ -124,8 +132,20 @@ export default defineTask<PageTextTaskPayload, PageTextTaskResult>({
         positioned.push(item);
       }
       const text = joinTextItems(positioned);
-      const result: PageTextTaskResult = { text, itemCount, matchedItems: positioned.length, pageCount: document.numPages, pageWidth: viewport.width, pageHeight: viewport.height };
-      if (meaningfulLength(text) === 0 && payload.render) {
+      const hasText = meaningfulLength(text) > 0;
+      // Only a page with text pays for the operator list: is that text drawn invisibly?
+      let textLayer: PageTextTaskResult['textLayer'] = 'none';
+      if (hasText) {
+        const operators = await page.getOperatorList();
+        let hidden = false;
+        for (let index = 0; index < operators.fnArray.length; index += 1) {
+          if (operators.fnArray[index] === api.OPS.setTextRenderingMode && (operators.argsArray[index] as number[])[0] === 3) { hidden = true; break; }
+        }
+        textLayer = hidden ? 'hidden' : 'visible';
+      }
+      const untrusted = isUntrustedTextLayer(textLayer, text);
+      const result: PageTextTaskResult = { text, itemCount, matchedItems: positioned.length, pageCount: document.numPages, pageWidth: viewport.width, pageHeight: viewport.height, textLayer, garble: garbleSignals(text), untrusted };
+      if ((!hasText || untrusted) && payload.render) {
         const area = rect ?? { x: 0, y: 0, width: viewport.width, height: viewport.height };
         // At most 4x the PDF size: a small clip still reaches a readable resolution.
         const scale = Math.min(4, Math.max(0.1, payload.render.width / area.width));

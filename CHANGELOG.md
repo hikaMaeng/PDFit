@@ -25,6 +25,11 @@
 - **My clips**: the clip dialog has **Show text**, which opens the clip's OCR text in a pane
   beside the clip (selectable, copy, read again). A clip saved before OCR can be read from
   there. The text no longer sits inside the dialog's footer.
+- OCR no longer trusts a damaged hidden OCR layer. A scanned book's invisible text
+  (rendering mode 3) is scored for OCR errors; above 1.0 per 100 characters the vision
+  model reads the area instead. A clip is sent as a fresh rendering of its area at up
+  to 4x (about 1600 px) instead of its screen capture. Page results cached before this
+  are not reused.
 - A folder page orders its PDFs by Unicode code point of the filename (NFC), in the list
   and the cover view. It used to show the newest upload or change first.
 

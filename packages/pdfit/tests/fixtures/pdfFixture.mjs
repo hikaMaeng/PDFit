@@ -1,7 +1,8 @@
 // Builds a small valid single-page PDF: a filled colour band and one line of text.
 // The cross-reference offsets are computed, so PDF.js opens it without recovery.
-export function buildPdf({ label = 'PDFit', rgb = [0.1, 0.4, 0.8], width = 300, height = 400 } = {}) {
-  const content = `${rgb.join(' ')} rg\n0 ${height - 120} ${width} 120 re f\n0 0 0 rg\nBT /F1 24 Tf 20 ${height - 200} Td (${label.replace(/[()\\]/g, '')}) Tj ET\n`;
+// `hiddenText` draws the line with text rendering mode 3 (invisible), like an OCR layer over a scan.
+export function buildPdf({ label = 'PDFit', rgb = [0.1, 0.4, 0.8], width = 300, height = 400, hiddenText = false } = {}) {
+  const content = `${rgb.join(' ')} rg\n0 ${height - 120} ${width} 120 re f\n0 0 0 rg\nBT ${hiddenText ? '3 Tr ' : ''}/F1 24 Tf 20 ${height - 200} Td (${label.replace(/[()\\]/g, '')}) Tj ET\n`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
