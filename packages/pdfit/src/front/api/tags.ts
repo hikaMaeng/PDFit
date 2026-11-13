@@ -34,7 +34,8 @@ export interface AutomaticFolderTagResult {
   cancelled?: boolean;
   /** assignedTag is the bookstore category; assignedTags is every tag the run applied, category first. */
   books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; assignedTags?: string[]; addedTags: string[]; removedTags: string[] }>;
-  errors: Array<{ filename: string; driveFileId?: string; error: string }>;
+  /** `retryable: false`는 다시 분류해도 같은 결과가 나올 실패라 단건 재시도를 건너뛴다. */
+  errors: Array<{ filename: string; driveFileId?: string; error: string; retryable?: boolean }>;
 }
 import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
@@ -183,7 +184,12 @@ export const tagsApi = {
       if (isCancelled()) break;
       await classify(books.slice(index, index + batchSize), true);
     }
-    const retryTargets = [...failures.keys()].map((key) => books.find((book) => keyFor(book) === key)).filter((book): book is typeof books[number] => Boolean(book));
+    const retryTargets = [...failures.entries()]
+      // A book the server rejected on tag quality classifies the same way again, and one
+      // classification costs tens of seconds, so it is reported instead of retried.
+      .filter(([, failure]) => failure.retryable !== false)
+      .map(([key]) => books.find((book) => keyFor(book) === key))
+      .filter((book): book is typeof books[number] => Boolean(book));
     // A failed item is retried through the single-book route instead of being
     // placed in another batch. This isolates title classification, metadata
     // repair, persistence, and cache reconciliation from every other PDF.

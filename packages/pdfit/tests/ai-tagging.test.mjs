@@ -220,7 +220,7 @@ test('automatic-tag route persists only new normalized tags', async (context) =>
     assert.equal(title, '데미안');
     assert.deepEqual(availableTags, ['기존분류']);
     assert.deepEqual(currentTags, ['문학']);
-    return ['문학', '#고전', '성장 소설', '고전'];
+    return ['문학', '#고전', '성장 소설', '고전', '심리 묘사'];
   }));
   const server = app.listen(0, '127.0.0.1');
   context.after(() => server.close());
@@ -231,8 +231,8 @@ test('automatic-tag route persists only new normalized tags', async (context) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: 'drive-1' }),
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { title: '데미안', suggestedTags: ['고전', '문학', '성장 소설'], addedTags: ['고전', '성장 소설'], removedTags: [] });
-  assert.deepEqual(added, [{ tag: '고전', driveFileId: 'drive-1' }, { tag: '성장 소설', driveFileId: 'drive-1' }]);
+  assert.deepEqual(await response.json(), { title: '데미안', suggestedTags: ['고전', '문학', '성장 소설', '심리 묘사'], addedTags: ['고전', '성장 소설', '심리 묘사'], removedTags: [] });
+  assert.deepEqual(added, [{ tag: '고전', driveFileId: 'drive-1' }, { tag: '성장 소설', driveFileId: 'drive-1' }, { tag: '심리 묘사', driveFileId: 'drive-1' }]);
 });
 
 test('document auto-tag bypasses bookstore lookup and replaces a mistaken book category', async (context) => {
@@ -262,19 +262,19 @@ test('document auto-tag bypasses bookstore lookup and replaces a mistaken book c
 });
 
 test('bulk auto-tag routes documents and books through their own rules', async (context) => {
-  const batches = [];
+  const added = [];
   const lookupTitles = [];
   const store = {
     listTags: async () => [],
     listFolderTags: async () => ({ proposal: [], book: [] }),
-    addTags: async (relations) => batches.push(relations),
+    addTag: async (_folder, _filename, tag, driveFileId) => added.push({ tag, driveFileId }),
     removeTag: async () => undefined,
   };
   const app = express();
   app.use(express.json());
   app.use('/api/tags', createTagsRouter(store, async ({ title }) => {
     lookupTitles.push(title);
-    return ['소프트웨어'];
+    return ['소프트웨어', '테스트', '리팩터링', '품질'];
   }));
   const server = app.listen(0, '127.0.0.1');
   context.after(() => server.close());
@@ -291,7 +291,8 @@ test('bulk auto-tag routes documents and books through their own rules', async (
   const payload = await response.json();
   assert.equal(payload.processed, 2);
   assert.deepEqual(lookupTitles, ['단위 테스트의 기술']);
-  assert.deepEqual(batches[0].map(({ tag }) => tag).sort(), ['소프트웨어', '제안서'].sort());
+  assert.deepEqual(added.filter(({ driveFileId }) => driveFileId === 'proposal').map(({ tag }) => tag), ['제안서']);
+  assert.deepEqual(added.filter(({ driveFileId }) => driveFileId === 'book').map(({ tag }) => tag).sort(), ['리팩터링', '소프트웨어', '테스트', '품질'].sort());
 });
 
 test('single automatic-tag route repairs a Drive book missing from the metadata index', async (context) => {
@@ -305,7 +306,7 @@ test('single automatic-tag route repairs a Drive book missing from the metadata 
   };
   const app = express();
   app.use(express.json());
-  app.use('/api/tags', createTagsRouter(store, async () => ['소프트웨어']));
+  app.use('/api/tags', createTagsRouter(store, async () => ['소프트웨어', '테스트', '리팩터링', '품질']));
   const server = app.listen(0, '127.0.0.1');
   context.after(() => server.close());
   await once(server, 'listening');
@@ -315,22 +316,25 @@ test('single automatic-tag route repairs a Drive book missing from the metadata 
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ driveFileId: 'unit-test' }),
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { title: '단위 테스트의 기술', suggestedTags: ['소프트웨어'], addedTags: ['소프트웨어'], removedTags: [] });
-  assert.deepEqual(added, [{ folder: '서재', filename: '단위 테스트의 기술.pdf', tag: '소프트웨어', driveFileId: 'unit-test' }]);
+  const expectedTags = ['소프트웨어', '테스트', '리팩터링', '품질'];
+  assert.deepEqual(await response.json(), { title: '단위 테스트의 기술', suggestedTags: expectedTags, addedTags: expectedTags, removedTags: [] });
+  assert.deepEqual(added, expectedTags.map((tag) => ({ folder: '서재', filename: '단위 테스트의 기술.pdf', tag, driveFileId: 'unit-test' })));
 });
 
-test('folder automatic-tag route classifies all books and persists one metadata batch', async (context) => {
-  const batches = [];
+test('folder automatic-tag route applies every classified book and replaces its old category', async (context) => {
+  const added = [];
   const removed = [];
   const store = {
     listTags: async () => ['기존분류'],
     listFolderTags: async () => ({ 'drive-1': ['기타'], 'drive-2': ['교양'] }),
-    addTags: async (relations) => batches.push(relations),
+    addTag: async (folder, filename, tag, driveFileId) => added.push({ folder, filename, tag, driveFileId }),
     removeTag: async (folder, filename, tag, driveFileId) => removed.push({ folder, filename, tag, driveFileId }),
   };
+  const first = ['소프트웨어', '테스트', '리팩터링', '품질'];
+  const second = ['UI·UX', '사용성', '와이어프레임', '접근성'];
   const app = express();
   app.use(express.json());
-  app.use('/api/tags', createTagsRouter(store, async ({ title }) => title === '첫째' ? ['소프트웨어'] : ['UI·UX']));
+  app.use('/api/tags', createTagsRouter(store, async ({ title }) => title === '첫째' ? first : second));
   const server = app.listen(0, '127.0.0.1');
   context.after(() => server.close());
   await once(server, 'listening');
@@ -344,34 +348,29 @@ test('folder automatic-tag route classifies all books and persists one metadata 
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.deepEqual({ processed: payload.processed, failed: payload.failed, addedTags: payload.addedTags }, { processed: 2, failed: 0, addedTags: 2 });
-  assert.equal(batches.length, 1);
-  assert.deepEqual(batches[0], [
-    { folder: '서재', filename: '첫째.pdf', tag: '소프트웨어', driveFileId: 'drive-1' },
-    { folder: '서재', filename: '둘째.pdf', tag: 'UI·UX', driveFileId: 'drive-2' },
-  ]);
-  assert.deepEqual(removed, [
-    { folder: '서재', filename: '첫째.pdf', tag: '기타', driveFileId: 'drive-1' },
-    { folder: '서재', filename: '둘째.pdf', tag: '교양', driveFileId: 'drive-2' },
-  ]);
+  assert.deepEqual({ processed: payload.processed, failed: payload.failed, addedTags: payload.addedTags }, { processed: 2, failed: 0, addedTags: 8 });
+  assert.deepEqual(added.filter((entry) => entry.driveFileId === 'drive-1').map(({ tag }) => tag), first);
+  assert.deepEqual(added.filter((entry) => entry.driveFileId === 'drive-2').map(({ tag }) => tag), second);
+  assert.deepEqual(removed.map(({ tag, driveFileId }) => [driveFileId, tag]).sort(), [['drive-1', '기타'], ['drive-2', '교양']].sort());
   assert.deepEqual(payload.books.find((book) => book.driveFileId === 'drive-2')?.removedTags, ['교양']);
 });
 
-test('a failed metadata batch does not leave other classifiable PDFs untagged', async (context) => {
-  const individuallyAdded = [];
+test('a book whose tags cannot be stored keeps the tags it already had', async (context) => {
+  // The store fails on the third write of one book, after two of its tags landed. The
+  // route must put that book back the way it was and still tag the other one.
+  const stored = new Map([['unit-test', new Set()], ['broken', new Set(['기타'])]]);
   const store = {
     listTags: async () => [],
-    listFolderTags: async () => ({ 'unit-test': [], broken: [] }),
-    addTags: async () => { throw new Error('one stale metadata row poisoned the batch'); },
-    addTag: async (_folder, filename, tag, driveFileId) => {
-      if (driveFileId === 'broken') throw new Error('Book does not exist in the metadata index.');
-      individuallyAdded.push({ filename, tag, driveFileId });
+    listFolderTags: async () => ({ 'unit-test': [], broken: ['기타'] }),
+    addTag: async (_folder, _filename, tag, driveFileId) => {
+      if (driveFileId === 'broken' && tag === '리팩터링') throw new Error('Book does not exist in the metadata index.');
+      stored.get(driveFileId).add(tag);
     },
-    removeTag: async () => undefined,
+    removeTag: async (_folder, _filename, tag, driveFileId) => { stored.get(driveFileId).delete(tag); },
   };
   const app = express();
   app.use(express.json());
-  app.use('/api/tags', createTagsRouter(store, async () => ['소프트웨어']));
+  app.use('/api/tags', createTagsRouter(store, async () => ['소프트웨어', '테스트', '리팩터링', '품질']));
   const server = app.listen(0, '127.0.0.1');
   context.after(() => server.close());
   await once(server, 'listening');
@@ -385,7 +384,8 @@ test('a failed metadata batch does not leave other classifiable PDFs untagged', 
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.deepEqual({ processed: payload.processed, failed: payload.failed, addedTags: payload.addedTags }, { processed: 1, failed: 1, addedTags: 1 });
+  assert.deepEqual({ processed: payload.processed, failed: payload.failed, addedTags: payload.addedTags }, { processed: 1, failed: 1, addedTags: 4 });
   assert.deepEqual(payload.books.map((book) => [book.filename, book.assignedTag]), [['단위 테스트의 기술.pdf', '소프트웨어']]);
-  assert.deepEqual(individuallyAdded, [{ filename: '단위 테스트의 기술.pdf', tag: '소프트웨어', driveFileId: 'unit-test' }]);
+  assert.deepEqual([...stored.get('unit-test')], ['소프트웨어', '테스트', '리팩터링', '품질']);
+  assert.deepEqual([...stored.get('broken')], ['기타'], 'the failed book keeps exactly the tags it started with');
 });

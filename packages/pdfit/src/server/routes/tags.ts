@@ -1,11 +1,62 @@
 import { Router, type Request, type Response } from 'express';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
-import { AUTOMATIC_TAG_MAX, bookTitleFromFilename, normalizeSuggestedTags, selectAutomaticTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
+import { AUTOMATIC_TAG_MAX, AUTOMATIC_TAG_MIN, bookTitleFromFilename, normalizeSuggestedTags, selectAutomaticTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, documentTagFromTitle } from '../../shared/tagTaxonomy.js';
+import type { MetadataStore } from '../../shared/index.js';
 
 const AUTOMATIC_CATEGORY_SET = new Set<string>([...BOOKSTORE_TAG_TAXONOMY, ...DOCUMENT_TAG_TAXONOMY]);
 const LEGACY_AUTOMATIC_CATEGORIES = new Set(['기타', '교양']);
 const isReplaceableAutomaticCategory = (tag: string) => AUTOMATIC_CATEGORY_SET.has(tag) || LEGACY_AUTOMATIC_CATEGORIES.has(tag);
+
+/**
+ * 분류 결과가 조건을 못 채워 그 책을 건너뛴 실패. 같은 책을 곧바로 다시 분류해도
+ * 대개 같은 결과가 나오고 한 번이 수십 초씩 걸리므로, 호출한 쪽이 재시도 대상에서
+ * 빼도록 `retryable: false`로 구분한다.
+ */
+class AutomaticTagQualityError extends Error {
+  readonly statusCode = 422;
+  readonly retryable = false;
+}
+
+/**
+ * 자동 태그 한 번이 채워야 하는 조건. 조건을 못 채운 결과를 저장하면 품질이 낮은
+ * 한두 개의 태그가 기존 태그를 덮어쓰기 때문에, 여기서 던져 그 책의 태그를
+ * 한 글자도 바꾸지 않은 채 실패로 보고한다. 제목이 문서 형식을 확정하는 경로는
+ * AI 판단이 아니라 결정적인 규칙이므로 그 한 개를 그대로 인정한다.
+ */
+function assertAutomaticTagQuality(tags: string[], title: string, minimum: number): void {
+  if (tags.length === 0) throw new AutomaticTagQualityError(`"${title}"에서 신뢰할 수 있는 도서 분류를 결정하지 못했습니다. 기존 태그는 그대로 두었습니다.`);
+  if (tags.length < minimum) {
+    throw new AutomaticTagQualityError(`"${title}"의 태그를 ${tags.length}개만 만들어 최소 ${minimum}개 조건을 채우지 못했습니다. 기존 태그는 그대로 두었습니다.`);
+  }
+}
+
+/**
+ * 한 책의 자동 태그를 전부 적용하거나 전혀 적용하지 않는다. 저장 도중 한 건이라도
+ * 실패하면 이 호출이 쓴 관계만 되돌려 호출 전 상태로 남기고 던진다.
+ */
+async function applyAutomaticTags(
+  metadataStore: MetadataStore,
+  target: { folder: string; filename: string; driveFileId?: string },
+  change: { addedTags: string[]; removedTags: string[] },
+): Promise<void> {
+  const added: string[] = [];
+  const removed: string[] = [];
+  try {
+    for (const tag of change.addedTags) {
+      await metadataStore.addTag(target.folder, target.filename, tag, target.driveFileId);
+      added.push(tag);
+    }
+    for (const tag of change.removedTags) {
+      await metadataStore.removeTag(target.folder, target.filename, tag, target.driveFileId);
+      removed.push(tag);
+    }
+  } catch (cause) {
+    for (const tag of added) await metadataStore.removeTag(target.folder, target.filename, tag, target.driveFileId).catch(() => undefined);
+    for (const tag of removed) await metadataStore.addTag(target.folder, target.filename, tag, target.driveFileId).catch(() => undefined);
+    throw cause;
+  }
+}
 
 /** 호스트 서비스가 AI 처리 횟수 예약과 성공 차감을 연결하는 계약. */
 export type AutomaticTagDocument = { filename: string; driveFileId?: string; assignedTag?: string };
@@ -193,16 +244,11 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       const suggestedTags = documentTag
         ? [documentTag]
         : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
+      assertAutomaticTagQuality(suggestedTags, title, documentTag ? 1 : AUTOMATIC_TAG_MIN);
       const selectedTag = suggestedTags[0];
-      if (!selectedTag) throw new Error('신뢰할 수 있는 도서 분류를 결정하지 못했습니다.');
       const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
-      const removedTags = selectedTag
-        ? currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag)
-        : [];
-      for (const tag of addedTags) {
-        await metadataStore.addTag(req.params.folder, req.params.filename, tag, driveFileId);
-      }
-      for (const tag of removedTags) await metadataStore.removeTag(req.params.folder, req.params.filename, tag, driveFileId);
+      const removedTags = currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag);
+      await applyAutomaticTags(metadataStore, { folder: req.params.folder, filename: req.params.filename, driveFileId }, { addedTags, removedTags });
       successful.push({ filename: req.params.filename, driveFileId, assignedTag: selectedTag });
       await usage?.finish(successful);
       usage = undefined;
@@ -249,8 +295,16 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
         metadataStore.listFolderTags(req.params.folder),
       ]);
       const results: Array<{ filename: string; driveFileId?: string; assignedTag: string; assignedTags: string[]; addedTags: string[]; removedTags: string[] }> = [];
-      const errors: Array<{ filename: string; driveFileId?: string; error: string }> = [];
-      const relations: Array<{ folder: string; filename: string; tag: string; driveFileId?: string }> = [];
+      const errors: Array<{ filename: string; driveFileId?: string; error: string; retryable?: boolean }> = [];
+      let persistedRelationCount = 0;
+      // 분류는 워커 여러 개가 동시에 하지만 저장은 이 체인으로 한 줄로 세운다.
+      // 두 책이 같은 새 태그 이름을 동시에 만들면 저장소에서 충돌하기 때문이다.
+      let persistChain: Promise<unknown> = Promise.resolve();
+      const persist = <T>(write: () => Promise<T>): Promise<T> => {
+        const next = persistChain.then(write, write);
+        persistChain = next.catch(() => undefined);
+        return next;
+      };
       let cursor = 0;
       const worker = async () => {
         while (cursor < parsed.length) {
@@ -263,61 +317,30 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
             const suggestedTags = documentTag
               ? [documentTag]
               : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
+            assertAutomaticTagQuality(suggestedTags, title, documentTag ? 1 : AUTOMATIC_TAG_MIN);
             const selectedTag = suggestedTags[0];
-            if (!selectedTag) throw new Error('신뢰할 수 있는 도서 분류를 결정하지 못했습니다.');
             const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
-            const removedTags = selectedTag
-              ? currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag)
-              : [];
+            const removedTags = currentTags.filter((tag) => isReplaceableAutomaticCategory(tag) && tag !== selectedTag);
+            // 한 책의 분류와 저장을 그 책 안에서 끝낸다. 실패한 책은 태그가 하나도 바뀌지 않는다.
+            await persist(() => applyAutomaticTags(
+              metadataStore,
+              { folder: req.params.folder, filename: book.filename, driveFileId: book.driveFileId },
+              { addedTags, removedTags },
+            ));
+            persistedRelationCount += addedTags.length;
             results.push({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), assignedTag: selectedTag, assignedTags: suggestedTags, addedTags, removedTags });
-            for (const tag of addedTags) relations.push({ folder: req.params.folder, filename: book.filename, tag, driveFileId: book.driveFileId });
           } catch (error) {
-            errors.push({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), error: error instanceof Error ? error.message : String(error) });
+            errors.push({
+              filename: book.filename,
+              ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}),
+              error: error instanceof Error ? error.message : String(error),
+              ...(error instanceof AutomaticTagQualityError ? { retryable: false } : {}),
+            });
           }
         }
       };
       await Promise.all(Array.from({ length: Math.min(3, parsed.length) }, () => worker()));
-      const relationKey = (value: { filename: string; driveFileId?: string }) => `${value.driveFileId ?? ''}\0${value.filename}`;
-      const failedPersistence = new Set<string>();
-      let persistedRelationCount = 0;
-      if (metadataStore.addTags) {
-        try {
-          await metadataStore.addTags(relations);
-          persistedRelationCount = relations.length;
-        } catch {
-          // One stale metadata row must not prevent the other classified books in
-          // the same client batch from being tagged. The single-write fast path
-          // stays primary; only a failed batch is isolated relation by relation.
-          for (const relation of relations) {
-            try {
-              await metadataStore.addTag(relation.folder, relation.filename, relation.tag, relation.driveFileId);
-              persistedRelationCount += 1;
-            } catch (error) {
-              failedPersistence.add(relationKey(relation));
-              errors.push({ filename: relation.filename, ...(relation.driveFileId ? { driveFileId: relation.driveFileId } : {}), error: error instanceof Error ? error.message : String(error) });
-            }
-          }
-        }
-      } else {
-        for (const relation of relations) {
-          try {
-            await metadataStore.addTag(relation.folder, relation.filename, relation.tag, relation.driveFileId);
-            persistedRelationCount += 1;
-          } catch (error) {
-            failedPersistence.add(relationKey(relation));
-            errors.push({ filename: relation.filename, ...(relation.driveFileId ? { driveFileId: relation.driveFileId } : {}), error: error instanceof Error ? error.message : String(error) });
-          }
-        }
-      }
-      if (failedPersistence.size > 0) {
-        for (let index = results.length - 1; index >= 0; index -= 1) {
-          if (failedPersistence.has(relationKey(results[index]))) results.splice(index, 1);
-        }
-      }
-      for (const book of results) {
-        for (const tag of book.removedTags) await metadataStore.removeTag(req.params.folder, book.filename, tag, book.driveFileId);
-        successful.push(book);
-      }
+      successful.push(...results);
       await usage?.finish(successful);
       usage = undefined;
       res.json({ processed: results.length, failed: errors.length, addedTags: persistedRelationCount, books: results, errors });

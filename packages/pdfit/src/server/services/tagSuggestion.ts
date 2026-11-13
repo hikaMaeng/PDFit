@@ -64,8 +64,10 @@ function tagForBookstoreCategories(categories: string[]): string | undefined {
     [/(?:HTML|JavaScript|CSS|웹사이트|웹\s*개발)/i, '웹 개발'],
     [/(?:프로그래밍\s*언어|코딩|알고리즘)/i, '프로그래밍'],
     [/(?:운영체제|리눅스|윈도우)/i, '운영체제'],
-    [/(?:IT\s*모바일|컴퓨터|소프트웨어)/i, '소프트웨어'],
     [/(?:인공지능|머신러닝|딥러닝)/i, '인공지능'],
+    // 'IT 모바일'은 YES24의 기술서 최상위 분류라 거의 모든 기술서에 걸린다.
+    // 좁은 규칙보다 뒤에 두어야 분류가 그 하나로 뭉개지지 않는다.
+    [/(?:IT\s*모바일|컴퓨터|소프트웨어)/i, '소프트웨어'],
     [/(?:투자|재테크|주식|부동산|금융)/i, '투자·재테크'], [/(?:마케팅|광고|브랜드)/i, '마케팅'],
     [/(?:창업|스타트업|벤처)/i, '창업'], [/(?:경제|경영|비즈니스)/i, '경제·경영'],
     [/(?:글쓰기|작문|문장)/i, '글쓰기'], [/(?:만화|코믹|웹툰)/i, '만화'],
@@ -81,6 +83,13 @@ function tagForBookstoreCategories(categories: string[]): string | undefined {
     [/(?:외국어|영어|일본어|중국어|토익|회화)/i, '외국어'], [/(?:수험서|자격증|기출|공무원|수능)/i, '수험서·자격증'],
     [/(?:자기계발|성공|리더십|처세)/i, '자기계발'],
   ];
+  // 서점 경로는 넓은 분류부터 오므로 가장 깊은 쪽부터 판정한다. 경로 전체를 한 번에
+  // 매칭하면 "IT 모바일 > 인공지능 > 인공지능 일반"이 '인공지능'에 닿기 전에
+  // 맨 앞의 'IT 모바일'에서 '소프트웨어'로 확정된다.
+  for (const segment of [...categories].reverse()) {
+    const matched = rules.find(([pattern]) => pattern.test(segment));
+    if (matched) return matched[1];
+  }
   return rules.find(([pattern]) => pattern.test(path))?.[1];
 }
 
@@ -296,13 +305,14 @@ export function createOpenAiCompatibleTagSuggestionProvider(
 }
 
 const LOCAL_TITLE_CATEGORIES: ReadonlyArray<{ tag: string; pattern: RegExp }> = [
-  { tag: '소프트웨어', pattern: /(?:소프트웨어|테스트|테스팅|testing|test-driven|\bTDD\b|품질\s*보증|architecture|아키텍처|객체지향|애자일|도메인\s*주도\s*설계|domain[ -]?driven|\bDDD\b)/i },
   { tag: '인공지능', pattern: /(?:\bAI\b|인공지능|머신\s*러닝|딥\s*러닝|\bLLM\b|\bGPT\b|뉴럴|신경망)/i },
   { tag: 'UI·UX', pattern: /(?:\bUX\b|\bUI\b|사용자\s*경험|인터페이스|사용성|웹\s*기획|웹\s*디자인|기획자.{0,12}디자이너|디자이너.{0,12}사람에\s*대한|사용자를?.{0,8}생각하게\s*하지\s*마)/i },
   { tag: '웹 개발', pattern: /(?:프론트엔드|front[ -]?end|React|Vue|웹\s*개발|웹사이트|HTML|CSS)/i },
   { tag: '데이터베이스', pattern: /(?:데이터베이스|database|SQL|DBMS|빅\s*데이터|big\s*data|데이터\s*분석|데이터\s*시각화|\bBI\b|대시보드)/i },
   { tag: '운영체제', pattern: /(?:운영체제|리눅스|linux|윈도우|windows)/i },
   { tag: '프로그래밍', pattern: /(?:프로그래밍|프로그래머|programming language|코딩|알고리즘|컴파일러|파이어베이스|spring|스프링|developer)/i },
+  // '소프트웨어'는 기술서 전반에 걸리는 가장 넓은 분류라, 좁은 기술 분류를 모두 거친 뒤에 판정한다.
+  { tag: '소프트웨어', pattern: /(?:소프트웨어|테스트|테스팅|testing|test-driven|\bTDD\b|품질\s*보증|architecture|아키텍처|객체지향|애자일|도메인\s*주도\s*설계|domain[ -]?driven|\bDDD\b)/i },
   { tag: '창업', pattern: /(?:스타트업|창업|벤처|자금\s*조달)/i },
   { tag: '마케팅', pattern: /(?:마케팅|브랜드|고객|광고)/i },
   { tag: '투자·재테크', pattern: /(?:부의|재테크|자산|주식|금융|투자|펀드|캐피탈|돈의)/i },
@@ -340,9 +350,41 @@ function classifyCategoryText(value: string): string[] {
   return LOCAL_TITLE_CATEGORIES.filter((category) => category.pattern.test(value)).map((category) => category.tag).slice(0, 1);
 }
 
-/** Provides a zero-configuration, title-only classifier when no remote AI endpoint is available. */
+/**
+ * Subject tags taken only from names the library already uses that literally occur in the
+ * book's own text. It never invents a subject: a run without an AI server either finds the
+ * evidence in the title, description and table of contents, or returns fewer tags and the
+ * route rejects the run. A Korean name matches as a substring; a Latin-script name needs
+ * word boundaries, so `AI` does not match inside `chain` or `explain`.
+ */
+export function subjectTagsFromText(text: string, availableTags: string[], limit: number): string[] {
+  if (limit <= 0 || !text) return [];
+  const haystack = text.normalize('NFKC');
+  const lowered = haystack.toLocaleLowerCase();
+  const found: Array<{ tag: string; at: number }> = [];
+  for (const tag of availableTags) {
+    const name = tag.normalize('NFKC').trim();
+    if (name.length < 2) continue;
+    let at = -1;
+    if (/[가-힣]/u.test(name)) {
+      at = lowered.indexOf(name.toLocaleLowerCase());
+    } else {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      at = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu').exec(haystack)?.index ?? -1;
+    }
+    if (at >= 0) found.push({ tag, at });
+  }
+  return found.sort((left, right) => left.at - right.at).slice(0, limit).map((item) => item.tag);
+}
+
+/**
+ * Classifier used when no remote AI endpoint is available. The bookstore's own genre path
+ * decides the category when there is one, because it is the publisher's classification;
+ * the title and body rules decide only without it. Subject tags come from evidence in the
+ * text, never from guessing, so this provider can also return fewer than the route accepts.
+ */
 export function createLocalTitleTagSuggestionProvider(): BookTagSuggestionProvider {
-  return async ({ title, bookstoreMetadata }) => {
+  return async ({ title, bookstoreMetadata, availableTags }) => {
     const classificationText = [
       title,
       bookstoreMetadata?.matchedTitle,
@@ -350,7 +392,15 @@ export function createLocalTitleTagSuggestionProvider(): BookTagSuggestionProvid
       bookstoreMetadata?.description,
       bookstoreMetadata?.tableOfContents,
     ].filter(Boolean).join('\n').slice(0, 12_000);
-    return classifyCategoryText(classificationText);
+    const category = (bookstoreMetadata?.categories ? tagForBookstoreCategories(bookstoreMetadata.categories) : undefined)
+      ?? classifyCategoryText(classificationText)[0];
+    if (!category) return [];
+    // A tag that just repeats the book's own title names no subject, so it is dropped here
+    // the same way the AI prompt forbids it.
+    const blocked = new Set([category, title, bookstoreMetadata?.matchedTitle].filter(Boolean).map((value) => tagKey(value as string)));
+    const subjects = subjectTagsFromText(classificationText, availableTags ?? [], AUTOMATIC_TAG_MAX - 1)
+      .filter((tag) => !blocked.has(tagKey(tag)) && !NON_SUBJECT_TAG_SET.has(tag));
+    return [category, ...subjects];
   };
 }
 
@@ -539,23 +589,27 @@ export function createTagSuggestionProviderFromEnvironment(
       let book: Yes24PublicBook | null = null;
       try { book = await publicLookup(input.title); } catch { /* no exact-title match or the page is unavailable */ }
       if (book) {
+        const enriched: BookTagSuggestionRequest = {
+          ...input,
+          bookstoreMetadata: {
+            source: 'YES24',
+            matchedTitle: book.matchedTitle,
+            ...(book.categories.length > 0 ? { categories: book.categories } : {}),
+            ...(book.description ? { description: book.description } : {}),
+            ...(book.tableOfContents ? { tableOfContents: book.tableOfContents } : {}),
+          },
+        };
         if (classifier) {
           try {
-            const suggested = await classifier({
-              ...input,
-              bookstoreMetadata: {
-                source: 'YES24',
-                matchedTitle: book.matchedTitle,
-                ...(book.categories.length > 0 ? { categories: book.categories } : {}),
-                ...(book.description ? { description: book.description } : {}),
-                ...(book.tableOfContents ? { tableOfContents: book.tableOfContents } : {}),
-              },
-            });
+            const suggested = await classifier(enriched);
             if (suggested.length > 0) return suggested;
-          } catch { /* AI unavailable or invalid: the bookstore genre still decides */ }
+          } catch { /* AI unavailable or invalid: the bookstore text still decides below */ }
         }
-        const genreTag = tagForBookstoreCategories(book.categories);
-        if (genreTag) return [genreTag];
+        // The same bookstore description and table of contents the AI would have read.
+        // The deterministic classifier reads them too, so a failed AI call falls back to
+        // a category plus the subjects the text actually names, not to a lone category.
+        const local = await localClassifier(enriched);
+        if (local.length > 0) return local;
       }
       if (classifier) {
         try {

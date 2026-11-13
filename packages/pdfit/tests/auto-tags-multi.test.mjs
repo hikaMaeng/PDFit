@@ -109,7 +109,7 @@ test('folder route reports assignedTags and stores every new relation', async (c
   const store = {
     listTags: async () => ['LLM'],
     listFolderTags: async () => ({ 'AI 엔지니어링.pdf': ['LLM'] }),
-    addTags: async (values) => relations.push(...values.map((value) => value.tag)),
+    addTag: async (_folder, _filename, tag) => relations.push(tag),
     removeTag: async () => {},
   };
   const base = await listen(context, createTagsRouter(store, async () => ['인공지능', 'LLM', '에이전트', 'RAG']));
@@ -130,4 +130,49 @@ test('reasoning_effort is sent only when the server config asks for it', async (
   await createOpenAiCompatibleTagSuggestionProvider({ baseUrl: 'https://ai.example.test/v1', model: 'm' }, answer)({ title: 'x', availableTags: [], currentTags: [] });
   assert.equal(bodies[0].reasoning_effort, 'low');
   assert.equal('reasoning_effort' in bodies[1], false);
+});
+
+// The 4-tag minimum is a storage gate, not only a prompt instruction: a run that cannot
+// reach it must leave the book exactly as it was and say so.
+
+test('a book classified below the minimum keeps its tags and is reported as failed', async (context) => {
+  const writes = [];
+  const store = {
+    listTags: async () => ['LLM'],
+    listBookTags: async () => ['프로그래밍'],
+    listFolderTags: async () => ({ 'AI 엔지니어링.pdf': ['프로그래밍'] }),
+    addTag: async (_folder, _filename, tag) => writes.push(['add', tag]),
+    removeTag: async (_folder, _filename, tag) => writes.push(['remove', tag]),
+  };
+  const base = await listen(context, createTagsRouter(store, async () => ['인공지능', 'LLM', 'RAG']));
+  const response = await fetch(`${base}/book/${encodeURIComponent('이북')}/${encodeURIComponent('AI 엔지니어링.pdf')}/auto`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  assert.equal(response.status, 422, 'a quality shortfall is not a server fault and is not retried as one');
+  const payload = await response.json();
+  assert.match(payload.error, /3개만/);
+  assert.match(payload.error, new RegExp(`최소 ${AUTOMATIC_TAG_MIN}개`));
+  assert.deepEqual(writes, [], 'nothing is written when the run cannot meet the contract');
+});
+
+test('the folder route marks a quality shortfall as not retryable and still tags the rest', async (context) => {
+  const writes = [];
+  const store = {
+    listTags: async () => [],
+    listFolderTags: async () => ({ '부족한 책.pdf': [], '충분한 책.pdf': [] }),
+    addTag: async (_folder, filename, tag) => writes.push([filename, tag]),
+    removeTag: async () => {},
+  };
+  const base = await listen(context, createTagsRouter(store, async ({ title }) => (
+    title === '부족한 책' ? ['인공지능', 'LLM'] : ['인공지능', 'LLM', 'RAG', '파인튜닝']
+  )));
+  const response = await fetch(`${base}/folder/${encodeURIComponent('이북')}/auto`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ books: [{ filename: '부족한 책.pdf' }, { filename: '충분한 책.pdf' }] }),
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual({ processed: payload.processed, failed: payload.failed }, { processed: 1, failed: 1 });
+  assert.deepEqual(payload.errors.map((item) => [item.filename, item.retryable]), [['부족한 책.pdf', false]]);
+  assert.deepEqual(writes.map(([filename]) => filename), ['충분한 책.pdf', '충분한 책.pdf', '충분한 책.pdf', '충분한 책.pdf']);
 });
