@@ -12,6 +12,9 @@
 - The Free app waits up to 600 s (was 300 s) for an automatic-tag reply from the Settings
   AI server, and asks it for `reasoning_effort: "low"`.
 - A tag page's cards and rows show every tag of a book, including the page's own tag.
+- **My clips**: the clip dialog has **Show text**, which opens the clip's OCR text in a pane
+  beside the clip (selectable, copy, read again). A clip saved before OCR can be read from
+  there. The text no longer sits inside the dialog's footer.
 - A folder page orders its PDFs by Unicode code point of the filename (NFC), in the list
   and the cover view. It used to show the newest upload or change first.
 

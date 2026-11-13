@@ -374,6 +374,8 @@ try {
     await badgeOf(clipsPage, capture.id).click();
     const dialog = clipsPage.getByTestId('bookmark-preview-dialog');
     await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+    // The text sits in a pane opened by "텍스트 보기" beside the clip (since 2026-11-13).
+    await clipsPage.getByTestId('bookmark-preview-text').click();
     await clipsPage.getByTestId('clip-ocr').waitFor({ timeout: 10_000 });
     const ui = await readPanel(clipsPage, 'clip-ocr');
     await snap(clipsPage, 'clip-dialog-digital-light.png');
@@ -571,6 +573,8 @@ try {
     await badgeOf(clipsPage, capture.id).click();
     const dialog = clipsPage.getByTestId('bookmark-preview-dialog');
     await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+    await clipsPage.getByTestId('bookmark-preview-text').click();
+    await clipsPage.getByTestId('clip-ocr').waitFor({ timeout: 10_000 });
     const ui = await readPanel(clipsPage, 'clip-ocr');
     await snap(clipsPage, 'clip-dialog-scanned-light.png');
     await clipsPage.keyboard.press('Escape');

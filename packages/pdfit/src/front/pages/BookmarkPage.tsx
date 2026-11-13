@@ -4,6 +4,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import NotesIcon from '@mui/icons-material/Notes';
+import CloseIcon from '@mui/icons-material/Close';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
 import { listAllBookmarks, retryBookmarkOcr } from '../api/bookmarks.js';
@@ -150,6 +151,9 @@ export default function BookmarkPage() {
   const previewRecord = previewBookmark ? bookmarks.find((bookmark) => bookmark.id === previewBookmark.id) ?? previewBookmark : null;
   const previewOcr = previewRecord ? clipOcrState(previewRecord) : null;
   const [retryingOcr, setRetryingOcr] = useState(false);
+  // The text pane beside the clip; closed again whenever another clip is opened.
+  const [textPaneOpen, setTextPaneOpen] = useState(false);
+  useEffect(() => { setTextPaneOpen(false); }, [previewBookmark?.id]);
   const retryOcr = useCallback(async (record: BookmarkRecord) => {
     setRetryingOcr(true);
     setDeleteError(null);
@@ -228,14 +232,28 @@ export default function BookmarkPage() {
           ))}
         </Box>
       )}
-      <Dialog data-testid="bookmark-preview-dialog" open={Boolean(previewBookmark)} onClose={() => setPreviewBookmark(null)} transitionDuration={0} fullWidth maxWidth="sm">
+      <Dialog data-testid="bookmark-preview-dialog" data-text-pane={textPaneOpen ? 'open' : 'closed'} open={Boolean(previewBookmark)} onClose={() => setPreviewBookmark(null)} transitionDuration={0} fullWidth maxWidth={textPaneOpen ? 'lg' : 'sm'}>
         {previewBookmark && <>
           <DialogTitle>{t('bookmarkCapture')}</DialogTitle>
-          <DialogContent sx={{ pt: 1 }}>
+          {/* With the text pane open the clip and its text sit side by side (stacked on a narrow screen).
+              max-content rows: in the height-limited dialog, auto rows shrank the clip frame under the pane. */}
+          <DialogContent sx={{ pt: 1, display: 'grid', gap: 2, gridTemplateColumns: textPaneOpen ? { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' } : '1fr', gridAutoRows: 'max-content', alignItems: 'start' }}>
             <Box data-testid="bookmark-preview-image-frame" sx={{ position: 'relative', border: `2px solid ${previewBookmark.borderColor}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: '#101012' }}>
               <Box data-testid="bookmark-preview-image" component="img" src={previewBookmark.imageUrl} alt={ui("{p0} {p1}페이지 캡처", { p0: bookTitle(previewBookmark.filename), p1: previewBookmark.pageIndex + 1 })} decoding="async" sx={{ display: 'block', width: '100%', maxHeight: '58vh', objectFit: 'contain' }} />
               {previewBookmark.fillColor && <Box data-testid="bookmark-preview-color-indicator" sx={{ position: 'absolute', right: 12, bottom: 12, width: 14, height: 14, borderRadius: '50%', bgcolor: previewBookmark.fillColor, border: '1px solid rgba(255,255,255,.8)' }} />}
             </Box>
+            {textPaneOpen && previewRecord ? <Box component="section" role="region" aria-labelledby="clip-text-pane-title" data-testid="clip-text-pane" sx={{ display: 'grid', gap: 1, alignContent: 'start', minWidth: 0, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1.5, bgcolor: 'background.default' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography id="clip-text-pane-title" variant="subtitle1" component="h2" sx={{ flex: 1, fontWeight: 700 }}>{t('ocrClipTextTitle')}</Typography>
+                <IconButton size="small" aria-label={t('ocrHideText')} title={t('ocrHideText')} data-testid="clip-text-pane-close" onClick={() => setTextPaneOpen(false)}><CloseIcon fontSize="small" /></IconButton>
+              </Box>
+              {previewOcr
+                ? <OcrTextPanel testId="clip-ocr" state={previewOcr} retrying={retryingOcr} onRetry={() => void retryOcr(previewRecord)} maxHeight="52vh" />
+                : <Box data-testid="clip-ocr" data-ocr-status="none" sx={{ display: 'grid', gap: 1, justifyItems: 'start' }}>
+                  <Typography variant="body2" color="text.secondary">{t('ocrNotRead')}</Typography>
+                  <Button variant="outlined" size="small" data-testid="clip-ocr-read" disabled={retryingOcr} startIcon={retryingOcr ? <CircularProgress size={14} /> : <NotesIcon fontSize="small" />} onClick={() => void retryOcr(previewRecord)}>{t('ocrReadNow')}</Button>
+                </Box>}
+            </Box> : null}
           </DialogContent>
           <DialogActions sx={{ display: 'block', px: 3, pb: 2.5 }}>
             <Box data-testid="bookmark-preview-details" sx={{ mb: 1.5, minWidth: 0 }}>
@@ -245,13 +263,15 @@ export default function BookmarkPage() {
               </Box>
               {previewBookmark.comment && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{previewBookmark.comment}</Typography>}
             </Box>
-            {previewRecord && previewOcr ? <Box sx={{ mb: 1.5 }}><OcrTextPanel testId="clip-ocr" state={previewOcr} retrying={retryingOcr} onRetry={() => void retryOcr(previewRecord)} maxHeight="22vh" /></Box> : null}
             {deleteError && <Alert severity="error" sx={{ mb: 1.5 }}>{deleteError}</Alert>}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
               <IconButton data-testid="bookmark-preview-delete" aria-label={t('deleteBookmark')} title={t('deleteBookmark')} color="error" onClick={removePreviewBookmark}>
                 <DeleteOutlineIcon />
               </IconButton>
-              <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer}>{t('openPageNewWindow')}</Button>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 1 }}>
+                <Button data-testid="bookmark-preview-text" variant="outlined" startIcon={<NotesIcon />} aria-expanded={textPaneOpen} aria-controls={textPaneOpen ? 'clip-text-pane-title' : undefined} onClick={() => setTextPaneOpen((open) => !open)}>{textPaneOpen ? t('ocrHideText') : t('ocrShowText')}</Button>
+                <Button data-testid="bookmark-preview-open-viewer" startIcon={<OpenInNewIcon />} variant="contained" onClick={openPreviewViewer}>{t('openPageNewWindow')}</Button>
+              </Box>
             </Box>
           </DialogActions>
         </>}

@@ -1,0 +1,183 @@
+{
+  "runId": "20261113_clip-text-pane-fix",
+  "origin": "http://127.0.0.1:15203",
+  "clipId": "2b012952-7b9e-4059-ab8b-68484bd3c32e",
+  "filename": "인공지능을 위한 수학.pdf",
+  "page": 29,
+  "ocrBefore": {
+    "status": "done",
+    "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+    "source": "text-layer",
+    "error": null,
+    "updatedAt": "2026-11-13T01:54:14.847Z"
+  },
+  "steps": {
+    "desktop": {
+      "closed": {
+        "paneOpen": "closed",
+        "status": null,
+        "text": null,
+        "userSelect": null,
+        "source": null,
+        "pane": null,
+        "image": {
+          "left": 445,
+          "right": 995,
+          "top": 305,
+          "bottom": 539
+        },
+        "buttonLabel": "텍스트 보기",
+        "expanded": "false",
+        "overflow": 0
+      },
+      "opened": {
+        "paneOpen": "open",
+        "status": "done",
+        "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+        "userSelect": "text",
+        "source": "text-layer",
+        "pane": {
+          "left": 728,
+          "top": 203,
+          "width": 567
+        },
+        "image": {
+          "left": 145,
+          "right": 712,
+          "top": 203,
+          "bottom": 444
+        },
+        "buttonLabel": "텍스트 닫기",
+        "expanded": "true",
+        "overflow": 0
+      },
+      "final": {
+        "paneOpen": "open",
+        "status": "done",
+        "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+        "userSelect": "text",
+        "source": "text-layer",
+        "pane": {
+          "left": 728,
+          "top": 203,
+          "width": 567
+        },
+        "image": {
+          "left": 145,
+          "right": 712,
+          "top": 203,
+          "bottom": 444
+        },
+        "buttonLabel": "텍스트 닫기",
+        "expanded": "true",
+        "overflow": 0
+      },
+      "selectionLength": 57,
+      "afterClose": {
+        "paneOpen": "closed",
+        "status": null,
+        "text": null,
+        "userSelect": null,
+        "source": null,
+        "pane": null,
+        "image": {
+          "left": 445,
+          "right": 995,
+          "top": 305,
+          "bottom": 539
+        },
+        "buttonLabel": "텍스트 보기",
+        "expanded": "false",
+        "overflow": 0
+      }
+    },
+    "mobile": {
+      "closed": {
+        "paneOpen": "closed",
+        "status": null,
+        "text": null,
+        "userSelect": null,
+        "source": null,
+        "pane": null,
+        "image": {
+          "left": 57,
+          "right": 318,
+          "top": 301,
+          "bottom": 414
+        },
+        "buttonLabel": "텍스트 보기",
+        "expanded": "false",
+        "overflow": 0
+      },
+      "opened": {
+        "paneOpen": "open",
+        "status": "done",
+        "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+        "userSelect": "text",
+        "source": "text-layer",
+        "pane": {
+          "left": 57,
+          "top": 225,
+          "width": 261
+        },
+        "image": {
+          "left": 57,
+          "right": 318,
+          "top": 97,
+          "bottom": 209
+        },
+        "buttonLabel": "텍스트 닫기",
+        "expanded": "true",
+        "overflow": 0
+      },
+      "final": {
+        "paneOpen": "open",
+        "status": "done",
+        "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+        "userSelect": "text",
+        "source": "text-layer",
+        "pane": {
+          "left": 57,
+          "top": 225,
+          "width": 261
+        },
+        "image": {
+          "left": 57,
+          "right": 318,
+          "top": 97,
+          "bottom": 209
+        },
+        "buttonLabel": "텍스트 닫기",
+        "expanded": "true",
+        "overflow": 0
+      },
+      "selectionLength": 44,
+      "afterClose": {
+        "paneOpen": "closed",
+        "status": null,
+        "text": null,
+        "userSelect": null,
+        "source": null,
+        "pane": null,
+        "image": {
+          "left": 57,
+          "right": 318,
+          "top": 301,
+          "bottom": 414
+        },
+        "buttonLabel": "텍스트 보기",
+        "expanded": "false",
+        "overflow": 0
+      }
+    }
+  },
+  "pageErrors": [],
+  "writes": [],
+  "ocrAfter": {
+    "status": "done",
+    "text": "인공지능빼서는 01렇게 팔용한다\n\nO 인공지능에서 사용하는 모델 종의 하나인 신경밍'1l euraln e two d ,에서는 ‘기중켜詞) ' 1 라는 개념\n이 있는데 , 컴퓨터가이러한기중치 ( 'Iu)를스스로 학습하며 결정하게 됩니댜\n\nO 재미있는 것은 컴퓨터가 기중치(,U I )를 학습할 때는 기중치가 ` 변수’의 역할을 하는데, 학\n습이 끝나고 해당 기중치 를 학습 모델에 활용할 때는 `상수’의 역할을 한다는 것입니다.\n이 처 럼 변수’와 ‘ 상수`는 문제 상황을 바라보는 관접에 따라 달라질 수 있으멱 결국 우\n리가 어떤 것에 관심 을 두느냐에 따라 해당하는 역할이 달라지는 것을 알 수 있습니다.",
+    "source": "text-layer",
+    "error": null,
+    "updatedAt": "2026-11-13T01:54:14.847Z"
+  }
+}
