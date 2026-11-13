@@ -50,6 +50,8 @@ verification script on platforms that consume `--base-url` as an npm option. Use
 `PDFIT_ACCEPTANCE_REPORT_PATH` to keep disposable verification evidence outside the
 checked-in report directory.
 
+`apps/pdfit/tests/large-library-progressive-browser.mjs` checks that a 600-item library does not block the page. It serves the built `apps/pdfit/dist` from its own stub server (600 local-library PDFs, each thumbnail answered after 120ms) in cover view and asserts: the first commit mounts a chunk, not the library (`data-list-rendered` on `[data-testid="list-mount-sentinel"]`); no `requestAnimationFrame` gap reaches 400ms while the list grows; `data-list-mounted` turns `true` with all 600 cards in the DOM; the first six covers that become ready are the first six files; thumbnail loads stay within 6 in parallel and only the covers in range are requested. `PDFIT_TEST_CHROMIUM_PATH` or `PDFIT_TEST_CHANNEL` picks a browser when Playwright's bundled headless shell is missing; `PDFIT_EVIDENCE_DIR` writes `summary.json` and a screenshot. Before the fix it fails (the sentinel does not exist and all 600 cards mount in one 3.8s frame). Plan `tests/plans/large-library-progressive-20261113.md`, report `tests/reports/large-library-progressive/20261113.md`, evidence `test/20261113/large-library-progressive/`.
+
 Plans and reports are under `apps/pdfit/tests/plans/` and `apps/pdfit/tests/reports/`. Browser screenshots and machine-readable artifacts belong under `test/YYYYMMDD/<run>/`.
 
 The LinkCpp-inspired shell verification is recorded in `apps/pdfit/tests/reports/ui-theme/20260805_205600.md`, with browser evidence under `test/20260805/20260805_linkcpp-theme-smoke/`.

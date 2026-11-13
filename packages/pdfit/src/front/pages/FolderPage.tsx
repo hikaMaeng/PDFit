@@ -27,6 +27,8 @@ import PdfListItem from '../components/PdfListItem';
 import PdfListHeader from '../components/PdfListHeader';
 import LibraryFixedControls from '../components/LibraryFixedControls';
 import PdfCoverItem from '../components/PdfCoverItem';
+import ListMountProgress from '../components/ListMountProgress';
+import { useProgressiveItems } from '../components/useProgressiveItems.js';
 import BookMetadataDialog, { type BookMetadataTarget } from '../components/BookMetadataDialog';
 import { queueAutomaticCoverLookup } from '../api/bookMetadata';
 import { fileIdentity, folderLibraryModel } from '../model/folderLibraryModel';
@@ -152,6 +154,8 @@ function FolderPage({ folderName: requestedFolderName }: {
     const normalizedPdfSearch = normalizePdfSearch(pdfSearch);
     const searchTerms = normalizedPdfSearch.split(' ').filter(Boolean);
     const visibleFiles = (normalizedPdfSearch ? files.filter((file) => { const identity = fileIdentity(file.name, file.driveFileId); const tags = fileTags[identity] ?? fileTags[file.name] ?? []; const searchable = normalizePdfSearch(`${file.name} ${tags.join(' ')}`); return searchTerms.every((term) => searchable.includes(term)); }) : files).slice().sort((a, b) => compareUnicode(a.name, b.name));
+    // 큰 폴더는 한 번에 다 그리지 않고 위에서부터 조금씩 붙인다(메인 스레드 블로킹 방지).
+    const { rendered: renderedFiles, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(visibleFiles, `${folderName}\u0000${libraryView}\u0000${normalizedPdfSearch}`);
     useEffect(() => { setSelectedFiles(new Set()); setPdfSearch(''); setSearchOpen(false); }, [folderName]);
     useEffect(() => () => {
         if (bulkAutoTagCancellationRef.current)
@@ -764,10 +768,11 @@ function FolderPage({ folderName: requestedFolderName }: {
         </Button>
         </Box>) : libraryView === 'list' ? (<>
         <List disablePadding>
-        {visibleFiles.map((file) => { const identity = selectionKey(file); return (<PdfListItem compactTagActions={!canUseAiAutoTag} key={identity} filename={file.name} href={`/viewer/${encodeURIComponent(folderName)}/${encodeURIComponent(file.name)}${file.driveFileId ? `?driveFileId=${encodeURIComponent(file.driveFileId)}` : ''}`} folder={folderName} driveFileId={file.driveFileId} size={file.size} modifiedAt={file.modifiedAt} tags={fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? []} tagColors={tagColors} onTagDelete={(rowFolder, filename, tag) => handleInlineRemoveTag(rowFolder, filename, tag, file.driveFileId)} onManageTags={(rowFolder, filename) => openTagDialog(rowFolder, filename, file.driveFileId)} onAutoTag={canUseAiAutoTag ? (_rowFolder, filename) => void handleAutoTag(filename, file.driveFileId) : undefined} onEditMetadata={bookMetadataEnabled && !isPendingUploadDriveFileId(file.driveFileId) ? () => void openDocumentMetadata(file) : undefined} autoTagLabel={canUseAiAutoTag ? t('aiAutoTag') : t('aiAutoTagPaidOnly')} autoTagging={tagMutation === `__ai_auto_tag__:${file.name}`} autoTagDisabled={!canUseAiAutoTag || (tagMutation !== null && tagMutation !== `__ai_auto_tag__:${file.name}`)} manageTagsLabel={t('manageTags')} moveLabel={t('moveToFolder')} deleteLabel={t('delete')} selected={selectedFiles.has(identity)} onSelectionChange={(_rowFolder, _filename, selected) => handleSelectionChange(identity, selected)}/>); })}
+        {renderedFiles.map((file) => { const identity = selectionKey(file); return (<PdfListItem compactTagActions={!canUseAiAutoTag} key={identity} filename={file.name} href={`/viewer/${encodeURIComponent(folderName)}/${encodeURIComponent(file.name)}${file.driveFileId ? `?driveFileId=${encodeURIComponent(file.driveFileId)}` : ''}`} folder={folderName} driveFileId={file.driveFileId} size={file.size} modifiedAt={file.modifiedAt} tags={fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? []} tagColors={tagColors} onTagDelete={(rowFolder, filename, tag) => handleInlineRemoveTag(rowFolder, filename, tag, file.driveFileId)} onManageTags={(rowFolder, filename) => openTagDialog(rowFolder, filename, file.driveFileId)} onAutoTag={canUseAiAutoTag ? (_rowFolder, filename) => void handleAutoTag(filename, file.driveFileId) : undefined} onEditMetadata={bookMetadataEnabled && !isPendingUploadDriveFileId(file.driveFileId) ? () => void openDocumentMetadata(file) : undefined} autoTagLabel={canUseAiAutoTag ? t('aiAutoTag') : t('aiAutoTagPaidOnly')} autoTagging={tagMutation === `__ai_auto_tag__:${file.name}`} autoTagDisabled={!canUseAiAutoTag || (tagMutation !== null && tagMutation !== `__ai_auto_tag__:${file.name}`)} manageTagsLabel={t('manageTags')} moveLabel={t('moveToFolder')} deleteLabel={t('delete')} selected={selectedFiles.has(identity)} onSelectionChange={(_rowFolder, _filename, selected) => handleSelectionChange(identity, selected)}/>); })}
         </List>
-        </>) : (<Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
-            {visibleFiles.map((file) => {
+        <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedFiles.length} total={visibleFiles.length} />
+        </>) : (<><Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
+            {renderedFiles.map((file) => {
                 const identity = selectionKey(file);
                 return (<PdfCoverItem key={identity} filename={file.name} url={foldersApi.fileUrl(folderName, file.name, file.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={(() => {
                         if (serverThumbnails && !file.driveFileId)
@@ -779,7 +784,9 @@ function FolderPage({ folderName: requestedFolderName }: {
                         return `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}cover=${version}`;
                     })()} folder={folderName} driveFileId={file.driveFileId} size={file.size} modifiedAt={file.modifiedAt} tags={fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? []} tagColors={tagColors} selected={selectedFiles.has(identity)} autoTagging={tagMutation === `__ai_auto_tag__:${file.name}`} autoTagDisabled={!canUseAiAutoTag || (tagMutation !== null && tagMutation !== `__ai_auto_tag__:${file.name}`)} onSelectionChange={(_rowFolder, _filename, selected) => handleSelectionChange(identity, selected)} onTagDelete={(rowFolder, filename, tag) => handleInlineRemoveTag(rowFolder, filename, tag, file.driveFileId)} onManageTags={(rowFolder, filename) => openTagDialog(rowFolder, filename, file.driveFileId)} onAutoTag={canUseAiAutoTag ? (_rowFolder, filename) => void handleAutoTag(filename, file.driveFileId) : undefined} onEditMetadata={bookMetadataEnabled && !isPendingUploadDriveFileId(file.driveFileId) ? () => void openDocumentMetadata(file) : undefined} onCoverVisible={bookMetadataEnabled ? (driveFileId) => queueAutomaticCoverLookup(driveFileId, () => setCoverVersions((current) => ({ ...current, [driveFileId]: Date.now() }))) : undefined} onMove={(rowFolder, filename) => openMoveDialog(rowFolder, filename, file.driveFileId)} onDelete={(rowFolder, filename) => handleDelete(rowFolder, filename, file.driveFileId)}/>);
             })}
-        </Box>)}
+        </Box>
+        <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedFiles.length} total={visibleFiles.length} />
+        </>)}
     </Box>
     <BookMetadataDialog target={metadataTarget} onClose={() => setMetadataTarget(null)} onCoverChanged={(driveFileId) => setCoverVersions((current) => ({ ...current, [driveFileId]: Date.now() }))} canUseAiResearch={bookResearchAccess?.() ?? false} onUpgrade={() => { setMetadataTarget(null); navigate('/pricing'); }}/>
     {/* 숨겨진 파일 input */}

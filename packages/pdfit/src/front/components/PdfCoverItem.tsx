@@ -17,6 +17,8 @@ import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHis
 import { bookMetadataApi } from '../api/bookMetadata.js';
 import { viewerStateApi } from '../api/viewerState.js';
 import { coversAvailable, ensureCoverOverrides, getCoversRevision, subscribeCovers, withCoverVersion } from '../api/covers.js';
+import { useThumbnailSlot } from './thumbnailLoadQueue.js';
+import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
 
 type Props = {
@@ -127,6 +129,8 @@ function FirstPageThumbnail({ url, thumbnailUrl, title, modifiedAt, driveFileId,
   const [attempt, setAttempt] = useState(0);
   const [driveThumbnailFailed, setDriveThumbnailFailed] = useState(() => Boolean(thumbnailUrl && missingDriveThumbnails.has(thumbnailUrl)));
   const useDriveThumbnail = Boolean(thumbnailUrl && !driveThumbnailFailed);
+  // The stored thumbnail is one of the parallel loads the page allows at a time.
+  const driveSlot = useThumbnailSlot(visible && useDriveThumbnail && state !== 'ready', `${thumbnailUrl ?? url}|${attempt}`);
 
   useEffect(() => {
     setState('idle');
@@ -283,7 +287,7 @@ function FirstPageThumbnail({ url, thumbnailUrl, title, modifiedAt, driveFileId,
   }, [attempt, modifiedAt, url, visible, useDriveThumbnail]);
 
   return <Box ref={hostRef} data-testid="pdf-cover-thumbnail" aria-label={ui("{p0} 첫 페이지 표지", { p0: title })} sx={{ position: 'relative', display: 'grid', placeItems: 'center', width: '100%', aspectRatio: '3 / 4', overflow: 'hidden', bgcolor: 'action.hover' }}>
-    {useDriveThumbnail && visible ? <Box
+    {useDriveThumbnail && visible && (driveSlot || state === 'ready') ? <Box
       component="img"
       src={thumbnailUrl}
       alt=""
@@ -320,6 +324,8 @@ function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; t
   const [visible, setVisible] = useState(false);
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'queued' | 'failed'>('idle');
   const [attempt, setAttempt] = useState(0);
+  // One of the page's parallel thumbnail loads; released as soon as the image is in.
+  const slot = useThumbnailSlot(visible && state === 'loading', `${thumbnailUrl}|${attempt}`);
   currentUrl.current = thumbnailUrl;
 
   useEffect(() => {
@@ -367,7 +373,7 @@ function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; t
     setState('loading');
   };
 
-  const showImage = state === 'ready' || (visible && state === 'loading');
+  const showImage = state === 'ready' || (visible && state === 'loading' && slot);
   // Retries use a distinct URL so a failed load is never answered from the browser's memory cache.
   const source = attempt === 0 ? thumbnailUrl : `${thumbnailUrl}${thumbnailUrl.includes('?') ? '&' : '?'}r=${attempt}`;
 
@@ -394,7 +400,7 @@ function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; t
 const TITLE_BAND_MIN_HEIGHT = 'calc(2.7em + 12px)';
 const OVERLAY_TEXT_SX = { color: 'rgba(255,255,255,.86)', fontSize: '.75rem', lineHeight: 1.4 } as const;
 
-export default function PdfCoverItem(props: Props) {
+function PdfCoverItem(props: Props) {
   const { language, t, ui } = usePdfitI18n();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -503,3 +509,6 @@ export default function PdfCoverItem(props: Props) {
     {canReplaceCover ? <RealCoverDialog open={coverDialogOpen} folder={props.folder} filename={props.filename} onClose={() => setCoverDialogOpen(false)} /> : null}
   </Box>;
 }
+
+// 긴 목록에서 부모가 다시 그려도 자기 데이터가 그대로면 다시 그리지 않는다.
+export default React.memo(PdfCoverItem, cardPropsEqual);

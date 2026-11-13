@@ -2,6 +2,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import GridViewIcon from '@mui/icons-material/GridView';
 import PdfCoverItem from '../components/PdfCoverItem';
+import ListMountProgress from '../components/ListMountProgress';
+import { useProgressiveItems } from '../components/useProgressiveItems';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -65,6 +67,8 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
   const [error, setError] = useState<string | null>(null);
   const [tagColor, setTagColor] = useState('#22c55e');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
+  // 태그에 문서가 아무리 많아도 위에서부터 조금씩 붙여 첫 화면이 멈추지 않게 한다.
+  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${untagged ? '__untagged__' : tagName}\u0000${libraryView}`);
 
   /** `${folder}/${filename}` → 태그 목록 */
   const [bookTags, setBookTags] = useState<Record<string, string[]>>({});
@@ -410,8 +414,8 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
           </Box>
           {libraryView === 'list' && <PdfListHeader compactTagActions={!canUseAiAutoTag} />}
           </LibraryFixedControls>
-          {libraryView === 'list' ? <List disablePadding>
-            {books.map((book) => {
+          {libraryView === 'list' ? <><List disablePadding>
+            {renderedBooks.map((book) => {
               const key = selectionKey(book);
               const identity = bookIdentity(book);
               return (
@@ -433,9 +437,13 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
                 />
               );
             })}
-          </List> : <Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
-            {books.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={!serverThumbnails ? foldersApi.thumbnailUrl(book.driveFileId) : book.driveFileId ? foldersApi.thumbnailUrl(book.driveFileId, book.modified_at, book.size) : foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size)} tags={bookTags[bookIdentity(book)] ?? []} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={tagMutation === `ai:${bookIdentity(book)}`} autoTagDisabled={tagMutation !== null} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
-          </Box>}
+          </List>
+          <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
+          </> : <><Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
+            {renderedBooks.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={!serverThumbnails ? foldersApi.thumbnailUrl(book.driveFileId) : book.driveFileId ? foldersApi.thumbnailUrl(book.driveFileId, book.modified_at, book.size) : foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size)} tags={bookTags[bookIdentity(book)] ?? []} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={tagMutation === `ai:${bookIdentity(book)}`} autoTagDisabled={tagMutation !== null} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
+          </Box>
+          <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
+          </>}
           </>
         )}
       </Box>

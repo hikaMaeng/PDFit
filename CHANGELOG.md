@@ -25,6 +25,13 @@
 - Both viewers: wheel paging and wheel panning called `preventDefault` inside React's
   passive `onWheel`, which Chrome ignored with "Unable to preventDefault inside passive event
   listener invocation" on every tick. They now use non-passive native listeners.
+- Large libraries froze the page: a folder, search result or tag page mounted every card in
+  one commit, and because the cards were not effectively memoized each later commit redrew
+  all of them. With 600 PDFs the page stopped for 3.8 s and then for 3.1, 2.8 and 1.9 s more.
+  Lists now mount 24 items at a time from the top, between idle slots, and jump ahead when
+  the end of the mounted run is scrolled into view; the tail shows how far it has come. Cover
+  images load six at a time in list order. The worst frame gap while a 600-item library fills
+  is 0.4 s, and the page keeps responding throughout.
 
 ### Changed
 

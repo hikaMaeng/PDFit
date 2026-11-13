@@ -13,6 +13,7 @@ import TagChip from './TagChip.js';
 import { PDF_LIST_COLUMNS, PDF_LIST_MOBILE_COLUMNS, PDF_LIST_FREE_COLUMNS, PDF_LIST_FREE_MOBILE_COLUMNS, PDF_LIST_WIDE_LAYOUT_QUERY } from './PdfListHeader.js';
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
+import { cardPropsEqual } from './cardPropsEqual.js';
 
 const ROW_STYLE: React.CSSProperties = {
   position: 'relative',
@@ -302,4 +303,4 @@ function PdfListItem({
   );
 }
 
-export default React.memo(PdfListItem);
+export default React.memo(PdfListItem, cardPropsEqual);

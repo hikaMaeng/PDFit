@@ -6,6 +6,8 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import SearchIcon from '@mui/icons-material/Search';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import PdfCoverItem from '../components/PdfCoverItem';
+import ListMountProgress from '../components/ListMountProgress';
+import { useProgressiveItems } from '../components/useProgressiveItems';
 import PdfListHeader from '../components/PdfListHeader';
 import PdfListItem from '../components/PdfListItem';
 import LibraryFixedControls from '../components/LibraryFixedControls';
@@ -32,6 +34,8 @@ export default function SearchPage() {
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState<string | null>(null);
+  // 결과가 많아도 한 번에 다 붙이지 않고 위에서부터 조금씩 그린다.
+  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${query}\u0000${libraryView}`);
 
   const load = useCallback(async (isCurrent: () => boolean, background: boolean) => {
     if (!query) { setResult(null); setBooks([]); setLoading(false); setError(null); return; }
@@ -106,9 +110,9 @@ export default function SearchPage() {
             </Box>
             {libraryView === 'list' && <PdfListHeader compactTagActions={compactTagActions} />}
           </LibraryFixedControls>
-          {libraryView === 'list' ? (
+          {libraryView === 'list' ? (<>
             <List data-testid="search-results-list" disablePadding>
-              {books.map((book, index) => (
+              {renderedBooks.map((book, index) => (
                 <PdfListItem
                   compactTagActions={compactTagActions}
                   key={bookKey(book, index)}
@@ -136,9 +140,11 @@ export default function SearchPage() {
                 />
               ))}
             </List>
-          ) : (
+            <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
+            </>
+          ) : (<>
             <Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
-              {books.map((book, index) => (
+              {renderedBooks.map((book, index) => (
                 <PdfCoverItem
                   key={bookKey(book, index)}
                   filename={book.filename}
@@ -165,6 +171,8 @@ export default function SearchPage() {
                 />
               ))}
             </Box>
+            <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
+            </>
           )}
         </>
       )}
