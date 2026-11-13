@@ -34,6 +34,7 @@
     "test:tasks": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/background-tasks.test.mjs",
     "test:ai-tags": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/ai-tagging.test.mjs packages/pdfit/tests/tag-ai-server.test.mjs packages/pdfit/tests/auto-tags-multi.test.mjs",
     "test:covers": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/real-covers.test.mjs",
+    "test:sort": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/unicode-order.test.mjs",
     "test:ocr": "npm run build --workspace=@pdfit/pdfit && node --test packages/pdfit/tests/ocr.test.mjs",
     "release:stage": "node scripts/release-stage.mjs"
   },

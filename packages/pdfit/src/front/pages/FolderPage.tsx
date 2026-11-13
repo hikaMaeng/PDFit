@@ -1,4 +1,5 @@
 import BulkManualTagDialog from '../components/BulkManualTagDialog';
+import { compareUnicode } from '../../shared/unicodeOrder.js';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -150,7 +151,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     const aiSelectionOverLimit = !canUseAiAutoTag && bulkTagLimit !== null && bulkAutoTagTargets.length > bulkTagLimit;
     const normalizedPdfSearch = normalizePdfSearch(pdfSearch);
     const searchTerms = normalizedPdfSearch.split(' ').filter(Boolean);
-    const visibleFiles = (normalizedPdfSearch ? files.filter((file) => { const identity = fileIdentity(file.name, file.driveFileId); const tags = fileTags[identity] ?? fileTags[file.name] ?? []; const searchable = normalizePdfSearch(`${file.name} ${tags.join(' ')}`); return searchTerms.every((term) => searchable.includes(term)); }) : files).slice().sort((a, b) => (b.uploadedAt ?? b.modifiedAt).localeCompare(a.uploadedAt ?? a.modifiedAt) || a.name.localeCompare(b.name, 'ko'));
+    const visibleFiles = (normalizedPdfSearch ? files.filter((file) => { const identity = fileIdentity(file.name, file.driveFileId); const tags = fileTags[identity] ?? fileTags[file.name] ?? []; const searchable = normalizePdfSearch(`${file.name} ${tags.join(' ')}`); return searchTerms.every((term) => searchable.includes(term)); }) : files).slice().sort((a, b) => compareUnicode(a.name, b.name));
     useEffect(() => { setSelectedFiles(new Set()); setPdfSearch(''); setSearchOpen(false); }, [folderName]);
     useEffect(() => () => {
         if (bulkAutoTagCancellationRef.current)

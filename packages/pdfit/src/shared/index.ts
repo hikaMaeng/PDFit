@@ -9,6 +9,7 @@ export interface ViewerStateRecord {
 }
 
 export { distinctTagColor, withDistinctTagColors } from './tagColor.js';
+export { compareUnicode } from './unicodeOrder.js';
 export { BOOKSTORE_TAG_GROUPS, BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, bookstoreTagGroupFor, documentTagFromTitle } from './tagTaxonomy.js';
 export type { BookstoreTagGroupId } from './tagTaxonomy.js';
 

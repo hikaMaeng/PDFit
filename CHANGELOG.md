@@ -12,6 +12,8 @@
 - The Free app waits up to 600 s (was 300 s) for an automatic-tag reply from the Settings
   AI server, and asks it for `reasoning_effort: "low"`.
 - A tag page's cards and rows show every tag of a book, including the page's own tag.
+- A folder page orders its PDFs by Unicode code point of the filename (NFC), in the list
+  and the cover view. It used to show the newest upload or change first.
 
 ### Fixed
 
