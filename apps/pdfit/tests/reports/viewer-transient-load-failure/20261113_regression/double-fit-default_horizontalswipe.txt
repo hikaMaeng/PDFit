@@ -1,0 +1,13 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:15203/viewer/fit/two-pages.pdf?driveFileId=file-1&engine=legacy
+Call log:
+[2m  - navigating to "http://127.0.0.1:15203/viewer/fit/two-pages.pdf?driveFileId=file-1&engine=legacy", waiting until "domcontentloaded"[22m
+
+    at F:\dev\pdfit\apps\pdfit\tests\viewer-double-fit-height-browser.mjs:76:14 {
+  name: 'Error'
+}
+
+Node.js v26.4.0

@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "results": [
+    {
+      "viewMode": "single",
+      "savedPage": 5,
+      "restored": "5",
+      "afterWheel": "6",
+      "expectedAfterWheel": 6
+    },
+    {
+      "viewMode": "double",
+      "savedPage": 5,
+      "restored": "5",
+      "afterWheel": "7",
+      "expectedAfterWheel": 7
+    }
+  ]
+}

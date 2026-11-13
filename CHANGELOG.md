@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- PDF.js viewer: a page whose data request failed while paging (502 during a server
+  restart, a dropped connection) stayed white until the document was reopened. PDF.js keeps
+  a failed range as requested and never asks again, so the viewer now probes the server and
+  reopens the document in place (1, 2, 4, then every 8 s), keeping the page, zoom and layout.
+- Both viewers: wheel paging and wheel panning called `preventDefault` inside React's
+  passive `onWheel`, which Chrome ignored with "Unable to preventDefault inside passive event
+  listener invocation" on every tick. They now use non-passive native listeners.
+
 ### Changed
 
 - Automatic tags with an AI server: one run now applies 4 to 6 tags, the bookstore

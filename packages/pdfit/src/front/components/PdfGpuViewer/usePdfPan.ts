@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject, type WheelEvent as ReactWheelEvent } from 'react';
+import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import type { ViewerWheelEvent } from '../useNonPassiveWheel.js';
 
 type PanStart = { pointerId: number; clientX: number; clientY: number; scrollLeft: number; scrollTop: number };
 
@@ -37,7 +38,8 @@ export function usePdfPan(viewportRef: RefObject<HTMLDivElement | null>, enabled
     if (event && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
-  const wheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+  // Call from a non-passive listener (useNonPassiveWheel); React's onWheel ignores preventDefault.
+  const wheel = useCallback((event: ViewerWheelEvent) => {
     if (!enabled) return;
     const target = event.target;
     if (target instanceof Element && target.closest('aside, button, input, textarea, select, [role="dialog"]')) return;

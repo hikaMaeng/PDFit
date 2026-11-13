@@ -1,8 +1,8 @@
-import type { WheelEvent as ReactWheelEvent } from 'react';
+import type { ViewerWheelEvent } from './useNonPassiveWheel.js';
 
 /** Forwards page-mode wheel input from viewer overlays to the native viewer viewport. */
 export function forwardPageModeWheel(
-  event: ReactWheelEvent<HTMLElement>,
+  event: ViewerWheelEvent,
   viewport: HTMLElement | null,
   pageMode: boolean,
 ): void {

@@ -28,6 +28,7 @@ import { usePdfBookmarks } from './usePdfBookmarks.js';
 import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from './AnnotationControls.js';
 import { usePdfPan } from './usePdfPan.js';
 import { forwardPageModeWheel } from '../viewerWheel.js';
+import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { DEFAULT_VIEWER_ZOOM } from '../PdfViewer/pdfDisplayScale.js';
 import { usePageSwipe } from '../usePageSwipe.js';
 import {
@@ -113,6 +114,12 @@ export default function PdfGpuViewer({
   const annotation = usePdfAnnotations(url);
   const bookmark = usePdfBookmarks({ enabled: annotation.tool === 'bookmark', controller, onCaptured: onBookmarkCaptured, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
   const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
+  // Wheel on the surface around the core viewport: page modes forward it to the viewport,
+  // continuous scroll pans with the select tool. Non-passive so both can call preventDefault.
+  const surfaceWheelRef = useNonPassiveWheel<HTMLDivElement>((event) => {
+    if (controller?.getState().scrollMode === 'page') forwardPageModeWheel(event, viewportRef.current, true);
+    else if (annotation.tool === 'select') pan.wheel(event);
+  });
   const [initError, setInitError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState('1');
   const initialViewAppliedRef = useRef<{
@@ -377,7 +384,7 @@ export default function PdfGpuViewer({
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {bookmark.panelOpen && <BookmarkSidebar bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-          <Box data-testid="bookmark-capture-surface" sx={{ width: uiHidden ? '100%' : `calc(100% - ${ANNOTATION_RAIL_WIDTH}px)`, height: '100%', ml: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px`, minWidth: 0, minHeight: 0, position: 'relative', touchAction: state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height') ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onWheel={(event) => { if (state.scrollMode === 'page') forwardPageModeWheel(event, viewportRef.current, true); else if (annotation.tool === 'select') pan.wheel(event); }} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
+          <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: uiHidden ? '100%' : `calc(100% - ${ANNOTATION_RAIL_WIDTH}px)`, height: '100%', ml: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px`, minWidth: 0, minHeight: 0, position: 'relative', touchAction: state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height') ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
             <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: state.fitMode === 'height' || state.fitMode === 'page' ? 0 : 3, filter: inverted ? 'invert(1)' : 'none' }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />

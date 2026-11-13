@@ -41,6 +41,7 @@ import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/Annot
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
+import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { usePageSwipe } from '../usePageSwipe.js';
 import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
@@ -53,6 +54,9 @@ const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 // A 2 MiB range reduces sequential Drive round trips for ordinary documents
 // without forcing the browser to fetch an entire large PDF before page one.
 const REMOTE_PDF_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
+/** Backoff before reopening a range-loaded document after a failed fetch: 1 s, 2 s, 4 s, then 8 s. */
+const RECOVERY_BASE_MS = 1000;
+const RECOVERY_MAX_MS = 8000;
 const SINGLE_REQUEST_PDF_MAX_BYTES = 20 * 1024 * 1024;
 const PAGE_HORIZONTAL_PADDING = 12;
 type ViewMode = 'scroll' | 'single' | 'double';
@@ -172,7 +176,7 @@ export default function PdfViewer({
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const surfaceRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const initialPageAppliedRef = useRef(false);
   const initialPageRef = useRef(initialPage);
@@ -209,6 +213,17 @@ export default function PdfViewer({
   // 스프레드 로딩 제어
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const loadedRef = useRef<Set<number>>(new Set());
+  // Pages of the current PDFDocumentProxy. A render error from a page of a replaced document
+  // (its worker is being destroyed) must not start another recovery. Reset on every (re)open.
+  const currentDocPagesRef = useRef<WeakSet<PDFPageProxy>>(new WeakSet());
+  const pdfjsLibRef = useRef<Awaited<ReturnType<typeof loadPdfJs>> | null>(null);
+  const rangeLoadingRef = useRef(false);
+  // Recovery after a failed range fetch. Key: this viewer; `generation` changes when the url
+  // changes or the viewer unmounts, which cancels a pending reopen. One timer, one task at most.
+  const recoveryRef = useRef<{ attempts: number; timer: ReturnType<typeof setTimeout> | null; busy: boolean; generation: number; task: { destroy: () => Promise<void> } | null }>(
+    { attempts: 0, timer: null, busy: false, generation: 0, task: null },
+  );
+  const recoverDocumentRef = useRef<(() => void) | null>(null);
   const spreadTokenRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const spreadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 플레이스홀더 크기 계산용 (scale=1 기준 첫 페이지 뷰포트)
@@ -240,6 +255,7 @@ export default function PdfViewer({
     const order = generateSpreadOrder(center, doc.numPages);
 
     (async () => {
+      let failed = false;
       for (const n of order) {
         if (token.cancelled) return;
         if (loadedRef.current.has(n)) continue;
@@ -247,6 +263,7 @@ export default function PdfViewer({
           const page = await doc.getPage(n);
           if (token.cancelled) return;
           loadedRef.current.add(n);
+          currentDocPagesRef.current.add(page);
           // 플레이스홀더 기준 크기 저장 (최초 1회)
           if (!baseVpRef.current) {
             const vp = page.getViewport({ scale: 1 });
@@ -259,9 +276,12 @@ export default function PdfViewer({
             return next;
           });
         } catch {
-          // 로드 실패한 페이지는 건너뜀
+          // 로드 실패한 페이지는 건너뛴다. 구간 로딩 문서는 실패한 구간을 다시 요청하지 않으므로
+          // 한 바퀴가 끝나면 문서를 다시 연다(recoverDocument).
+          failed = true;
         }
       }
+      if (failed && !token.cancelled) recoverDocumentRef.current?.();
     })();
   }, []);
 
@@ -283,8 +303,15 @@ export default function PdfViewer({
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setPage', page: 1 }).state;
     initialPageAppliedRef.current = false;
     loadedRef.current = new Set();
+    currentDocPagesRef.current = new WeakSet();
     spreadTokenRef.current.cancelled = true;
     baseVpRef.current = null;
+    rangeLoadingRef.current = false;
+    const recovery = recoveryRef.current;
+    recovery.generation += 1;
+    recovery.attempts = 0;
+    if (recovery.timer) clearTimeout(recovery.timer);
+    recovery.timer = null;
 
     // 이전 doc 정리
     if (docRef.current) {
@@ -303,6 +330,8 @@ export default function PdfViewer({
       .then(([pdfjsLib, smallPdf]) => {
         if (cancelled) return null;
         setRangeLoading(!smallPdf);
+        rangeLoadingRef.current = !smallPdf;
+        pdfjsLibRef.current = pdfjsLib;
         task = pdfjsLib.getDocument(smallPdf ? { data: smallPdf } : {
           url, rangeChunkSize: REMOTE_PDF_RANGE_CHUNK_SIZE, disableAutoFetch: true, disableStream: true,
         });
@@ -326,6 +355,7 @@ export default function PdfViewer({
         const firstPage = await doc.getPage(firstPageNumber);
         if (cancelled) return;
         loadedRef.current.add(firstPageNumber);
+        currentDocPagesRef.current.add(firstPage);
         const vp = firstPage.getViewport({ scale: 1 });
         baseVpRef.current = { width: vp.width, height: vp.height };
         setPages(prev => {
@@ -362,8 +392,70 @@ export default function PdfViewer({
       downloadAbort.abort();
       spreadTokenRef.current.cancelled = true;
       task?.destroy().catch(() => {});
+      const current = recoveryRef.current;
+      current.generation += 1;
+      if (current.timer) clearTimeout(current.timer);
+      current.timer = null;
+      current.task?.destroy().catch(() => {});
+      current.task = null;
     };
   }, [url]);
+
+  // ── 일시적 로드 실패 복구 ────────────────────────────────────
+  // 구간(range) 로딩 중 한 구간 요청이 실패하면(서버 재시작 중 502, 연결 끊김) PDF.js 는 그
+  // 구간을 계속 "요청됨"으로 두고 다시 요청하지 않는다. 같은 문서 객체로는 그 페이지를
+  // 영영 그릴 수 없으므로, 같은 주소로 문서를 새로 열어 바꿔 끼운다. 현재 페이지·배율·
+  // 보기 방식은 유지하고, 페이지 객체만 새로 받는다. 실패하면 1·2·4·8초 간격으로 다시 연다.
+  const recoverDocument = useCallback(() => {
+    const recovery = recoveryRef.current;
+    if (!rangeLoadingRef.current || recovery.busy || recovery.timer) return;
+    const generation = recovery.generation;
+    const delay = Math.min(RECOVERY_MAX_MS, RECOVERY_BASE_MS * 2 ** Math.min(recovery.attempts, 3));
+    const retryLater = () => {
+      recovery.busy = false;
+      if (generation !== recovery.generation) return;
+      recovery.attempts += 1;
+      recoverDocumentRef.current?.();
+    };
+    recovery.timer = setTimeout(async () => {
+      recovery.timer = null;
+      const pdfjsLib = pdfjsLibRef.current;
+      if (!pdfjsLib || generation !== recovery.generation) return;
+      recovery.busy = true;
+      // Probe with one byte before reopening: a PDF.js open against a server that still fails
+      // leaves an uncaught ResponseException in its internals for every attempt.
+      const reachable = await fetch(url, { headers: { Range: 'bytes=0-0' }, cache: 'no-store' })
+        .then((response) => { void response.body?.cancel().catch(() => {}); return response.ok; })
+        .catch(() => false);
+      if (!reachable) { retryLater(); return; }
+      if (generation !== recovery.generation) { recovery.busy = false; return; }
+      const task = pdfjsLib.getDocument({ url, rangeChunkSize: REMOTE_PDF_RANGE_CHUNK_SIZE, disableAutoFetch: true, disableStream: true });
+      const previousTask = recovery.task;
+      recovery.task = task;
+      task.promise.then((doc: PDFDocumentProxy) => {
+        recovery.busy = false;
+        if (generation !== recovery.generation) { void task.destroy().catch(() => {}); return; }
+        const previous = docRef.current;
+        docRef.current = doc;
+        loadedRef.current = new Set();
+        currentDocPagesRef.current = new WeakSet();
+        recovery.attempts = 0;
+        setPages(new Array(doc.numPages).fill(null));
+        startSpread(currentPageRef.current);
+        // The first document's task is destroyed with the url effect; a recovered one here.
+        if (previousTask) void previousTask.destroy().catch(() => {});
+        else void previous?.cleanup().catch(() => {});
+      }).catch(() => {
+        if (recovery.task === task) recovery.task = previousTask;
+        void task.destroy().catch(() => {});
+        retryLater();
+      });
+    }, delay);
+  }, [startSpread, url]);
+  recoverDocumentRef.current = recoverDocument;
+  const handlePageRenderError = useCallback((page: PDFPageProxy) => {
+    if (currentDocPagesRef.current.has(page)) recoverDocumentRef.current?.();
+  }, []);
 
   // ── 현재 페이지 기준 스프레드 트리거 ─────────────────────────
   // currentPage 변경 시 150ms 디바운스 후 스프레드 재시작
@@ -704,7 +796,7 @@ export default function PdfViewer({
   }, [goToPage]);
 
   // ── 마우스 휠: 교체되는 viewport와 상위 overlay를 함께 처리한다 ──
-  const handleViewerWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+  const handleViewerWheel = useCallback((event: WheelEvent) => {
     const transition = reduceViewerInteraction(interactionRef.current, {
       type: 'wheel',
       deltaY: event.deltaY,
@@ -721,9 +813,15 @@ export default function PdfViewer({
     }
     if (interactionRef.current.mode === 'scroll' && !event.ctrlKey && annotation.tool === 'select') pan.wheel(event);
   }, [annotation.tool, goToPage, pan.wheel, zoomIn, zoomOut]);
+  // Non-passive so page-mode wheel paging and wheel panning can stop the browser's scroll.
+  const viewerWheelRef = useNonPassiveWheel<HTMLDivElement>(handleViewerWheel);
+  const surfaceElementRef = useCallback((element: HTMLDivElement | null) => {
+    surfaceRef.current = element;
+    viewerWheelRef(element);
+  }, [viewerWheelRef]);
 
   // ── 공통 props ────────────────────────────────────────────────
-  const basePageProps = { scale, inverted, eager: true as const, noMargin: true as const };
+  const basePageProps = { scale, inverted, eager: true as const, noMargin: true as const, onRenderError: handlePageRenderError };
 
   const isPrevDisabled = currentPage <= 1;
   const isNextDisabled = viewMode === 'double'
@@ -868,7 +966,7 @@ export default function PdfViewer({
       )}
 
       <Box
-        ref={surfaceRef}
+        ref={surfaceElementRef}
         data-testid="legacy-bookmark-capture-surface"
         onTouchStart={pageSwipe.touchStart}
         onTouchEnd={pageSwipe.touchEnd}
@@ -886,7 +984,6 @@ export default function PdfViewer({
           if (annotation.tool === 'bookmark') { captureStartRef.current = null; setCaptureDrag(null); }
           else if (annotation.tool === 'select') pan.pointerCancel(event);
         }}
-        onWheel={handleViewerWheel}
         sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: viewMode !== 'scroll' && fitMode === 'height' ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }}
       >
       {!uiHidden && <AnnotationControls leftOffset={bookmarkPanelOpen ? 220 : 0} tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
@@ -919,7 +1016,7 @@ export default function PdfViewer({
               <Box key={idx} sx={{ display: continuousScroll || pn === currentPage ? 'block' : 'none' }} ref={(el) => { pageRefs.current[idx] = el as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
                 {page ? (
                   <PdfPage
-                    page={page} scale={scale} pageNumber={pn} inverted={inverted} eager={pn === currentPage}
+                    page={page} scale={scale} pageNumber={pn} inverted={inverted} eager={pn === currentPage} onRenderError={handlePageRenderError}
                     bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted}
                   />
                 ) : (
@@ -946,7 +1043,7 @@ export default function PdfViewer({
                 const page = pages[idx];
                 return <Box key={idx} ref={(element) => { pageRefs.current[idx] = element as HTMLDivElement | null; }} data-legacy-page-shell="true" data-page-index={idx}>
                   {page ? (
-                    <PdfPage page={page} scale={scale} pageNumber={idx + 1} inverted={inverted} eager={idx === currentPage - 1 || idx === currentPage} bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted} />
+                    <PdfPage page={page} scale={scale} pageNumber={idx + 1} inverted={inverted} eager={idx === currentPage - 1 || idx === currentPage} onRenderError={handlePageRenderError} bookmarks={bookmarks.filter((bookmark) => bookmark.pageIndex === idx)} onBookmarkDeleted={onBookmarkDeleted} />
                   ) : (
                     <Box sx={{ width: phW, height: phH, bgcolor: '#fff', boxShadow: (theme) => theme.palette.mode === 'light' ? '0 3px 16px rgba(32,78,121,.18)' : '0 4px 20px rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <CircularProgress size={20} sx={{ opacity: 0.4 }} />

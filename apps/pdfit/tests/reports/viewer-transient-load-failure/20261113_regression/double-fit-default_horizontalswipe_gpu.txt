@@ -1,0 +1,21 @@
+node:internal/process/promises:324
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+route.fetch: connect ECONNREFUSED 127.0.0.1:15203
+Call log:
+[2m  - → GET http://127.0.0.1:15203/viewer/fit/two-pages.pdf?driveFileId=file-1&engine=gpu[22m
+[2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36[22m
+[2m    - accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7[22m
+[2m    - accept-encoding: gzip,deflate,br[22m
+[2m    - accept-language: ko-KR[22m
+[2m    - upgrade-insecure-requests: 1[22m
+[2m    - sec-ch-ua: "Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"[22m
+[2m    - sec-ch-ua-mobile: ?0[22m
+[2m    - sec-ch-ua-platform: "Windows"[22m
+
+    at F:\dev\pdfit\apps\pdfit\tests\viewer-double-fit-height-browser.mjs:57:34 {
+  name: 'Error'
+}
+
+Node.js v26.4.0

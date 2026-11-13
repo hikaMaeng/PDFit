@@ -17,6 +17,8 @@ interface Props {
   inverted?: boolean;
   bookmarks?: BookmarkRecord[];
   onBookmarkDeleted?: (id: string) => Promise<void>;
+  /** Called when rendering this page fails for a reason other than cancellation. */
+  onRenderError?: (page: PDFPageProxy) => void;
 }
 
 // Keep a few recently painted pages across paged/continuous layout remounts.
@@ -40,13 +42,20 @@ function rememberRenderedPage(page: PDFPageProxy, canvas: HTMLCanvasElement): vo
 export default function PdfPage({
   page, scale, pageNumber,
   eager = false, onVisible, noMargin = false, inverted = false,
-  bookmarks = [], onBookmarkDeleted,
+  bookmarks = [], onBookmarkDeleted, onRenderError,
 }: Props) {
   const { ui } = usePdfitI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [rendered, setRendered] = useState(eager);
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
+  // A render needs the page's data, which range loading fetches on demand. When that fetch
+  // fails (502 while the server restarts, a dropped connection) the render rejects and the
+  // canvas stays blank. Re-rendering the same page object does not help: PDF.js keeps the
+  // failed range as requested and never asks again. The viewer recovers by reopening the
+  // document, which hands this component a new page object (see PdfViewer recoverDocument).
+  const onRenderErrorRef = useRef(onRenderError);
+  onRenderErrorRef.current = onRenderError;
 
   useEffect(() => { if (eager) setRendered(true); }, [eager]);
 
@@ -96,13 +105,25 @@ export default function PdfPage({
       return;
     }
     canvas.dataset.renderSource = 'pdf';
+    canvas.dataset.renderState = 'rendering';
     ctx.scale(dpr, dpr);
 
+    let disposed = false;
     const task = page.render({ canvasContext: ctx, canvas, viewport });
     renderTaskRef.current = task;
-    void task.promise.then(() => rememberRenderedPage(page, canvas)).catch(() => {});
+    void task.promise.then(() => {
+      canvas.dataset.renderState = 'done';
+      rememberRenderedPage(page, canvas);
+    }).catch((error: unknown) => {
+      if (disposed || (error instanceof Error && error.name === 'RenderingCancelledException')) return;
+      canvas.dataset.renderState = 'error';
+      onRenderErrorRef.current?.(page);
+    });
 
-    return () => { renderTaskRef.current?.cancel(); };
+    return () => {
+      disposed = true;
+      renderTaskRef.current?.cancel();
+    };
   }, [page, scale, rendered]);
 
   const viewportScale = toPdfJsViewportScale(scale);

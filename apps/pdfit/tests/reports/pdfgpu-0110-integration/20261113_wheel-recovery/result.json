@@ -1,0 +1,258 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "folder": "이북",
+  "runId": "20261113_wheel-recovery",
+  "channel": "chrome",
+  "launchArgs": [],
+  "checks": [
+    {
+      "name": "legacy paired rows (default)",
+      "pass": true,
+      "rows": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "expected": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          3,
+          4
+        ]
+      ]
+    },
+    {
+      "name": "legacy cover-alone rows (button, PageDown, PageUp)",
+      "pass": true,
+      "rows": [
+        [
+          1
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "expected": [
+        [
+          1
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "pressed": "true"
+    },
+    {
+      "name": "legacy toggle back to paired keeps the current pages in one row",
+      "pass": true,
+      "row": [
+        1,
+        2
+      ],
+      "from": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "legacy switching straight back returns to the rows the reader left",
+      "pass": true,
+      "row": [
+        2,
+        3
+      ],
+      "expected": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "legacy pairing choice survives reload (localStorage)",
+      "pass": true,
+      "ariaPressed": "true",
+      "row": [
+        1
+      ],
+      "expectedRow": [
+        1
+      ]
+    },
+    {
+      "name": "gpu viewer starts PDFium worker",
+      "pass": true,
+      "workers": [
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+        "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js"
+      ],
+      "backend": "webgpu"
+    },
+    {
+      "name": "gpu viewer paints a canvas",
+      "pass": true,
+      "canvasCount": 1,
+      "backend": "webgpu"
+    },
+    {
+      "name": "gpu PageDown with viewport focus moves exactly one page",
+      "pass": true,
+      "before": {
+        "page": 1,
+        "total": 12
+      },
+      "after": {
+        "page": 2,
+        "total": 12
+      },
+      "focused": "pdfgpu-scroll-area"
+    },
+    {
+      "name": "gpu PageDown without viewport focus moves exactly one page",
+      "pass": true,
+      "before": {
+        "page": 2,
+        "total": 12
+      },
+      "after": {
+        "page": 3,
+        "total": 12
+      }
+    },
+    {
+      "name": "gpu viewer starts with the remembered pairing",
+      "pass": true,
+      "ariaPressed": "true"
+    },
+    {
+      "name": "gpu cover-alone rows lead 1 -> 2 -> 4 -> 2 (button, PageDown, button)",
+      "pass": true,
+      "leads": [
+        1,
+        2,
+        4,
+        2
+      ]
+    },
+    {
+      "name": "gpu switch alone (2,3) -> paired (1,2) -> back to alone (2,3)",
+      "pass": true,
+      "switched": [
+        1,
+        "false"
+      ],
+      "back": [
+        2,
+        "true"
+      ]
+    },
+    {
+      "name": "gpu paired rows lead 1 -> 3 -> 5 (button, PageDown)",
+      "pass": true,
+      "leads": [
+        1,
+        3,
+        5
+      ]
+    }
+  ],
+  "blockedWrites": [
+    "POST /api/folders/refresh",
+    "POST /api/folders/refresh",
+    "POST /api/folders/refresh",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "POST /api/folders/refresh",
+    "POST /api/folders/refresh",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "POST /api/folders/refresh",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf",
+    "PUT /api/viewer-state/%EC%9D%B4%EB%B6%81/VADER5%20PRO%20%EC%82%AC%EC%9A%A9%EC%9E%90%EC%84%A4%EB%AA%85%EC%84%9C.pdf"
+  ],
+  "pageErrors": [],
+  "book": {
+    "name": "VADER5 PRO 사용자설명서.pdf",
+    "total": 12
+  },
+  "gpu": {
+    "backend": "webgpu",
+    "workers": [
+      "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+      "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+      "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js",
+      "http://127.0.0.1:15203/assets/pdfiumWorkerMain-BVkoCsML.js"
+    ]
+  },
+  "verdict": "PASS"
+}
