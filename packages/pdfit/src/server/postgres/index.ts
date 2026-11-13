@@ -15,6 +15,7 @@ import type {
 import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
 import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
@@ -374,12 +375,43 @@ export class PostgresMetadataStore implements MetadataStore {
     ]);
   }
 
+  /**
+   * The outline stored for a book, while the book's `books` row still has the size and modified
+   * time it had when the outline was stored. A replaced PDF therefore has its outline read again.
+   */
+  async getBookOutline(folder: string, filename: string): Promise<BookOutlineEntry[] | null> {
+    const result = await this.db.query(`
+      SELECT o.entries
+      FROM book_outlines o
+      LEFT JOIN books b ON b.folder = o.folder AND b.filename = o.filename
+      WHERE o.folder = $1 AND o.filename = $2
+        AND o.source_size IS NOT DISTINCT FROM b.size
+        AND o.source_modified_at IS NOT DISTINCT FROM b.modified_at
+    `, [folder, filename]);
+    const row = result.rows[0];
+    return row ? parseBookOutlineEntries(row.entries) : null;
+  }
+
+  /** Stores (or replaces) a successfully read outline, stamped with the book's current size and modified time. */
+  async setBookOutline(folder: string, filename: string, entries: BookOutlineEntry[]): Promise<void> {
+    await this.db.query(`
+      INSERT INTO book_outlines (folder, filename, entries, source_size, source_modified_at, updated_at)
+      SELECT $1::text, $2::text, $3::jsonb, b.size, b.modified_at, NOW()
+      FROM (SELECT 1) AS one
+      LEFT JOIN books b ON b.folder = $1::text AND b.filename = $2::text
+      ON CONFLICT (folder, filename)
+      DO UPDATE SET entries = EXCLUDED.entries, source_size = EXCLUDED.source_size,
+        source_modified_at = EXCLUDED.source_modified_at, updated_at = EXCLUDED.updated_at
+    `, [folder, filename, JSON.stringify(entries)]);
+  }
+
   async purgeFile(folder: string, filename: string): Promise<void> {
     await this.db.query('DELETE FROM books WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM reading_progress WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM book_tags WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM viewer_state WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM bookmarks WHERE folder = $1 AND filename = $2', [folder, filename]);
+    await this.db.query('DELETE FROM book_outlines WHERE folder = $1 AND filename = $2', [folder, filename]);
   }
 
   async purgeFolder(folder: string): Promise<void> {
@@ -388,6 +420,7 @@ export class PostgresMetadataStore implements MetadataStore {
     await this.db.query('DELETE FROM book_tags WHERE folder = $1', [folder]);
     await this.db.query('DELETE FROM viewer_state WHERE folder = $1', [folder]);
     await this.db.query('DELETE FROM bookmarks WHERE folder = $1', [folder]);
+    await this.db.query('DELETE FROM book_outlines WHERE folder = $1', [folder]);
   }
 
   async purgeOrphanTags(): Promise<void> {
@@ -613,6 +646,17 @@ export class PostgresMetadataStore implements MetadataStore {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_annotations_document_page ON annotations (document_id, page_index, created_at);
+      -- Table of contents read once by the viewer. Key (folder, filename): one row per book.
+      -- Valid while source_size/source_modified_at equal the books row; removed by purgeFile/purgeFolder.
+      CREATE TABLE IF NOT EXISTS book_outlines (
+        folder TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        entries JSONB NOT NULL,
+        source_size BIGINT,
+        source_modified_at TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (folder, filename)
+      );
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
     await this.backfillTitleChoseong();

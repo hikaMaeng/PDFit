@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, Snackbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -32,6 +32,8 @@ import { tagsApi } from '../api/tags.js';
 import TagChip from '../components/TagChip.js';
 import { recordDocumentOpened } from '../model/documentOpenHistory.js';
 import { folderLibraryModel } from '../model/folderLibraryModel.js';
+import { outlinesApi } from '../api/outlines.js';
+import type { PdfOutlineStorage } from '../viewer/storedOutline.js';
 
 function DisplayFolderName({ value }: { value: string }) {
   return <>{useTranslatedDisplayText(value)}</>;
@@ -251,6 +253,12 @@ export default function PdfViewerPage() {
     [reportState],
   );
 
+  // A sample or a still-uploading PDF has no library row to keep a table of contents against.
+  const outlineStorage = useMemo<PdfOutlineStorage | null>(() => (sample || pendingUpload ? null : {
+    load: () => outlinesApi.getStored(folderName, fileName, driveFileId),
+    save: (entries) => outlinesApi.save(folderName, fileName, entries, driveFileId),
+  }), [driveFileId, fileName, folderName, pendingUpload, sample]);
+
   const handleGpuUnavailable = useCallback(() => {
     setViewerEngine('legacy');
   }, []);
@@ -423,6 +431,7 @@ export default function PdfViewerPage() {
           onBookmarkCaptured={handleBookmarkCaptured}
           onBookmarkUpdated={handleBookmarkUpdated}
           onBookmarkDeleted={handleBookmarkDeleted}
+          outlineStorage={outlineStorage}
         />
       ) : (
         <PdfViewer
@@ -441,6 +450,7 @@ export default function PdfViewerPage() {
           onBookmarkCaptured={handleBookmarkCaptured}
           onBookmarkDeleted={handleBookmarkDeleted}
           onDocumentUnavailable={handleDocumentUnavailable}
+          outlineStorage={outlineStorage}
         />
       ) : (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

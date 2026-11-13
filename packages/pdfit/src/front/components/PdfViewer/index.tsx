@@ -17,7 +17,11 @@ import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import TocIcon from '@mui/icons-material/Toc';
 import PdfPage from './PdfPage';
+import PdfOutlineDialog from './PdfOutlineDialog.js';
+import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.js';
+import { loadOutlineWithStorage, type PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import type { ViewerStatePayload } from '../../api/viewerState';
 import {
   createViewerInteractionState,
@@ -126,6 +130,8 @@ interface Props {
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
   onDocumentUnavailable?: () => void;
+  /** Stored table of contents for this book. Without it the outline is read from the PDF each time and not stored. */
+  outlineStorage?: PdfOutlineStorage | null;
 }
 
 export default function PdfViewer({
@@ -145,6 +151,7 @@ export default function PdfViewer({
   onBookmarkCaptured,
   onBookmarkDeleted,
   onDocumentUnavailable,
+  outlineStorage,
 }: Props) {
   const { t, ui } = usePdfitI18n();
   // pages: 희소 배열 (null = 아직 미로드)
@@ -170,6 +177,7 @@ export default function PdfViewer({
   // doc이 로드되고 첫 페이지가 준비된 상태 (스프레드 트리거용)
   const [docReady, setDocReady] = useState(false);
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const captureStartRef = useRef<{ pageIndex: number; canvas: HTMLCanvasElement; x: number; y: number; clientX: number; clientY: number } | null>(null);
   const [captureDrag, setCaptureDrag] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
@@ -469,6 +477,23 @@ export default function PdfViewer({
       if (spreadTimerRef.current) clearTimeout(spreadTimerRef.current);
     };
   }, [currentPage, docReady, startSpread]);
+
+  // ── 목차 ──────────────────────────────────────────────────────
+  // 키: 열린 문서 객체(docRef). 범위: 이 뷰어 인스턴스. 수명: 문서가 바뀌면(주소 변경, 복구 재열기)
+  // 다른 객체가 되어 새로 읽는다. 크기: 문서 하나분 한 칸. 읽기 오류 결과는 담지 않아 다시 열면 재시도한다.
+  const outlineCacheRef = useRef<{ doc: PDFDocumentProxy; promise: Promise<PdfOutlineResult> } | null>(null);
+  const loadOutline = useCallback((): Promise<PdfOutlineResult> => {
+    const doc = docRef.current;
+    if (!doc) return Promise.resolve({ status: 'failed', reason: 'error' });
+    const cached = outlineCacheRef.current;
+    if (cached && cached.doc === doc) return cached.promise;
+    const promise = loadOutlineWithStorage(() => readPdfOutline(doc as unknown as Parameters<typeof readPdfOutline>[0]), outlineStorage).then((result) => {
+      if (result.status === 'failed' && result.reason === 'error' && outlineCacheRef.current?.promise === promise) outlineCacheRef.current = null;
+      return result;
+    });
+    outlineCacheRef.current = { doc, promise };
+    return promise;
+  }, [outlineStorage]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
   const goToPage = useCallback((n: number, mode?: ViewMode) => {
@@ -944,6 +969,10 @@ export default function PdfViewer({
 
           <Box sx={{ flex: 1 }} />
 
+          <Tooltip title={t('tableOfContents')} arrow enterDelay={0} enterNextDelay={0}>
+            <span><IconButton data-testid="viewer-outline-open" aria-label={t('tableOfContents')} aria-haspopup="dialog" size="small" disabled={!docReady} onClick={() => setOutlineOpen(true)} color={outlineOpen ? 'primary' : 'default'}><TocIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+
           <Tooltip title={`${t('previousPage')} (←/PageUp)`} arrow enterDelay={0} enterNextDelay={0}>
             <span><IconButton size="small" aria-label={t('previousPage')} onClick={prevPage} disabled={isPrevDisabled}><NavigateBeforeIcon fontSize="small" /></IconButton></span>
           </Tooltip>
@@ -1106,6 +1135,7 @@ export default function PdfViewer({
       )}
 
       </Box>
+      <PdfOutlineDialog open={outlineOpen} loadOutline={loadOutline} currentPage={currentPage} onSelectPage={(page) => goToPage(page)} onClose={() => setOutlineOpen(false)} />
     </Box>
   );
 }

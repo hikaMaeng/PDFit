@@ -7,6 +7,7 @@ import { createProgressRouter } from '../api/progress/index.js';
 import { createTagsRouter } from '../api/tags/index.js';
 import { createSearchRouter } from '../api/search/index.js';
 import { createViewerStateRouter } from '../api/viewer-state/index.js';
+import { createOutlinesRouter } from '../routes/outlines.js';
 import { createBookmarksRouter } from '../api/bookmarks/index.js';
 import { createAnnotationsRouter } from '../api/annotations/index.js';
 import { createFilesystemService } from '../services/filesystem.js';
@@ -76,6 +77,7 @@ export function createPdfitMetadataRouterMounts(
     { path: '/api/search', router: createSearchRouter(metadataStore) },
     { path: '/api/events', router: createEventsRouter(eventBus) },
     { path: '/api/viewer-state', router: createViewerStateRouter(metadataStore) },
+    { path: '/api/outlines', router: createOutlinesRouter(metadataStore) },
     { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore, bookmarkOcr) },
     { path: '/api/annotations', router: createAnnotationsRouter(metadataStore) },
   ];

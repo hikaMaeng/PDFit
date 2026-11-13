@@ -153,6 +153,19 @@ The shared tags router in [`src/server/routes/tags.ts`](../src/server/routes/tag
 
 The route is part of `createPdfitMetadataRouterMounts`, so the hosted runtime mounts it too. A hosted store answers from the browser's hydrated IndexedDB snapshot instead (`searchCachedBooksByTitle` in `front/cache/metadataCache.ts`, same rules), and `front/api/search.ts` picks whichever exists.
 
+## Table of contents endpoints
+
+`/api/outlines/:folder/:filename[?driveFileId=]` ([`src/server/routes/outlines.ts`](../src/server/routes/outlines.ts)) keeps the table of contents the viewer read successfully. The wire types and validation are in [`src/common/protocol/outlines/index.ts`](../src/common/protocol/outlines/index.ts).
+
+* Row: `BookOutlineEntry` `{ key, title, depth, page }`. `key` is the position path (`0`, `0.2`, `0.2.1`), unique per outline; `depth` is 0 for a top-level entry; `page` is 1-based or `null` when the entry names no page of the PDF. At most 5000 rows, depth below 32, titles up to 1000 UTF-16 units.
+* `GET` answers `{ entries }`, or `404` when nothing valid is stored.
+* `PUT` with `{ entries }` stores or replaces the outline and answers `{ ok: true }`; an empty or invalid list answers `400`. The viewer only sends a successful read; there is no way to store a failure.
+* Both answer `501` when the metadata store does not implement the optional `getBookOutline` / `setBookOutline`. The viewer then reads the outline from the PDF on every open.
+
+PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, filename)`, one row per book, `entries JSONB`, and `source_size` / `source_modified_at` copied from the book's `books` row when stored. `getBookOutline` returns the row only while those two still equal the `books` row (`IS NOT DISTINCT FROM`), so a replaced PDF is read again and its next successful read overwrites the row. `purgeFile` and `purgeFolder` delete the rows; the folders router's move calls `purgeFile` on the old location. The route is mounted by `createPdfitMetadataRouterMounts`.
+
+Viewer side: `readPdfOutline(doc)` ([`src/front/viewer/pdfOutline.ts`](../src/front/viewer/pdfOutline.ts)) flattens PDF.js `getOutline()` and resolves explicit, named and page-index destinations; a missing or empty outline is `{ status: 'failed', reason: 'empty' }`, a throwing one `reason: 'error'`. `loadOutlineWithStorage(read, storage)` ([`src/front/viewer/storedOutline.ts`](../src/front/viewer/storedOutline.ts)) asks storage first and saves only an `ok` read. The PDFGPU engine has no PDF.js document, so `readPdfOutlineFromUrl(url)` opens the same URL with PDF.js range requests for the outline only.
+
 ## Bookmark endpoints
 
 `GET /api/bookmarks` returns every persisted bookmark newest-first for the

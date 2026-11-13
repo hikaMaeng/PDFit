@@ -1,0 +1,85 @@
+{
+  "origin": "http://127.0.0.1:15203",
+  "runId": "20261113_deployed",
+  "finishedAt": "2026-11-13T02:43:57.730Z",
+  "results": [
+    {
+      "name": "with-outline first open lists the PDF outline and it is in the DB",
+      "pass": true,
+      "beforeStatus": 404,
+      "source": "pdf",
+      "rows": 2,
+      "expectedRows": 2,
+      "outlineRequests": [
+        {
+          "method": "GET",
+          "status": 404
+        },
+        {
+          "method": "PUT",
+          "status": 200
+        }
+      ],
+      "storedRows": 2
+    },
+    {
+      "name": "clicking an entry moves to its page",
+      "pass": true,
+      "target": {
+        "title": "2",
+        "depth": 0,
+        "page": 103
+      },
+      "pageInput": "103"
+    },
+    {
+      "name": "after reload the outline comes from the DB and is not stored again",
+      "pass": true,
+      "source": "stored",
+      "outlineRequests": [
+        {
+          "method": "GET",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "name": "with-outline page errors",
+      "pass": true,
+      "errors": []
+    },
+    {
+      "name": "without-outline shows lookup failure and stores nothing",
+      "pass": true,
+      "state": {
+        "kind": "failed",
+        "reason": "empty",
+        "text": "목차 조회 실패이 PDF에는 목차 정보가 없습니다."
+      },
+      "outlineRequests": [
+        {
+          "method": "GET",
+          "status": 404
+        }
+      ],
+      "getAfter": 404
+    },
+    {
+      "name": "without-outline page errors",
+      "pass": true,
+      "errors": []
+    },
+    {
+      "name": "engine=gpu lists the same outline",
+      "pass": true,
+      "engine": "gpu",
+      "source": "stored",
+      "rows": 2
+    },
+    {
+      "name": "engine=gpu page errors",
+      "pass": true,
+      "errors": []
+    }
+  ]
+}

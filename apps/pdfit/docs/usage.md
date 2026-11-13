@@ -31,6 +31,14 @@ A folder page lists its PDFs in Unicode order of the filename (code points after
 
 The image-search button under a cover ("Use a real book cover") replaces the rendered first page with the real book's cover. The dialog searches YES24 and Open Library for the filename without `.pdf`. The title can be edited and searched again. Candidates are ordered by title match. Clicking one downloads it and shows it on every card for that file. "Restore first page" brings back the rendered page. The chosen cover survives edits to the PDF and follows the file when it is moved; deleting the file deletes it. Another open tab picks up a changed cover when it becomes visible again.
 
+## Table of contents
+
+The contents button in the viewer toolbar, left of the page arrows, opens the book's table of contents in a dialog. It lists the PDF's own outline (the bookmarks pane of a desktop PDF reader), indented by level, with each entry's page number at the right. Clicking an entry goes to that page and closes the dialog; the chapter containing the current page is highlighted. An entry that points nowhere in the file (a web link, a missing target) is greyed out with "No page".
+
+Nothing is guessed from page text. A PDF without an outline shows **Could not load the table of contents** with "This PDF has no table of contents."; an outline that cannot be read shows the same title with **Try again**.
+
+The first successful read is saved in the database, so later opens, from any browser, show the saved copy without reading the PDF. When the PDF file is replaced (its size or modified time changes) the copy is ignored and the outline is read again. Deleting or moving the file, or removing its folder, deletes the copy. A failed lookup is not saved. Sample books are read every time.
+
 ## Clip and page text (OCR)
 
 A saved clip is read in the background. The text comes from the PDF itself when the clip covers real text. Many scanned books carry an invisible OCR layer added by whoever scanned them; when that layer looks damaged (split words such as "pr i ntf", stray ideographs, "댜" for "다."), it is not used. Then, or when there is no text, the Settings AI server reads the clip area rendered again from the PDF at up to 4x (about 1600 px for a column-wide clip): the first server with a `vision` model, else the first with an `llm` model. In **My clips** the card shows a badge while the text is being read, once it is ready, and when it could not be read. In the clip's dialog, **Show text** opens a text pane beside the clip (under it on a narrow screen) with the selectable text, its source ("From the PDF text" or "Read by AI"), a copy button and "Read again". A clip saved before OCR existed has no text yet; the pane offers **Read text**, which queues it (`POST /api/bookmarks/:id/ocr`). The page re-reads the list every 5 s while a clip is still being read, for up to 5 minutes.

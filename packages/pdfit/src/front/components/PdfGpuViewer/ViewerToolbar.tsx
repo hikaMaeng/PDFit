@@ -12,6 +12,7 @@ import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import InvertColorsIcon from '@mui/icons-material/InvertColors';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import TocIcon from '@mui/icons-material/Toc';
 import type { PdfGpuViewerController, PdfGpuViewerState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { lastSpreadLead } from '../../viewer/spreadPairing.js';
@@ -28,6 +29,8 @@ type Props = {
   onGoToPage: (page: number) => void;
   onToggleInverted?: () => void;
   onToggleBookmarks: () => void;
+  outlineOpen: boolean;
+  onOpenOutline: () => void;
   onFitHeight: () => void;
   onPageLayoutChange: (mode: 'single' | 'double') => void;
   onToggleContinuousScroll: () => void;
@@ -88,6 +91,7 @@ export function ViewerToolbar(props: Props) {
     <Tooltip title={t('invertColors')} arrow><IconButton size="small" onClick={props.onToggleInverted} color={inverted ? 'primary' : 'default'}><InvertColorsIcon fontSize="small" /></IconButton></Tooltip>
     <Tooltip title={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} arrow><IconButton data-testid="bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} size="small" onClick={props.onToggleBookmarks} color={bookmarkPanelOpen ? 'primary' : 'default'}><AttachFileIcon fontSize="small" /></IconButton></Tooltip>
     <Box sx={{ flex: 1 }} />
+    <Tooltip title={t('tableOfContents')} arrow><span><IconButton data-testid="viewer-outline-open" aria-label={t('tableOfContents')} aria-haspopup="dialog" size="small" disabled={!state.pageCount} onClick={props.onOpenOutline} color={props.outlineOpen ? 'primary' : 'default'}><TocIcon fontSize="small" /></IconButton></span></Tooltip>
     <Tooltip title={t('previousPage')} arrow><span><IconButton size="small" aria-label={t('previousPage')} title={t('previousPage')} onClick={() => props.onGoToPage(currentPage - pageStep)} disabled={currentPage <= 1}><NavigateBeforeIcon fontSize="small" /></IconButton></span></Tooltip>
     <Box data-testid="viewer-page-indicator" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
       <TextField size="small" value={pageInput} onChange={(event) => props.onPageInputChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') props.onSubmitPage((event.target as HTMLInputElement).value); }} onBlur={(event) => props.onSubmitPage((event.target as HTMLInputElement).value)} inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': t('pageNumber') }} />

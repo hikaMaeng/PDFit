@@ -21,6 +21,10 @@ import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
 import { ViewerToolbar } from './ViewerToolbar.js';
+import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
+import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
+import type { PdfOutlineResult } from '../../viewer/pdfOutline.js';
+import { loadOutlineWithStorage, type PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import { BookmarkSidebar } from './BookmarkSidebar.js';
 import { BookmarkEditorDialog } from './BookmarkEditorDialog.js';
 import { BookmarkOverlayLayer } from './BookmarkOverlayLayer.js';
@@ -58,6 +62,8 @@ type Props = {
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
+  /** Stored table of contents for this book. Without it the outline is read from the PDF each time and not stored. */
+  outlineStorage?: PdfOutlineStorage | null;
 };
 
 const EMPTY_STATE: PdfGpuViewerState = {
@@ -106,12 +112,26 @@ export default function PdfGpuViewer({
   onBookmarkCaptured,
   onBookmarkUpdated,
   onBookmarkDeleted,
+  outlineStorage,
 }: Props) {
   const { ui } = usePdfitI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const annotation = usePdfAnnotations(url);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  // 키: 문서 주소. 범위: 이 뷰어 인스턴스. 수명: 주소가 바뀌면 새로 읽는다. 크기: 한 칸. 읽기 오류는 담지 않는다.
+  const outlineCacheRef = useRef<{ url: string; promise: Promise<PdfOutlineResult> } | null>(null);
+  const loadOutline = useCallback((): Promise<PdfOutlineResult> => {
+    const cached = outlineCacheRef.current;
+    if (cached && cached.url === url) return cached.promise;
+    const promise = loadOutlineWithStorage(() => readPdfOutlineFromUrl(url), outlineStorage).then((result) => {
+      if (result.status === 'failed' && result.reason === 'error' && outlineCacheRef.current?.promise === promise) outlineCacheRef.current = null;
+      return result;
+    });
+    outlineCacheRef.current = { url, promise };
+    return promise;
+  }, [outlineStorage, url]);
   const bookmark = usePdfBookmarks({ enabled: annotation.tool === 'bookmark', controller, onCaptured: onBookmarkCaptured, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
   const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
   // Wheel on the surface around the core viewport: page modes forward it to the viewport,
@@ -371,7 +391,7 @@ export default function PdfGpuViewer({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {!uiHidden && (
-        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} onToggleSpreadCover={() => selectSpreadCover(state.spreadPairing === 'alone' ? 'paired' : 'alone')} />
+        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} outlineOpen={outlineOpen} onOpenOutline={() => setOutlineOpen(true)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} onToggleSpreadCover={() => selectSpreadCover(state.spreadPairing === 'alone' ? 'paired' : 'alone')} />
       )}
 
       <Box role="status" aria-label="viewer status" sx={{ position: 'absolute', width: '1px', height: '1px', minWidth: '1px', maxWidth: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }}>
@@ -394,6 +414,7 @@ export default function PdfGpuViewer({
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />
+      <PdfOutlineDialog open={outlineOpen} loadOutline={loadOutline} currentPage={currentPage} onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
     </Box>
   );
 }

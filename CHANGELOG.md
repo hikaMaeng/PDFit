@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Viewer table of contents**: a contents button in the viewer toolbar (beside the page
+  navigation) opens a dialog listing the PDF's own outline (`/Outlines`), indented by level
+  with each entry's page. Clicking an entry moves to that page; the current chapter is
+  highlighted. A PDF without an outline, or one whose outline cannot be read, shows
+  "Could not load the table of contents" (a read error offers Try again). Works in both the
+  PDF.js and the PDFGPU engine.
+- A table of contents that was read successfully is stored in the database
+  (`book_outlines`, `GET`/`PUT /api/outlines/:folder/:filename`), and later opens answer from
+  it without reading the PDF. It is used only while the book's size and modified time are
+  unchanged, and is removed with the book (delete, move, folder removal). Failed lookups are
+  never stored.
+
 ### Fixed
 
 - PDF.js viewer: a page whose data request failed while paging (502 during a server

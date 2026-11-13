@@ -15,6 +15,7 @@ export type { BookstoreTagGroupId } from './tagTaxonomy.js';
 
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
+export type { BookOutlineEntry, BookOutlinePayload } from '../common/protocol/outlines/index.js';
 
 export interface TagSummary {
   name: string;
@@ -87,6 +88,13 @@ export interface MetadataStore {
   updateTagColor(tag: string, color: string): Promise<void>;
   getViewerState(folder: string, filename: string, driveFileId?: string): Promise<ViewerStateRecord | null>;
   setViewerState(folder: string, filename: string, state: ViewerStateRecord, driveFileId?: string): Promise<void>;
+  /**
+   * Stored table of contents (`/api/outlines`). Optional: a store without them answers 501 and the
+   * viewer reads the outline from the PDF every time. `getBookOutline` returns null when nothing is
+   * stored or the PDF changed (size or modified time) after the outline was stored.
+   */
+  getBookOutline?(folder: string, filename: string, driveFileId?: string): Promise<import('../common/protocol/outlines/index.js').BookOutlineEntry[] | null>;
+  setBookOutline?(folder: string, filename: string, entries: import('../common/protocol/outlines/index.js').BookOutlineEntry[], driveFileId?: string): Promise<void>;
   purgeFile(folder: string, filename: string): Promise<void>;
   purgeFolder(folder: string): Promise<void>;
   purgeOrphanTags(): Promise<void>;
