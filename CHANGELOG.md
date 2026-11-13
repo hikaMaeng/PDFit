@@ -35,6 +35,10 @@
 
 ### Changed
 
+- Playwright 1.54.2 -> 1.65.0. Its installer called `fs.promises.rmdir(..., { recursive: true })`,
+  which Node 26 removed, so `npx playwright install` failed after downloading the browser
+  and no bundled browser could be installed for the browser tests.
+
 - Automatic tags with an AI server: one run now applies 4 to 6 tags, the bookstore
   category first and then subject tags read from the YES24 description and table of
   contents, reusing the library's existing tag names. It used to apply the category

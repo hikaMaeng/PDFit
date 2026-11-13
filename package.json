@@ -40,7 +40,7 @@
     "release:stage": "node scripts/release-stage.mjs"
   },
   "devDependencies": {
-    "playwright": "1.54.2",
+    "playwright": "1.65.0",
     "turbo": "2.5.5"
   }
 }
