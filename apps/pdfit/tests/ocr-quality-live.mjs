@@ -21,7 +21,8 @@ const result = { runId, origin, pages: [], clip: null };
 const listBookmarks = async () => { const body = await (await fetch(`${origin}/api/bookmarks`)).json(); return Array.isArray(body) ? body : body.bookmarks; };
 
 try {
-  const clip = (await listBookmarks())[0];
+  const clips = await listBookmarks();
+  const clip = process.env.PDFIT_TEST_CLIP_ID ? clips.find((item) => item.id === process.env.PDFIT_TEST_CLIP_ID) : clips[0];
   assert.ok(clip, 'a clip exists');
   const before = clip.ocr;
   const started = Date.now();
