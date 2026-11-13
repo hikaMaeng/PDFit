@@ -9,6 +9,7 @@ import PdfCoverItem from '../components/PdfCoverItem';
 import PdfListHeader from '../components/PdfListHeader';
 import PdfListItem from '../components/PdfListItem';
 import LibraryFixedControls from '../components/LibraryFixedControls';
+import { bookActionIdentity, useBookLibraryActions } from '../components/useBookLibraryActions';
 import { foldersApi } from '../api/folders';
 import { searchApi, type BookSearchResult } from '../api/search';
 import { tagsApi, type BookRef } from '../api/tags';
@@ -27,18 +28,20 @@ export default function SearchPage() {
   const compactTagActions = !(aiAutoTagAccess?.() ?? true);
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [result, setResult] = useState<BookSearchResult | null>(null);
+  const [books, setBooks] = useState<BookRef[]>([]);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (isCurrent: () => boolean, background: boolean) => {
-    if (!query) { setResult(null); setLoading(false); setError(null); return; }
+    if (!query) { setResult(null); setBooks([]); setLoading(false); setError(null); return; }
     if (!background) setLoading(true);
     setError(null);
     try {
       const [found, summaries] = await Promise.all([searchApi.booksByTitle(query), tagsApi.listSummary().catch(() => [])]);
       if (!isCurrent()) return;
       setResult(found);
+      setBooks(found.books);
       setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
     } catch (caught) {
       if (isCurrent()) setError(caught instanceof Error ? caught.message : ui("로드 실패"));
@@ -62,7 +65,7 @@ export default function SearchPage() {
     };
   }, [load]);
 
-  const books = result?.books ?? [];
+  const actions = useBookLibraryActions({ books, setBooks, tagColors, setTagColors, reload: (background) => load(() => true, background), onError: setError });
   const openFolder = useCallback((folder: string, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -115,10 +118,21 @@ export default function SearchPage() {
                   driveFileId={book.driveFileId}
                   size={book.size}
                   modifiedAt={book.modified_at}
-                  tags={book.tags}
+                  tags={actions.tagsOf(book)}
                   tagColors={tagColors}
                   secondaryLinkLabel={book.folder}
                   onSecondaryLink={openFolder}
+                  onTagDelete={(folder, filename, tag) => void actions.removeTagInline(folder, filename, tag, book.driveFileId)}
+                  onManageTags={(folder, filename) => void actions.openTagDialog(folder, filename, book.driveFileId)}
+                  onAutoTag={actions.canUseAiAutoTag ? () => void actions.autoTag(book) : undefined}
+                  autoTagging={actions.tagMutation === `ai:${bookActionIdentity(book)}`}
+                  autoTagDisabled={actions.tagMutation !== null}
+                  onEditMetadata={actions.bookMetadataEnabled ? () => void actions.openDocumentMetadata(book) : undefined}
+                  onMove={(folder, filename) => void actions.openMoveDialog(folder, filename, book.driveFileId)}
+                  onDelete={(folder, filename) => actions.requestDelete(folder, filename, book.driveFileId)}
+                  manageTagsLabel={t('manageTags')}
+                  moveLabel={t('moveToFolder')}
+                  deleteLabel={t('delete')}
                 />
               ))}
             </List>
@@ -135,17 +149,26 @@ export default function SearchPage() {
                   url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)}
                   serverCover={serverThumbnails}
                   thumbnailUrl={!serverThumbnails ? foldersApi.thumbnailUrl(book.driveFileId) : book.driveFileId ? foldersApi.thumbnailUrl(book.driveFileId, book.modified_at, book.size) : foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size)}
-                  tags={book.tags}
+                  tags={actions.tagsOf(book)}
                   tagColors={tagColors}
                   selected={false}
                   hideSelection
                   onSelectionChange={() => {}}
+                  onTagDelete={(folder, filename, tag) => void actions.removeTagInline(folder, filename, tag, book.driveFileId)}
+                  onManageTags={(folder, filename) => void actions.openTagDialog(folder, filename, book.driveFileId)}
+                  onAutoTag={actions.canUseAiAutoTag ? () => void actions.autoTag(book) : undefined}
+                  autoTagging={actions.tagMutation === `ai:${bookActionIdentity(book)}`}
+                  autoTagDisabled={actions.tagMutation !== null}
+                  onEditMetadata={actions.bookMetadataEnabled ? () => void actions.openDocumentMetadata(book) : undefined}
+                  onMove={(folder, filename) => void actions.openMoveDialog(folder, filename, book.driveFileId)}
+                  onDelete={(folder, filename) => actions.requestDelete(folder, filename, book.driveFileId)}
                 />
               ))}
             </Box>
           )}
         </>
       )}
+      {actions.dialogs}
     </Box>
   );
 }

@@ -560,6 +560,8 @@ LNB 상단(앱 이름 헤더 바로 아래, 스크롤 영역 밖)에 검색창�
 
 검색 대상은 책 제목(확장자 제외 파일명)뿐이며 부분 문자열, 대소문자 무시, NFC 정규화 기준이다. 검색어가 초성(ㅇㅂ 등)이면 `books.title_choseong`(한글 음절을 초성으로 바꾸고 공백을 뺀 값)과 제목을 동시에 찾는다. 안내 문구는 한국어에서 `책 제목 검색 (초성 가능)`이다. 조회는 파일 시스템이 아니라 DB다(서버는 `books` 테이블, 호스팅 런타임은 IndexedDB 스냅샷). 규칙은 `docs/api.md`의 Title search endpoint 참고.
 
-`front/pages/SearchPage.tsx`는 별도 결과 페이지다. 헤더에 건수(`search-result-count`), 목록/표지 보기 전환, 행마다 폴더 위치 버튼과 태그를 보여 주며 폴더·태그 변경 이벤트에서 같은 검색어로 다시 조회한다. 결과 상한(500)에서 잘리면 `search-results-limited`로 전체 건수를 알린다. 이동·삭제·태그 관리는 제공하지 않는 읽기 전용이라 `PdfCoverItem`의 `onTagDelete`, `onManageTags`, `onMove`, `onDelete`를 선택값으로 바꿨고, 없으면 해당 버튼을 그리지 않는다.
+`front/pages/SearchPage.tsx`는 별도 결과 페이지다. 헤더에 건수(`search-result-count`), 목록/표지 보기 전환, 행마다 폴더 위치 버튼과 태그를 보여 주며 폴더·태그 변경 이벤트에서 같은 검색어로 다시 조회한다. 결과 상한(500)에서 잘리면 `search-results-limited`로 전체 건수를 알린다. `PdfCoverItem`의 `onTagDelete`, `onManageTags`, `onMove`, `onDelete`는 선택값이라 넘기지 않으면 해당 버튼을 그리지 않는다.
+
+2026-11-13부터 검색 결과도 폴더·태그 페이지와 같은 문서 조작을 제공한다(목록 행·표지 카드 공통: 태그 인라인 삭제, 태그관리, AI 자동태그, 문서 정보, 이동, 삭제). 공통 로직은 `front/components/useBookLibraryActions.tsx` 훅에 있다. 훅은 목록 상태(`books`)를 호출한 페이지에서 받아 낙관적으로 갱신하고(삭제 시 제거, 이동 시 폴더명 교체, 태그 변경은 `tagsOf`가 돌려주는 덮어쓰기 맵), 이동·삭제 확인·태그관리·문서 정보 다이얼로그와 `TagNoticeSnackbar`를 `actions.dialogs` 한 덩어리로 돌려준다. 자동태그는 `tagMutation`이 `ai:<identity>`인 동안 해당 카드만 진행 표시하고 끝나면 `reload(true)`로 다시 조회한다. `TagPage`는 태그별 목록 제거 규칙(미분류·현재 태그)이 따로 있어 자체 구현을 유지한다.
 
 알려진 기존 현상: 390px 폭에서 목록 보기의 파일명 열이 0으로 접힌다(`PDF_LIST_MOBILE_COLUMNS` 합계가 폭을 넘음). 폴더 페이지도 같으며 검색 페이지 고유 문제가 아니다.
