@@ -23,6 +23,8 @@ export interface FilesystemService {
   getFolderPath(folder: string): string;
   getFilePath(folder: string, filename: string): string;
   listFolderShells(): FolderInfo[];
+  /** Child folder names on disk, read off the event loop. Rejects when the volume is unreachable. */
+  listChildFolderNames(): Promise<string[]>;
   listFolders(): FolderInfo[];
   listPdfs(folder: string): PdfInfo[];
   createFolder(name: string): void;

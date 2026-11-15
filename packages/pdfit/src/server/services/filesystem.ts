@@ -74,6 +74,10 @@ export function createFilesystemService(booksRoot: string, rootFolderName = path
     getFolderPath,
     getFilePath,
     listFolderShells,
+    async listChildFolderNames(): Promise<string[]> {
+      const entries = await fs.promises.readdir(booksRoot, { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    },
     listFolders(): FolderInfo[] {
       ensureBooksRoot();
       const rootStat = fs.statSync(booksRoot);

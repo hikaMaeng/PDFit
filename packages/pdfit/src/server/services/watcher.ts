@@ -107,16 +107,22 @@ export function createWatcher(options: {
   async function indexBooks(): Promise<void> {
     const books: BookRecord[] = [];
     const folders = [{ name: rootFolderName, dir: booksRoot }];
-    if (fs.existsSync(booksRoot)) {
-      for (const entry of fs.readdirSync(booksRoot, { withFileTypes: true })) {
-        if (entry.isDirectory()) folders.push({ name: entry.name, dir: path.join(booksRoot, entry.name) });
-      }
+    // Every read here is asynchronous: a dead network mount must fail this call,
+    // not freeze the event loop for everyone else. An unreachable root rejects
+    // before anything is written, so an offline volume never looks like an empty library.
+    for (const entry of await fs.promises.readdir(booksRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) folders.push({ name: entry.name, dir: path.join(booksRoot, entry.name) });
     }
     for (const folder of folders) {
-      if (!fs.existsSync(folder.dir)) continue;
-      for (const entry of fs.readdirSync(folder.dir, { withFileTypes: true })) {
+      let entries: fs.Dirent[];
+      try { entries = await fs.promises.readdir(folder.dir, { withFileTypes: true }); }
+      catch (error) {
+        if (folder.dir === booksRoot) throw error;
+        continue;
+      }
+      for (const entry of entries) {
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.pdf')) continue;
-        const stat = fs.statSync(path.join(folder.dir, entry.name));
+        const stat = await fs.promises.stat(path.join(folder.dir, entry.name));
         books.push({ folder: folder.name, filename: entry.name, size: stat.size, modified_at: stat.mtime.toISOString() });
       }
     }
@@ -129,10 +135,8 @@ export function createWatcher(options: {
     // deletion handling may reconcile metadata.
     await indexBooks();
     watchDir(booksRoot);
-    if (fs.existsSync(booksRoot)) {
-      for (const entry of fs.readdirSync(booksRoot, { withFileTypes: true })) {
-        if (entry.isDirectory()) watchDir(path.join(booksRoot, entry.name));
-      }
+    for (const entry of await fs.promises.readdir(booksRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) watchDir(path.join(booksRoot, entry.name));
     }
     bus.emit('change', 'folders-changed');
     bus.emit('change', 'tags-changed');
@@ -145,7 +149,8 @@ export function createWatcher(options: {
       // Startup must never scan or synchronize the library. Watch only the
       // root so newly-created folders can be discovered; existing folder
       // watchers are attached during the explicit refresh operation.
-      watchDir(booksRoot);
+      // The existence probe is asynchronous so an unreachable volume cannot stall boot.
+      void fs.promises.stat(booksRoot).then(() => watchDir(booksRoot), () => { /* volume offline; refresh attaches it later */ });
     },
   };
 }

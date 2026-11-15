@@ -74,6 +74,24 @@ export function createFoldersRouter(
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
 
+  // Folder names last seen on disk. Key: folder name; scope: this router (one library root);
+  // bound: the number of directories directly under the root; replaced wholesale on every
+  // successful read and kept as is while the volume is unreachable.
+  let diskFolders: string[] = [];
+  let diskFoldersReading = false;
+  let diskFoldersCheckedAt = 0;
+  const DISK_FOLDERS_MIN_INTERVAL_MS = 30_000;
+  function refreshDiskFolders(): void {
+    if (diskFoldersReading || Date.now() - diskFoldersCheckedAt < DISK_FOLDERS_MIN_INTERVAL_MS) return;
+    diskFoldersReading = true;
+    diskFoldersCheckedAt = Date.now();
+    // The in-flight flag follows the real read, not the timeout, so a hung mount
+    // holds at most one worker thread instead of one per attempt.
+    const read = filesystem.listChildFolderNames();
+    read.then((names) => { diskFolders = names; }, () => { /* volume unreachable: keep the last known list */ })
+      .finally(() => { diskFoldersReading = false; });
+  }
+
   router.post('/refresh', async (_req: Request, res: Response) => {
     try {
       await refresh?.();
@@ -90,27 +108,26 @@ export function createFoldersRouter(
         return;
       }
 
-      // Folder discovery must not scan/stat every PDF on the library volume.
-      // Both folder names and counts come from the indexed metadata table.
-      // The filesystem is reserved for the explicit refresh operation.
-      const counts = await listFolderBookCounts();
-      const folders = filesystem.listFolderShells();
-      const root = folders[0];
-      const colors = await listFolderColors?.() ?? {};
-      const indexedFolders = Object.entries(counts)
-        .filter(([name]) => !filesystem.isRootFolder(name))
-        .map(([name, pdfCount]) => ({ name, pdfCount, createdAt: '', isRoot: false, color: colors[name] ?? '#3b82f6' }));
-      root.pdfCount = counts[root.name] ?? 0;
-      const indexedByName = new Map(indexedFolders.map((folder) => [folder.name, folder]));
-      for (const folder of folders) {
-        const indexed = indexedByName.get(folder.name);
-        if (indexed) {
-          folder.pdfCount = indexed.pdfCount;
-          folder.createdAt = indexed.createdAt;
-        }
+      // The folder list is answered from the database alone, so it renders the
+      // same whether or not the library volume (NAS) is reachable. A synchronous
+      // directory read on a dead SMB mount blocks the whole server for 30s+.
+      // Folders that exist on disk but hold no indexed PDF yet come from a cache
+      // that is refreshed off the request path (see refreshDiskFolders).
+      const [counts, colors] = await Promise.all([listFolderBookCounts(), listFolderColors?.() ?? Promise.resolve({} as Record<string, string>)]);
+      refreshDiskFolders();
+      const folders: Array<{ name: string; pdfCount: number; createdAt: string; isRoot: boolean; color: string }> = [
+        { name: filesystem.rootFolderName, pdfCount: counts[filesystem.rootFolderName] ?? 0, createdAt: '', isRoot: true, color: '#3b82f6' },
+      ];
+      const known = new Set<string>(folders.map((folder) => folder.name));
+      for (const [name, pdfCount] of Object.entries(counts)) {
+        if (filesystem.isRootFolder(name) || known.has(name)) continue;
+        known.add(name);
+        folders.push({ name, pdfCount, createdAt: '', isRoot: false, color: '#3b82f6' });
       }
-      for (const folder of indexedFolders) {
-        if (!folders.some((existing) => existing.name === folder.name)) folders.push(folder);
+      for (const name of diskFolders) {
+        if (known.has(name)) continue;
+        known.add(name);
+        folders.push({ name, pdfCount: 0, createdAt: '', isRoot: false, color: '#3b82f6' });
       }
       folders.sort((left, right) => {
         if (left.isRoot) return -1;
