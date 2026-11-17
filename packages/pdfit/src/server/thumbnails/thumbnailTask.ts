@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createLibraryVolumeGuard, type LibraryVolumeGuard } from '../services/libraryVolume.js';
 import { INTERACTIVE_TASK_PRIORITY, type TaskEnvelope, type TaskOutcome } from '../tasks/taskProtocol.js';
 import type { PeriodicTaskDefinition, PlannedTask, TaskSubmitOutcome } from '../tasks/taskScheduler.js';
 import {
@@ -73,6 +74,8 @@ function isPlainName(name: string): boolean {
  */
 export function createThumbnailService(options: {
   booksRoot: string;
+  /** Guard for every read of the library volume; a private one is made when omitted. */
+  volume?: LibraryVolumeGuard;
   rootFolderName: string;
   store: ThumbnailStore;
   /** Queues one task on the shared scheduler; wired after the scheduler exists. */
@@ -81,6 +84,7 @@ export function createThumbnailService(options: {
   log?: (message: string) => void;
 }): ThumbnailService {
   const { booksRoot, rootFolderName, store } = options;
+  const volume = options.volume ?? createLibraryVolumeGuard();
   const failureRetryMs = options.failureRetryMs ?? THUMBNAIL_FAILURE_RETRY_MS;
   const log = options.log ?? (() => undefined);
   let lastPlan: ThumbnailPlanSummary | null = null;
@@ -111,7 +115,7 @@ export function createThumbnailService(options: {
   async function listLibrary(): Promise<{ sources: LibrarySource[]; complete: boolean }> {
     let complete = true;
     const candidates: Array<{ folder: string; filename: string; sourcePath: string }> = [];
-    const rootEntries = await fs.readdir(booksRoot, { withFileTypes: true });
+    const rootEntries = await volume.run(() => fs.readdir(booksRoot, { withFileTypes: true }));
     for (const entry of rootEntries) {
       if (entry.isFile() && isPdfName(entry.name)) candidates.push({ folder: rootFolderName, filename: entry.name, sourcePath: path.join(booksRoot, entry.name) });
     }
@@ -119,7 +123,7 @@ export function createThumbnailService(options: {
       if (!entry.isDirectory()) continue;
       const directory = path.join(booksRoot, entry.name);
       try {
-        for (const child of await fs.readdir(directory, { withFileTypes: true })) {
+        for (const child of await volume.run(() => fs.readdir(directory, { withFileTypes: true }))) {
           if (child.isFile() && isPdfName(child.name)) candidates.push({ folder: entry.name, filename: child.name, sourcePath: path.join(directory, child.name) });
         }
       } catch (error) {
@@ -134,7 +138,7 @@ export function createThumbnailService(options: {
       while (next < candidates.length) {
         const candidate = candidates[next++];
         try {
-          const stat = await fs.stat(candidate.sourcePath);
+          const stat = await volume.run(() => fs.stat(candidate.sourcePath));
           if (stat.isFile()) sources.push({ ...candidate, stamp: thumbnailSourceStamp(stat.mtime.getTime(), stat.size) });
         } catch {
           complete = false;
@@ -211,7 +215,7 @@ export function createThumbnailService(options: {
       const sourcePath = path.join(directory, filename);
       let stamp: string;
       try {
-        const stat = await fs.stat(sourcePath);
+        const stat = await volume.run(() => fs.stat(sourcePath));
         if (!stat.isFile()) return { state: 'missing' };
         stamp = thumbnailSourceStamp(stat.mtime.getTime(), stat.size);
       } catch {

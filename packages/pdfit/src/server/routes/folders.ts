@@ -1,7 +1,9 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 import { Router, type Request, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
+import { LibraryOfflineError } from '../services/libraryVolume.js';
 import type { FilesystemService } from '../services/types.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
 import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
@@ -92,19 +94,25 @@ export function createFoldersRouter(
       .finally(() => { diskFoldersReading = false; });
   }
 
+  /** A volume that is down is 503 (retry later); everything else keeps its own status. */
+  const fail = (res: Response, error: unknown, status = 400) => {
+    if (error instanceof LibraryOfflineError) { res.status(503).json({ error: String(error), code: error.code }); return; }
+    res.status(status).json({ error: String(error) });
+  };
+
   router.post('/refresh', async (_req: Request, res: Response) => {
     try {
       await refresh?.();
-      res.json(filesystem.listFolders());
+      res.json(await filesystem.listFolders());
     } catch (error) {
-      res.status(500).json({ error: String(error) });
+      fail(res, error, 500);
     }
   });
 
   router.get('/', async (_req: Request, res: Response) => {
     try {
       if (!listFolderBookCounts) {
-        res.json(filesystem.listFolders());
+        res.json(await filesystem.listFolders());
         return;
       }
 
@@ -147,7 +155,7 @@ export function createFoldersRouter(
     catch (error) { res.status(400).json({ error: String(error) }); }
   });
 
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const { name } = req.body as { name?: string };
     if (!name?.trim()) {
       res.status(400).json({ error: 'Folder name is required.' });
@@ -156,15 +164,15 @@ export function createFoldersRouter(
 
     try {
       const safeName = sanitizeName(name.trim());
-      filesystem.createFolder(safeName);
+      await filesystem.createFolder(safeName);
       notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
-      res.status(400).json({ error: String(error) });
+      fail(res, error);
     }
   });
 
-  router.patch('/:name', (req: Request, res: Response) => {
+  router.patch('/:name', async (req: Request, res: Response) => {
     const { newName } = req.body as { newName?: string };
     if (!newName?.trim()) {
       res.status(400).json({ error: 'New folder name is required.' });
@@ -173,35 +181,35 @@ export function createFoldersRouter(
 
     try {
       const safeName = sanitizeName(newName.trim());
-      filesystem.renameFolder(req.params.name, safeName);
+      await filesystem.renameFolder(req.params.name, safeName);
       notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
-      res.status(400).json({ error: String(error) });
+      fail(res, error);
     }
   });
 
   router.delete('/:name', async (req: Request, res: Response) => {
     try {
-      filesystem.deleteFolder(req.params.name);
+      await filesystem.deleteFolder(req.params.name);
       await metadataMutation?.purgeFolder(req.params.name);
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
-      res.status(400).json({ error: String(error) });
+      fail(res, error);
     }
   });
 
-  router.get('/:name/files', (req: Request, res: Response) => {
+  router.get('/:name/files', async (req: Request, res: Response) => {
     if (listBooks) {
       void listBooks(req.params.name).then((books) => res.json(books.map((book) => ({
         name: book.filename, size: book.size, modifiedAt: book.modified_at,
       })))).catch((error) => res.status(404).json({ error: String(error) }));
       return;
     }
-    try { res.json(filesystem.listPdfs(req.params.name)); }
-    catch (error) { res.status(404).json({ error: String(error) }); }
+    try { res.json(await filesystem.listPdfs(req.params.name)); }
+    catch (error) { fail(res, error, 404); }
   });
 
   router.post(
@@ -273,10 +281,14 @@ export function createFoldersRouter(
     }
   });
 
-  router.get('/:name/files/:filename', (req: Request, res: Response) => {
+  router.get('/:name/files/:filename', async (req: Request, res: Response) => {
     const folder = sanitizeName(decodeRouteParam(req.params.name));
     const filename = sanitizeName(decodeRouteParam(req.params.filename));
     const filePath = path.resolve(filesystem.getFolderPath(folder), filename);
+    // Opening a book needs the volume. The guarded probe answers 503 at once while it is
+    // down, so hung reads cannot pile up on the thread pool and starve database-backed routes.
+    try { await filesystem.volume.run(() => fs.promises.stat(filePath)); }
+    catch (error) { if (error instanceof LibraryOfflineError) { fail(res, error); return; } /* missing file: sendFile answers 404 below */ }
     if (req.query.download === '1') {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -300,14 +312,14 @@ export function createFoldersRouter(
     try {
       const folder = decodeRouteParam(req.params.name);
       const filename = sanitizeName(decodeRouteParam(req.params.filename));
-      filesystem.deleteFile(folder, filename);
+      await filesystem.deleteFile(folder, filename);
       await metadataMutation?.purgeFile(folder, filename);
       await covers?.remove(folder, filename).catch(() => false);
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
-      res.status(400).json({ error: String(error) });
+      fail(res, error);
     }
   });
 
@@ -324,7 +336,7 @@ export function createFoldersRouter(
     }
 
     try {
-      filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
+      await filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
       await covers?.move({ folder: fromFolder, filename: sanitizeName(filename) }, { folder: toFolder, filename: sanitizeName(filename) }).catch(() => false);
       await refresh?.();
       await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
@@ -332,7 +344,7 @@ export function createFoldersRouter(
       notifyChange?.('tags-changed');
       res.json({ ok: true });
     } catch (error) {
-      res.status(400).json({ error: String(error) });
+      fail(res, error);
     }
   });
 

@@ -43,6 +43,8 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV SERVER_PORT=15201
+# A hung SMB call holds one libuv thread; keep headroom above the library guard's 12 so local files and covers stay served.
+ENV UV_THREADPOOL_SIZE=32
 ENV BOOKS_ROOT=/app/data/books
 ENV BOOKS_ROOT_NAME=이북
 ENV BOOKMARKS_ROOT=/app/data/bookmarks

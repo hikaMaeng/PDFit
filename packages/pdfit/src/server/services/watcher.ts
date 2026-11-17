@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createLibraryVolumeGuard, type LibraryVolumeGuard } from './libraryVolume.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
 
 export interface WatcherController {
@@ -14,25 +15,14 @@ export function createWatcher(options: {
   rootFolderName: string;
   resolveFolderPath: (folder: string) => string;
   metadataStore: MetadataStore;
+  /** Every disk access goes through it so a dead mount cannot hang the server. */
+  volume?: LibraryVolumeGuard;
 }): WatcherController {
-  const { booksRoot, rootFolderName, resolveFolderPath, metadataStore } = options;
+  const { booksRoot, rootFolderName, metadataStore } = options;
+  const volume = options.volume ?? createLibraryVolumeGuard();
+  const present = (target: string) => volume.run(() => fs.promises.access(target)).then(() => true, () => false);
   const bus = new EventEmitter();
   const dirWatchers = new Map<string, fs.FSWatcher>();
-
-  async function reconcile(): Promise<void> {
-    try {
-      for (const ref of await metadataStore.listTrackedBooks()) {
-        const filePath = path.join(resolveFolderPath(ref.folder), ref.filename);
-        if (!fs.existsSync(filePath)) {
-          await metadataStore.purgeFile(ref.folder, ref.filename);
-        }
-      }
-
-      await metadataStore.purgeOrphanTags();
-    } catch (error) {
-      console.error('[watcher] reconcile failed:', error);
-    }
-  }
 
   function closeWatcher(dir: string): void {
     const watcher = dirWatchers.get(dir);
@@ -47,7 +37,7 @@ export function createWatcher(options: {
   }
 
   function watchDir(dir: string): void {
-    if (dirWatchers.has(dir) || !fs.existsSync(dir)) {
+    if (dirWatchers.has(dir)) {
       return;
     }
 
@@ -56,45 +46,7 @@ export function createWatcher(options: {
         if (!name) {
           return;
         }
-
-        const fullPath = path.join(dir, name);
-        const exists = fs.existsSync(fullPath);
-
-        if (dir === booksRoot) {
-          if (exists) {
-            try {
-              if (fs.statSync(fullPath).isDirectory()) {
-                watchDir(fullPath);
-              }
-            } catch {
-              return;
-            }
-          } else {
-            closeWatcher(fullPath);
-            if (name.toLowerCase().endsWith('.pdf')) {
-              void metadataStore.purgeFile(rootFolderName, name);
-            } else {
-              void metadataStore.purgeFolder(name);
-            }
-            void metadataStore.purgeOrphanTags();
-          }
-
-          bus.emit('change', 'folders-changed');
-          bus.emit('change', 'tags-changed');
-          return;
-        }
-
-        if (!name.toLowerCase().endsWith('.pdf')) {
-          return;
-        }
-
-        if (!exists) {
-          void metadataStore.purgeFile(path.basename(dir), name);
-          void metadataStore.purgeOrphanTags();
-          bus.emit('change', 'tags-changed');
-        }
-
-        bus.emit('change', 'folders-changed');
+        void handleChange(dir, String(name));
       });
 
       watcher.on('error', () => closeWatcher(dir));
@@ -104,25 +56,65 @@ export function createWatcher(options: {
     }
   }
 
+  async function handleChange(dir: string, name: string): Promise<void> {
+    const fullPath = path.join(dir, name);
+    // A volume that cannot answer is not evidence that the file is gone: change events
+    // from a flapping mount must never purge database rows.
+    if (volume.isOffline()) return;
+    const exists = await present(fullPath);
+    if (volume.isOffline()) return;
+
+    if (dir === booksRoot) {
+      if (exists) {
+        const isDirectory = await volume.run(() => fs.promises.stat(fullPath)).then((stat) => stat.isDirectory(), () => false);
+        if (isDirectory) watchDir(fullPath);
+      } else {
+        closeWatcher(fullPath);
+        if (name.toLowerCase().endsWith('.pdf')) {
+          void metadataStore.purgeFile(rootFolderName, name);
+        } else {
+          void metadataStore.purgeFolder(name);
+        }
+        void metadataStore.purgeOrphanTags();
+      }
+
+      bus.emit('change', 'folders-changed');
+      bus.emit('change', 'tags-changed');
+      return;
+    }
+
+    if (!name.toLowerCase().endsWith('.pdf')) {
+      return;
+    }
+
+    if (!exists) {
+      void metadataStore.purgeFile(path.basename(dir), name);
+      void metadataStore.purgeOrphanTags();
+      bus.emit('change', 'tags-changed');
+    }
+
+    bus.emit('change', 'folders-changed');
+  }
+
   async function indexBooks(): Promise<void> {
     const books: BookRecord[] = [];
     const folders = [{ name: rootFolderName, dir: booksRoot }];
     // Every read here is asynchronous: a dead network mount must fail this call,
     // not freeze the event loop for everyone else. An unreachable root rejects
     // before anything is written, so an offline volume never looks like an empty library.
-    for (const entry of await fs.promises.readdir(booksRoot, { withFileTypes: true })) {
+    for (const entry of await volume.run(() => fs.promises.readdir(booksRoot, { withFileTypes: true }))) {
       if (entry.isDirectory()) folders.push({ name: entry.name, dir: path.join(booksRoot, entry.name) });
     }
     for (const folder of folders) {
       let entries: fs.Dirent[];
-      try { entries = await fs.promises.readdir(folder.dir, { withFileTypes: true }); }
+      try { entries = await volume.run(() => fs.promises.readdir(folder.dir, { withFileTypes: true })); }
       catch (error) {
         if (folder.dir === booksRoot) throw error;
         continue;
       }
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.pdf')) continue;
-        const stat = await fs.promises.stat(path.join(folder.dir, entry.name));
+        const stat = await volume.run(() => fs.promises.stat(path.join(folder.dir, entry.name)));
         books.push({ folder: folder.name, filename: entry.name, size: stat.size, modified_at: stat.mtime.toISOString() });
       }
     }
@@ -135,7 +127,7 @@ export function createWatcher(options: {
     // deletion handling may reconcile metadata.
     await indexBooks();
     watchDir(booksRoot);
-    for (const entry of await fs.promises.readdir(booksRoot, { withFileTypes: true })) {
+    for (const entry of await volume.run(() => fs.promises.readdir(booksRoot, { withFileTypes: true }))) {
       if (entry.isDirectory()) watchDir(path.join(booksRoot, entry.name));
     }
     bus.emit('change', 'folders-changed');
@@ -150,7 +142,7 @@ export function createWatcher(options: {
       // root so newly-created folders can be discovered; existing folder
       // watchers are attached during the explicit refresh operation.
       // The existence probe is asynchronous so an unreachable volume cannot stall boot.
-      void fs.promises.stat(booksRoot).then(() => watchDir(booksRoot), () => { /* volume offline; refresh attaches it later */ });
+      void present(booksRoot).then((exists) => { if (exists) watchDir(booksRoot); });
     },
   };
 }

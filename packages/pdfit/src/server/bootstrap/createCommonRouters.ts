@@ -103,6 +103,7 @@ export function createPdfitCommonRouterAssembly(options: {
     rootFolderName: filesystem.rootFolderName,
     resolveFolderPath: filesystem.getFolderPath,
     metadataStore: options.metadataStore,
+    volume: filesystem.volume,
   });
 
   if (options.watcherEnabled ?? true) {
@@ -122,6 +123,7 @@ export function createPdfitCommonRouterAssembly(options: {
     thumbnails = createThumbnailService({
       booksRoot: options.booksRoot,
       rootFolderName: filesystem.rootFolderName,
+      volume: filesystem.volume,
       store: createThumbnailStore(background.thumbnailRoot),
       submit: (task) => scheduler.submit(THUMBNAIL_TASK_TYPE, task),
       log: (message) => console.log(`[tasks] ${message}`),
@@ -132,14 +134,14 @@ export function createPdfitCommonRouterAssembly(options: {
     const resolveSourcePath = async (folder: string, filename: string) => {
       try {
         const sourcePath = path.resolve(filesystem.getFolderPath(folder), path.basename(filename));
-        return (await fs.promises.stat(sourcePath)).isFile() ? sourcePath : null;
+        return (await filesystem.volume.run(() => fs.promises.stat(sourcePath))).isFile() ? sourcePath : null;
       } catch {
         return null;
       }
     };
     ocr = createOcrService({
       resolveSourcePath,
-      sourceStamp: async (sourcePath) => { const stat = await fs.promises.stat(sourcePath); return thumbnailSourceStamp(stat.mtimeMs, stat.size); },
+      sourceStamp: async (sourcePath) => { const stat = await filesystem.volume.run(() => fs.promises.stat(sourcePath)); return thumbnailSourceStamp(stat.mtimeMs, stat.size); },
       submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
       resolveVisionServer: background.resolveVisionServer,
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
