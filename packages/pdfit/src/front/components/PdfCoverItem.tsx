@@ -16,7 +16,7 @@ import TagChip from './TagChip.js';
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
 import { viewerStateApi } from '../api/viewerState.js';
-import { coversAvailable, ensureCoverOverrides, getCoversRevision, subscribeCovers, withCoverVersion } from '../api/covers.js';
+import { coversAvailable, coverStateKey, ensureCoverOverrides, subscribeCovers, withCoverVersion } from '../api/covers.js';
 import { useThumbnailSlot } from './thumbnailLoadQueue.js';
 import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
@@ -418,7 +418,7 @@ function PdfCoverItem(props: Props) {
   const infoId = useId();
   // Real-book covers apply to local files whose cover the server renders.
   const localServerCover = Boolean(props.serverCover && props.thumbnailUrl && !props.driveFileId);
-  useSyncExternalStore(subscribeCovers, getCoversRevision, () => 0);
+  useSyncExternalStore(subscribeCovers, () => coverStateKey(props.folder, props.filename), () => '');
   useEffect(() => { if (localServerCover) ensureCoverOverrides(); }, [localServerCover]);
   const coverThumbnailUrl = localServerCover && props.thumbnailUrl ? withCoverVersion(props.thumbnailUrl, props.folder, props.filename) : props.thumbnailUrl;
   const canReplaceCover = localServerCover && !pending && Boolean(props.onManageTags) && coversAvailable();

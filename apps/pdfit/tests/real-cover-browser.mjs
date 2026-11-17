@@ -248,16 +248,31 @@ const thumbnailCensus = async (page, label) => {
   }
   return { label, at: elapsed(), translationPostsPendingGlobal: translation.globalInFlight, translationPostsSoFar: translation.posts.length, ...last };
 };
+// 대화상자는 사이트별로 두 번 요청한다(source=YES24, source=Open Library). 화면 순서는 도착 순서로 이어 붙인 뒤
+// 점수 내림차순 안정 정렬이므로, 기대값도 같은 규칙(YES24 먼저)으로 합친다. 합친 payload를 돌려준다.
+const SOURCE_NAMES = ['YES24', 'Open Library'];
+const waitSearch = async (page, matches = () => true) => {
+  const pending = SOURCE_NAMES.map((name) => page.waitForResponse((response) => {
+    if (!response.url().includes('/api/covers/candidates?')) return false;
+    const url = new URL(response.url());
+    return url.searchParams.get('source') === name && matches(url);
+  }, { timeout: 30000 }));
+  return async () => {
+    const responses = await Promise.all(pending);
+    const payloads = await Promise.all(responses.map((response) => response.json()));
+    const candidates = payloads.flatMap((payload) => payload.candidates).map((candidate, index) => ({ candidate, index })).sort((a, b) => b.candidate.score - a.candidate.score || a.index - b.index).map(({ candidate }) => candidate);
+    return { status: responses.every((response) => response.status() === 200) ? 200 : responses.find((response) => response.status() !== 200).status(), request: new URL(responses[0].url()).searchParams.get('q'), payload: { candidates, failedSources: payloads.flatMap((payload) => payload.failedSources) } };
+  };
+};
 const openDialog = async (page, card) => {
-  const candidatesResponse = page.waitForResponse((response) => response.url().includes('/api/covers/candidates?'), { timeout: 30000 });
+  const collect = await waitSearch(page);
   const button = card.getByTestId('pdf-cover-real-cover');
   await button.scrollIntoViewIfNeeded();
   await button.click();
   const dialog = page.getByTestId('real-cover-dialog');
   await dialog.waitFor({ state: 'visible', timeout: 10000 });
-  const response = await candidatesResponse;
-  const payload = await response.json();
-  return { dialog, request: new URL(response.url()).searchParams.get('q'), status: response.status(), payload };
+  const merged = await collect();
+  return { dialog, ...merged };
 };
 const waitCandidates = async (page, count) => {
   await page.waitForFunction((expected) => document.querySelectorAll('ul[data-testid="real-cover-candidates"] > li[data-testid="real-cover-candidate"]').length === expected, count, { timeout: 15000 });
@@ -359,20 +374,20 @@ try {
   // ── 3. 검색어를 바꾸고 검색 버튼 → 다시 검색 ─────────────
   {
     await page.getByTestId('real-cover-query').fill(altQuery);
-    const response = page.waitForResponse((item) => item.url().includes('/api/covers/candidates?') && new URL(item.url()).searchParams.get('q') === altQuery, { timeout: 30000 });
+    const altCollect = await waitSearch(page, (url) => url.searchParams.get('q') === altQuery);
     await page.getByTestId('real-cover-search').click();
-    const altResponse = await response;
-    const altPayload = await altResponse.json();
-    assert.equal(altResponse.status(), 200);
+    const alt = await altCollect();
+    const altPayload = alt.payload;
+    assert.equal(alt.status, 200);
     if (altPayload.candidates.length > 0) await waitCandidates(page, altPayload.candidates.length);
     else await page.getByText(TEXT.empty).waitFor({ timeout: 15000 });
     const shown = await page.locator('li[data-testid="real-cover-candidate"]').count();
     step('3_edited_query_research', { query: altQuery, candidates: altPayload.candidates.length, shown });
     // 원래 검색어로 되돌려 다시 검색한다(적용할 후보는 원래 검색의 첫 후보).
     await page.getByTestId('real-cover-query').fill(query);
-    const back = page.waitForResponse((item) => item.url().includes('/api/covers/candidates?') && new URL(item.url()).searchParams.get('q') === query, { timeout: 30000 });
+    const backCollect = await waitSearch(page, (url) => url.searchParams.get('q') === query);
     await page.getByTestId('real-cover-search').click();
-    const backPayload = await (await back).json();
+    const backPayload = (await backCollect()).payload;
     assert.ok(backPayload.candidates.length > 0);
     await waitCandidates(page, backPayload.candidates.length);
     first.payload = backPayload;

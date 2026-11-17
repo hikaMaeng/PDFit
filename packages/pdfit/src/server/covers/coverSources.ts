@@ -29,6 +29,8 @@ export interface CoverLookupOptions {
   request?: typeof fetch;
   limitPerSource?: number;
   timeoutMs?: number;
+  /** Sites to ask; default both. A site left out is neither called nor reported as failed. */
+  sources?: BookCoverSource[];
 }
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; PDFit; book cover lookup)';
@@ -109,7 +111,8 @@ export async function findBookCoverCandidates(query: string, options: CoverLooku
   const trimmed = query.normalize('NFC').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!trimmed) return { candidates: [], failedSources: [] };
 
-  const yes24 = (async () => {
+  const wanted = new Set<BookCoverSource>(options.sources ?? ['YES24', 'Open Library']);
+  const yes24 = !wanted.has('YES24') ? Promise.resolve([] as BookCoverCandidate[]) : (async () => {
     const url = new URL('https://www.yes24.com/product/search');
     url.searchParams.set('domain', 'BOOK');
     url.searchParams.set('query', trimmed);
@@ -117,7 +120,7 @@ export async function findBookCoverCandidates(query: string, options: CoverLooku
     if (!response.ok) throw new Error(`YES24 ${response.status}`);
     return parseYes24CoverCandidates(await response.text(), trimmed, limit);
   })();
-  const openLibrary = (async () => {
+  const openLibrary = !wanted.has('Open Library') ? Promise.resolve([] as BookCoverCandidate[]) : (async () => {
     const url = new URL('https://openlibrary.org/search.json');
     url.searchParams.set('q', trimmed);
     url.searchParams.set('limit', String(limit * 2));
@@ -133,7 +136,7 @@ export async function findBookCoverCandidates(query: string, options: CoverLooku
   const failedSources: BookCoverSource[] = [];
   settled.forEach((outcome, index) => {
     if (outcome.status === 'fulfilled') candidates.push(...outcome.value);
-    else failedSources.push(sources[index]);
+    else if (wanted.has(sources[index])) failedSources.push(sources[index]);
   });
   // Stable order: higher title score first; ties keep YES24 before Open Library.
   const ordered = candidates

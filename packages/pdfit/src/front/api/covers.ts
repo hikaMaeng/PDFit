@@ -53,6 +53,15 @@ export function coverVersion(folder: string, filename: string): string | undefin
   return versions.get(key(folder, filename));
 }
 
+/**
+ * What one card renders from: whether the cover API exists and this file's cover version.
+ * A card subscribes with this string, so a replaced cover re-renders that card only; the
+ * global revision re-rendered every card in the library (715 cards took seconds).
+ */
+export function coverStateKey(folder: string, filename: string): string {
+  return `${available === true ? 1 : 0}|${versions.get(key(folder, filename)) ?? ''}`;
+}
+
 /** Adds the replaced-cover version to a local thumbnail URL, or returns it unchanged. */
 export function withCoverVersion(thumbnailUrl: string, folder: string, filename: string): string {
   const version = coverVersion(folder, filename);
@@ -100,8 +109,9 @@ async function errorText(response: Response): Promise<string> {
   return payload?.error ?? `HTTP ${response.status}`;
 }
 
-export async function findCoverCandidates(query: string, signal?: AbortSignal): Promise<{ candidates: BookCoverCandidate[]; failedSources: BookCoverSource[] }> {
-  const response = await fetch(`/api/covers/candidates?q=${encodeURIComponent(query)}`, { signal });
+/** `source` limits the search to one site so the fast one can be shown without waiting for the slow one. */
+export async function findCoverCandidates(query: string, signal?: AbortSignal, source?: BookCoverSource): Promise<{ candidates: BookCoverCandidate[]; failedSources: BookCoverSource[] }> {
+  const response = await fetch(`/api/covers/candidates?q=${encodeURIComponent(query)}${source ? `&source=${encodeURIComponent(source)}` : ''}`, { signal });
   if (!response.ok) throw new Error(await errorText(response));
   return response.json() as Promise<{ candidates: BookCoverCandidate[]; failedSources: BookCoverSource[] }>;
 }

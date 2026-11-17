@@ -17,7 +17,7 @@ type Props = {
 export default function RealCoverDialog({ open, folder, filename, onClose }: Props) {
   const { t } = usePdfitI18n();
   const [query, setQuery] = useState(() => coverQueryFromFilename(filename));
-  const [state, setState] = useState<'idle' | 'searching' | 'done' | 'applying'>('idle');
+  const [state, setState] = useState<'idle' | 'searching' | 'partial' | 'done' | 'applying'>('idle');
   const [candidates, setCandidates] = useState<BookCoverCandidate[]>([]);
   const [failedSources, setFailedSources] = useState<BookCoverSource[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -32,17 +32,28 @@ export default function RealCoverDialog({ open, folder, filename, onClose }: Pro
     abortRef.current = controller;
     setState('searching');
     setError(null);
-    try {
-      const result = await findCoverCandidates(trimmed, controller.signal);
-      if (controller.signal.aborted) return;
-      setCandidates(result.candidates);
-      setFailedSources(result.failedSources);
-      setState('done');
-    } catch (reason) {
-      if (controller.signal.aborted) return;
-      setCandidates([]);
-      setError(t('realCoverError', { reason: reason instanceof Error ? reason.message : String(reason) }));
-      setState('done');
+    // Each site is its own request: YES24 answers in well under a second, Open Library in
+    // seconds. Results show as each one arrives instead of after the slowest.
+    setCandidates([]);
+    setFailedSources([]);
+    const sources: BookCoverSource[] = ['YES24', 'Open Library'];
+    let pending = sources.length;
+    let failure: unknown = null;
+    let succeeded = 0;
+    const finish = () => { pending -= 1; if (pending === 0 && !controller.signal.aborted) { if (succeeded === 0 && failure) setError(t('realCoverError', { reason: failure instanceof Error ? failure.message : String(failure) })); setState((current) => current === 'applying' ? current : 'done'); } };
+    for (const source of sources) {
+      findCoverCandidates(trimmed, controller.signal, source).then((result) => {
+        if (controller.signal.aborted) return;
+        succeeded += 1;
+        // Ordered by title score across the sources received so far; the sort is stable.
+        setCandidates((current) => [...current, ...result.candidates].sort((left, right) => right.score - left.score));
+        if (result.failedSources.length) setFailedSources((current) => [...new Set([...current, ...result.failedSources])]);
+        if (result.candidates.length > 0) setState((current) => current === 'searching' ? 'partial' : current);
+      }).catch((reason) => {
+        if (controller.signal.aborted) return;
+        failure = reason;
+        setFailedSources((current) => [...new Set([...current, source])]);
+      }).finally(finish);
     }
   }, [t]);
 
@@ -81,7 +92,7 @@ export default function RealCoverDialog({ open, folder, filename, onClose }: Pro
     }
   };
 
-  const busy = state === 'searching' || state === 'applying';
+  const busy = state === 'searching' || state === 'partial' || state === 'applying';
 
   return <Dialog open={open} onClose={() => { if (state !== 'applying') onClose(); }} fullWidth maxWidth="md" aria-labelledby="real-cover-dialog-title" data-testid="real-cover-dialog">
     <DialogTitle id="real-cover-dialog-title">{t('realCover')}</DialogTitle>
@@ -91,7 +102,7 @@ export default function RealCoverDialog({ open, folder, filename, onClose }: Pro
         <TextField size="small" fullWidth label={t('realCoverQuery')} value={query} onChange={(event) => setQuery(event.target.value)} inputProps={{ maxLength: 200, 'data-testid': 'real-cover-query' }} disabled={state === 'applying'} />
         <Button type="submit" variant="contained" disabled={busy || !query.trim()} data-testid="real-cover-search" sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{t('realCoverSearch')}</Button>
       </Box>
-      {state === 'searching' ? <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}><CircularProgress size={20} /><Typography variant="body2">{t('realCoverSearching')}</Typography></Box> : null}
+      {state === 'searching' || state === 'partial' ? <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}><CircularProgress size={20} /><Typography variant="body2">{t('realCoverSearching')}</Typography></Box> : null}
       {state === 'applying' ? <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}><CircularProgress size={20} /><Typography variant="body2">{t('realCoverApplying')}</Typography></Box> : null}
       {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
       {failedSources.length > 0 && state === 'done' ? <Alert severity="warning" sx={{ mb: 2 }}>{t('realCoverFailedSources', { sources: failedSources.join(', ') })}</Alert> : null}

@@ -10,7 +10,8 @@ import { downloadCoverImage, findBookCoverCandidates, isAllowedCoverImageUrl, ty
 export interface CoversRouterOptions {
   filesystem: FilesystemService;
   store: CoverOverrideStore;
-  notifyChange?: (event: 'folders-changed') => void;
+  /** `covers-changed` tells other clients to reload the cover version list; it is not a library change. */
+  notifyChange?: (event: 'covers-changed') => void;
   /** Injected for tests; defaults to the global fetch. */
   request?: typeof fetch;
   /**
@@ -30,7 +31,7 @@ function textParam(value: unknown, max = 500): string | null {
 /**
  * Real-book covers for local library files.
  *   GET    /                       every replaced cover: [{ folder, filename, version, source, title }]
- *   GET    /candidates?q=          candidates from YES24 and Open Library, best title match first
+ *   GET    /candidates?q=[&source=] candidates from YES24 and Open Library (or one of them), best title match first
  *   GET    /preview?url=           a candidate image through the server (allowed hosts only)
  *   PUT    /   {folder, filename, imageUrl, source, title, pageUrl?}   download and apply
  *   DELETE /?folder=&filename=     restore the rendered first page
@@ -68,7 +69,9 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
     if (!query) { res.status(400).json({ error: 'q is required (at most 200 characters).' }); return; }
     try {
       res.setHeader('Cache-Control', 'no-store');
-      res.json(await findBookCoverCandidates(query, { request }));
+      const source = typeof req.query.source === 'string' ? req.query.source : null;
+      if (source !== null && !SOURCES.has(source as BookCoverSource)) { res.status(400).json({ error: 'source must be YES24 or Open Library.' }); return; }
+      res.json(await findBookCoverCandidates(query, { request, ...(source ? { sources: [source as BookCoverSource] } : {}) }));
     } catch (error) {
       res.status(502).json({ error: String(error) });
     }
@@ -100,7 +103,7 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
     try {
       const image = await images.get(imageUrl);
       const record = await store.set(folder, sanitizeName(filename), image, { source, title, imageUrl, pageUrl });
-      options.notifyChange?.('folders-changed');
+      options.notifyChange?.('covers-changed');
       res.json({ folder: record.folder, filename: record.filename, version: record.version, source: record.source, title: record.title });
     } catch (error) {
       res.status(502).json({ error: String(error) });
@@ -113,7 +116,7 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
     if (folder === null || !filename) { res.status(400).json({ error: 'folder and filename are required.' }); return; }
     try {
       const removed = await store.remove(folder, sanitizeName(filename));
-      if (removed) options.notifyChange?.('folders-changed');
+      if (removed) options.notifyChange?.('covers-changed');
       res.json({ removed });
     } catch (error) {
       res.status(500).json({ error: String(error) });

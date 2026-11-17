@@ -205,10 +205,10 @@ moving the file through the folders API deletes or moves its cover.
 | Method and path | Body or query | Result |
 | --- | --- | --- |
 | `GET /api/covers` | | `{ overrides: [{ folder, filename, version, source, title }] }` |
-| `GET /api/covers/candidates` | `q` (1-200 chars) | `{ candidates: [{ source, title, authors?, imageUrl, pageUrl, score }], failedSources }`, best `scoreBookTitleMatch` first |
+| `GET /api/covers/candidates` | `q` (1-200 chars), optional `source` (`YES24` or `Open Library`) | `{ candidates: [{ source, title, authors?, imageUrl, pageUrl, score }], failedSources }`, best `scoreBookTitleMatch` first |
 | `GET /api/covers/preview` | `url` | The candidate image through the server |
-| `PUT /api/covers` | `{ folder, filename, imageUrl, source, title, pageUrl? }` | Downloads and applies; `{ folder, filename, version, source, title }`; emits `folders-changed` |
-| `DELETE /api/covers` | `folder`, `filename` | `{ removed }`; the rendered first page returns |
+| `PUT /api/covers` | `{ folder, filename, imageUrl, source, title, pageUrl? }` | Downloads and applies; `{ folder, filename, version, source, title }`; emits `covers-changed` (not `folders-changed`) |
+| `DELETE /api/covers` | `folder`, `filename` | `{ removed }`; the rendered first page returns; emits `covers-changed` |
 
 Sources are the public YES24 book search (`image.yes24.com/goods/<id>/XL`) and Open
 Library `search.json` (`covers.openlibrary.org/b/id/<id>-L.jpg`). A source that fails
@@ -217,6 +217,16 @@ over HTTPS from `image.yes24.com`, `covers.openlibrary.org`, `archive.org` and
 `*.us.archive.org`. Redirects are followed by hand and each hop is checked against the
 same list. The body must be a JPEG, PNG or WebP by its leading bytes, between 1 KB and
 8 MB. No AI model is involved: the user picks the candidate.
+
+The dialog asks each site in its own request (`source=`): YES24 answers in about 0.3 s and
+Open Library in seconds, so results show as each arrives instead of after the slowest.
+Without `source` both sites are asked and the call waits for both.
+
+`covers-changed` goes over `/api/events`. The sidebar answers it by reloading only
+`GET /api/covers`; a cover change is not a library change, so folder and file lists are not
+reloaded. In the browser a card subscribes with `coverStateKey(folder, filename)`, so a
+replaced cover re-renders that one card; subscribing every card to one global revision
+re-rendered all 715 cards of a library (about 3.7 s of frozen page).
 
 `PUT` decides that the file exists from the metadata index (`hasFile`, wired to
 `listBooksByFolder` in `createCommonRouters`), never from a synchronous disk read: an

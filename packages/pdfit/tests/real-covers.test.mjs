@@ -164,7 +164,7 @@ test('API applies a cover, serves it as the thumbnail with the c version, and re
       const applied = await fetch(`${origin}/api/covers`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: 'Shelf', filename: 'clean code.pdf', imageUrl: 'https://image.yes24.com/goods/196209093/XL', source: 'YES24', title: '클린 코드' }) });
       assert.equal(applied.status, 200);
       const { version } = await applied.json();
-      assert.deepEqual(events, ['folders-changed']);
+      assert.deepEqual(events, ['covers-changed'], 'a cover change is not a library change: no folder reload');
 
       const listed = await (await fetch(`${origin}/api/covers`)).json();
       assert.deepEqual(listed.overrides.map((item) => [item.folder, item.filename, item.version]), [['Shelf', 'clean code.pdf', version]]);
@@ -216,4 +216,19 @@ test('apply uses the index when the library volume is unreachable and reuses the
   } finally {
     await fs.rm(base, { recursive: true, force: true });
   }
+});
+
+test('candidate search can ask one site, so the fast site is not held back by the slow one', async () => {
+  const { findBookCoverCandidates } = await import('../dist/server/covers/coverSources.js');
+  const calls = [];
+  const request = async (input) => {
+    const url = String(input);
+    calls.push(new URL(url).hostname);
+    if (url.includes('yes24.com')) return new Response('<img class="lazy" data-original="https://image.yes24.com/goods/1/L" alt="클린 코드">', { status: 200 });
+    return new Promise(() => undefined);
+  };
+  const only = await findBookCoverCandidates('클린 코드', { request, sources: ['YES24'] });
+  assert.deepEqual(calls, ['www.yes24.com'], 'Open Library is not called');
+  assert.equal(only.candidates.length, 1);
+  assert.deepEqual(only.failedSources, []);
 });

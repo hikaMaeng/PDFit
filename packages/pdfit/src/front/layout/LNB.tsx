@@ -50,6 +50,7 @@ import { foldersApi, type FolderInfo } from '../api/folders';
 import { tagsApi, type TagSummary } from '../api/tags';
 import { folderLibraryModel } from '../model/folderLibraryModel';
 import { listAllBookmarks } from '../api/bookmarks';
+import { loadCoverOverrides } from '../api/covers';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
@@ -279,6 +280,10 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         }
         if (event.data === 'tags-changed') {
           void loadTags();
+        }
+        // A cover replaced elsewhere: reload the small version list only, not the folders.
+        if (event.data === 'covers-changed') {
+          void loadCoverOverrides();
         }
       };
       source.onerror = () => {
