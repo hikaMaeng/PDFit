@@ -20,6 +20,8 @@ export interface CoversRouterOptions {
    * missing. Without it the file is checked on disk, asynchronously.
    */
   hasFile?: (folder: string, filename: string) => Promise<boolean>;
+  /** Directory where previewed candidate images are staged; without it they are kept in memory. */
+  stagingDir?: string;
 }
 
 const SOURCES = new Set<BookCoverSource>(['YES24', 'Open Library']);
@@ -41,7 +43,7 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
   const { filesystem, store } = options;
   const request = options.request ?? fetch;
 
-  const images = createCoverImageCache((url) => downloadCoverImage(url, { request }));
+  const images = createCoverImageCache((url) => downloadCoverImage(url, { request }), { dir: options.stagingDir });
 
   const fileExists = async (folder: string, filename: string): Promise<boolean> => {
     if (options.hasFile) {

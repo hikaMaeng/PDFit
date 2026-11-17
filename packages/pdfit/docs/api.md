@@ -232,9 +232,11 @@ re-rendered all 715 cards of a library (about 3.7 s of frozen page).
 `listBooksByFolder` in `createCommonRouters`), never from a synchronous disk read: an
 unreachable library volume (SMB `Host is down`) must neither block the server nor turn
 a known file into `404 File not found.` Only a file the index does not hold returns 404.
-Downloaded candidate images are kept by `coverImageCache` (URL key, 24 images, 32 MB,
-10 minutes, in-flight downloads shared, oldest dropped first), so applying a candidate
-whose preview was already shown does not download it again.
+A previewed candidate image is staged by `coverImageCache` as a file under
+`<thumbnailRoot>/covers-staging/<sha1(url)>.<jpg|png|webp>` (1 hour, 200 images, 128 MB,
+oldest dropped first, pruned after each download and at start; concurrent previews share
+one download). Applying a candidate reads the staged file instead of downloading again,
+also after a restart. Without a staging directory the images are kept in memory instead.
 
 ## OCR (local runtime)
 

@@ -232,3 +232,36 @@ test('candidate search can ask one site, so the fast site is not held back by th
   assert.equal(only.candidates.length, 1);
   assert.deepEqual(only.failedSources, []);
 });
+
+test('previewed candidates are staged on disk: a restart or memory pressure never downloads them again', async () => {
+  const { createCoverImageCache } = await import('../dist/server/covers/coverImageCache.js');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-cover-staging-'));
+  try {
+    let downloads = 0;
+    const download = async (url) => { downloads += 1; return { bytes: jpeg(downloads), type: 'image/jpeg', finalUrl: url }; };
+    const first = createCoverImageCache(download, { dir });
+    const url = 'https://image.yes24.com/goods/9/XL';
+    const [a, b] = await Promise.all([first.get(url), first.get(url)]);
+    assert.equal(downloads, 1, 'concurrent previews share one download');
+    assert.equal(a.bytes[5], b.bytes[5]);
+    // A new cache over the same directory is a restarted server.
+    const restarted = createCoverImageCache(download, { dir });
+    const staged = await restarted.get(url);
+    assert.equal(downloads, 1, 'the staged file is reused after a restart');
+    assert.equal(staged.bytes[5], a.bytes[5]);
+    assert.equal(staged.type, 'image/jpeg');
+
+    // Past the lifetime the file is stale: downloaded again, and the stale one is pruned.
+    const later = createCoverImageCache(download, { dir, ttlMs: 1000, now: () => Date.now() + 5000 });
+    await later.get(url);
+    assert.equal(downloads, 2);
+
+    // Bounded: only the newest maxEntries stay.
+    const bounded = createCoverImageCache(download, { dir, maxEntries: 2 });
+    for (const id of [1, 2, 3, 4]) { await bounded.get(`https://image.yes24.com/goods/${id}/XL`); await new Promise((resolve) => setTimeout(resolve, 15)); }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok((await fs.readdir(dir)).filter((name) => /\.jpg$/.test(name)).length <= 2, 'the oldest staged images are removed');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

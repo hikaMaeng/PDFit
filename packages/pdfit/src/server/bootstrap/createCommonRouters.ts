@@ -183,6 +183,7 @@ export function createPdfitCommonRouterAssembly(options: {
       ...(covers ? [{ path: '/api/covers', router: createCoversRouter({
         filesystem,
         store: covers,
+        stagingDir: options.backgroundTasks ? path.join(options.backgroundTasks.thumbnailRoot, 'covers-staging') : undefined,
         notifyChange: (event) => watcher.bus.emit('change', event),
         hasFile: async (folder, filename) => (await options.metadataStore.listBooksByFolder(folder)).some((book) => book.filename === filename),
       }) }] : []),
