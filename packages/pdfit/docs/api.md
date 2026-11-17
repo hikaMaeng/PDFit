@@ -218,6 +218,14 @@ over HTTPS from `image.yes24.com`, `covers.openlibrary.org`, `archive.org` and
 same list. The body must be a JPEG, PNG or WebP by its leading bytes, between 1 KB and
 8 MB. No AI model is involved: the user picks the candidate.
 
+`PUT` decides that the file exists from the metadata index (`hasFile`, wired to
+`listBooksByFolder` in `createCommonRouters`), never from a synchronous disk read: an
+unreachable library volume (SMB `Host is down`) must neither block the server nor turn
+a known file into `404 File not found.` Only a file the index does not hold returns 404.
+Downloaded candidate images are kept by `coverImageCache` (URL key, 24 images, 32 MB,
+10 minutes, in-flight downloads shared, oldest dropped first), so applying a candidate
+whose preview was already shown does not download it again.
+
 ## OCR (local runtime)
 
 Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps:

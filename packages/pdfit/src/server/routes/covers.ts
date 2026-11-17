@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
 import type { FilesystemService } from '../services/types.js';
 import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
+import { createCoverImageCache } from '../covers/coverImageCache.js';
 import { downloadCoverImage, findBookCoverCandidates, isAllowedCoverImageUrl, type BookCoverSource } from '../covers/coverSources.js';
 
 export interface CoversRouterOptions {
@@ -12,6 +13,12 @@ export interface CoversRouterOptions {
   notifyChange?: (event: 'folders-changed') => void;
   /** Injected for tests; defaults to the global fetch. */
   request?: typeof fetch;
+  /**
+   * Whether the library holds this file, answered from the metadata index so an
+   * unreachable library volume neither blocks the server nor reports a present file as
+   * missing. Without it the file is checked on disk, asynchronously.
+   */
+  hasFile?: (folder: string, filename: string) => Promise<boolean>;
 }
 
 const SOURCES = new Set<BookCoverSource>(['YES24', 'Open Library']);
@@ -33,10 +40,15 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
   const { filesystem, store } = options;
   const request = options.request ?? fetch;
 
-  const fileExists = (folder: string, filename: string) => {
+  const images = createCoverImageCache((url) => downloadCoverImage(url, { request }));
+
+  const fileExists = async (folder: string, filename: string): Promise<boolean> => {
+    if (options.hasFile) {
+      try { return await options.hasFile(folder, filename); } catch { return false; }
+    }
     try {
       const filePath = path.resolve(filesystem.getFolderPath(sanitizeName(folder)), sanitizeName(filename));
-      return fs.statSync(filePath).isFile();
+      return (await fs.promises.stat(filePath)).isFile();
     } catch {
       return false;
     }
@@ -66,7 +78,7 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
     const url = textParam(req.query.url, 500);
     if (!url || !isAllowedCoverImageUrl(url)) { res.status(400).json({ error: 'url must be a cover image from an allowed host.' }); return; }
     try {
-      const image = await downloadCoverImage(url, { request });
+      const image = await images.get(url);
       res.setHeader('Cache-Control', 'private, max-age=86400');
       res.type(image.type).send(image.bytes);
     } catch (error) {
@@ -84,9 +96,9 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
     const source = typeof body.source === 'string' && SOURCES.has(body.source as BookCoverSource) ? body.source as BookCoverSource : null;
     if (folder === null || !filename || !imageUrl || !source) { res.status(400).json({ error: 'folder, filename, imageUrl and source are required.' }); return; }
     if (!isAllowedCoverImageUrl(imageUrl)) { res.status(400).json({ error: 'imageUrl must be a cover image from an allowed host.' }); return; }
-    if (!fileExists(folder, filename)) { res.status(404).json({ error: 'File not found.' }); return; }
+    if (!(await fileExists(folder, filename))) { res.status(404).json({ error: 'File not found.' }); return; }
     try {
-      const image = await downloadCoverImage(imageUrl, { request });
+      const image = await images.get(imageUrl);
       const record = await store.set(folder, sanitizeName(filename), image, { source, title, imageUrl, pageUrl });
       options.notifyChange?.('folders-changed');
       res.json({ folder: record.folder, filename: record.filename, version: record.version, source: record.source, title: record.title });

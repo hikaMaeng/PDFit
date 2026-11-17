@@ -178,7 +178,12 @@ export function createPdfitCommonRouterAssembly(options: {
         thumbnailService,
         covers,
       ) },
-      ...(covers ? [{ path: '/api/covers', router: createCoversRouter({ filesystem, store: covers, notifyChange: (event) => watcher.bus.emit('change', event) }) }] : []),
+      ...(covers ? [{ path: '/api/covers', router: createCoversRouter({
+        filesystem,
+        store: covers,
+        notifyChange: (event) => watcher.bus.emit('change', event),
+        hasFile: async (folder, filename) => (await options.metadataStore.listBooksByFolder(folder)).some((book) => book.filename === filename),
+      }) }] : []),
       ...(ocr ? [{ path: '/api/ocr', router: createOcrRouter(ocr) }] : []),
       ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, () => ({ thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null } })) }] : []),
       ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags, undefined, ocr),

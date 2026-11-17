@@ -186,3 +186,34 @@ test('API applies a cover, serves it as the thumbnail with the c version, and re
     await fs.rm(base, { recursive: true, force: true });
   }
 });
+
+test('apply uses the index when the library volume is unreachable and reuses the previewed image', async () => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-covers-offline-'));
+  try {
+    // The books root does not exist on disk: the volume is down. Only the index knows the file.
+    const filesystem = createFilesystemService(path.join(base, 'books'), 'Library');
+    await fs.rm(path.join(base, 'books'), { recursive: true, force: true });
+    const store = createCoverOverrideStore(path.join(base, 'thumbnails', 'covers'));
+    const { request, calls } = fakeFetch({ 'https://image.yes24.com/goods/1/XL': () => new Response(jpeg(0x55), { status: 200 }) });
+    const app = express();
+    app.use(express.json());
+    app.use('/api/covers', createCoversRouter({ filesystem, store, request, hasFile: async (folder, filename) => folder === 'Library' && filename === '가비지.pdf' }));
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const imageUrl = 'https://image.yes24.com/goods/1/XL';
+    try {
+      assert.equal((await fetch(`${origin}/api/covers/preview?url=${encodeURIComponent(imageUrl)}`)).status, 200);
+      const body = JSON.stringify({ folder: 'Library', filename: '가비지.pdf', imageUrl, source: 'YES24', title: '가비지' });
+      const applied = await fetch(`${origin}/api/covers`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+      assert.equal(applied.status, 200, 'the index, not the unreachable disk, decides that the file exists');
+      assert.equal(calls.filter((call) => call.url === imageUrl).length, 1, 'the previewed image is not downloaded again');
+      const unknown = await fetch(`${origin}/api/covers`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: body.replace('가비지.pdf', '없음.pdf') });
+      assert.equal(unknown.status, 404);
+    } finally {
+      server.close();
+    }
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
