@@ -5,6 +5,7 @@ import Layout from '../../../front/layout/Layout.js';
 import FolderPage from '../../../front/pages/FolderPage.js';
 import HomePage from '../../../front/pages/HomePage.js';
 import { UNTAGGED_PATH } from '../../../front/model/untagged.js';
+import { FAVORITES_PATH } from '../../../front/model/favorites.js';
 import { TAG_INDEX_PATH } from '../../../front/model/tagIndex.js';
 
 const TagPage = lazy(() => import('../../../front/pages/TagPage.js'));
@@ -44,6 +45,7 @@ export default function PdfitServiceAppRoutes() {
         <Route path="/bookmarks" element={<BookmarkPage />} />
         <Route path="/tag/:name" element={<TagPage />} />
         <Route path={UNTAGGED_PATH} element={<TagPage untagged />} />
+        <Route path={FAVORITES_PATH} element={<TagPage favorites />} />
         <Route path={TAG_INDEX_PATH} element={<TagIndexPage />} />
         <Route path="/search" element={<SearchPage />} />
         {extraRoutes.map((route) => (

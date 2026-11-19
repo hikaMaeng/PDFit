@@ -72,6 +72,15 @@ export interface MetadataStore {
   listUntaggedBooks?(): Promise<TaggedBookRecord[]>;
   /** `listUntaggedBooks()`의 개수만 계산한다(사이드바 배지용). */
   countUntaggedBooks?(): Promise<number>;
+  /**
+   * 즐겨찾기 표시한 책의 (folder, filename) 목록. `books` 테이블(DB)만 보며 파일 시스템은 열지 않는다.
+   * 구현하지 않는 저장소는 라우트가 501로 답하고 화면은 즐겨찾기 UI를 숨긴다.
+   */
+  listFavoriteKeys?(): Promise<Array<{ folder: string; filename: string }>>;
+  /** 즐겨찾기한 책의 전체 레코드(사이드바 "즐겨찾기" 보기). 태그 목록을 함께 돌려준다. */
+  listFavoriteBooks?(): Promise<TaggedBookRecord[]>;
+  /** 즐겨찾기를 켜거나 끈다. `books`에 없는 책은 켜지 않는다. 바뀐 값을 돌려준다. */
+  setFavorite?(folder: string, filename: string, favorite: boolean): Promise<boolean>;
   listBooksByFolder(folder: string): Promise<BookRecord[]>;
   listFolderBookCounts(): Promise<Record<string, number>>;
   listFolderColors(): Promise<Record<string, string>>;

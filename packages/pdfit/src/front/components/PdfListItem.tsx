@@ -14,6 +14,7 @@ import { PDF_LIST_COLUMNS, PDF_LIST_MOBILE_COLUMNS, PDF_LIST_FREE_COLUMNS, PDF_L
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
 import { cardPropsEqual } from './cardPropsEqual.js';
+import FavoriteToggle from './FavoriteToggle.js';
 
 const ROW_STYLE: React.CSSProperties = {
   position: 'relative',
@@ -194,6 +195,7 @@ function PdfListItem({
         ) : <div />}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div data-testid="pdf-filename-line" style={{ display: 'flex', alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 4, minWidth: 0 }}>
+          <FavoriteToggle folder={folder} filename={filename} variant="row" disabled={pendingUpload} />
           <a
             href={href}
             title={pendingUpload ? t('pdfStillUploading') : `${t('viewDetails')}: ${filename}`}

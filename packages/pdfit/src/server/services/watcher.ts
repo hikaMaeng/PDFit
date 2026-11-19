@@ -80,6 +80,7 @@ export function createWatcher(options: {
 
       bus.emit('change', 'folders-changed');
       bus.emit('change', 'tags-changed');
+      bus.emit('change', 'favorites-changed');
       return;
     }
 
@@ -91,6 +92,7 @@ export function createWatcher(options: {
       void metadataStore.purgeFile(path.basename(dir), name);
       void metadataStore.purgeOrphanTags();
       bus.emit('change', 'tags-changed');
+      bus.emit('change', 'favorites-changed');
     }
 
     bus.emit('change', 'folders-changed');

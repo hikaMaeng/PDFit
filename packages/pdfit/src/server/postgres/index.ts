@@ -156,6 +156,50 @@ export class PostgresMetadataStore implements MetadataStore {
     return Number(result.rows[0]?.untagged_count ?? 0);
   }
 
+  async listFavoriteKeys(): Promise<Array<{ folder: string; filename: string }>> {
+    // `books`와 조인해 DB에 없는 책은 세지 않는다. 파일 시스템은 보지 않는다(파일 점검 때 purge가 정리한다).
+    const result = await this.db.query(`
+      SELECT f.folder, f.filename
+      FROM book_favorites f
+      JOIN books b ON b.folder = f.folder AND b.filename = f.filename
+      ORDER BY f.created_at DESC, f.folder, f.filename
+    `);
+    return result.rows.map((row) => ({ folder: String(row.folder), filename: String(row.filename) }));
+  }
+
+  async listFavoriteBooks(): Promise<TaggedBookRecord[]> {
+    const result = await this.db.query(`
+      SELECT b.folder, b.filename, b.size, b.modified_at, f.created_at,
+        COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+      FROM book_favorites f
+      JOIN books b ON b.folder = f.folder AND b.filename = f.filename
+      LEFT JOIN book_tags bt ON bt.folder = b.folder AND bt.filename = b.filename
+      LEFT JOIN tags t ON t.id = bt.tag_id
+      GROUP BY b.folder, b.filename, b.size, b.modified_at, f.created_at
+      ORDER BY f.created_at DESC, b.folder, b.filename
+    `);
+    return result.rows.map((row) => ({
+      folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
+      modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
+    }));
+  }
+
+  async setFavorite(folder: string, filename: string, favorite: boolean): Promise<boolean> {
+    if (!favorite) {
+      await this.db.query('DELETE FROM book_favorites WHERE folder = $1 AND filename = $2', [folder, filename]);
+      return false;
+    }
+    // `books`에 있는 책만 켠다. 이미 켜져 있으면 처음 표시한 시각을 그대로 둔다.
+    const result = await this.db.query(`
+      INSERT INTO book_favorites (folder, filename)
+      SELECT folder, filename FROM books WHERE folder = $1 AND filename = $2
+      ON CONFLICT (folder, filename) DO NOTHING
+    `, [folder, filename]);
+    if ((result.rowCount ?? 0) > 0) return true;
+    const existing = await this.db.query('SELECT 1 FROM book_favorites WHERE folder = $1 AND filename = $2', [folder, filename]);
+    return existing.rows.length > 0;
+  }
+
   async searchBooksByTitle(query: string, limit = 500): Promise<BookTitleSearchResult> {
     const needle = query.normalize('NFC').trim();
     if (!needle) return { total: 0, books: [] };
@@ -412,6 +456,7 @@ export class PostgresMetadataStore implements MetadataStore {
     await this.db.query('DELETE FROM viewer_state WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM bookmarks WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM book_outlines WHERE folder = $1 AND filename = $2', [folder, filename]);
+    await this.db.query('DELETE FROM book_favorites WHERE folder = $1 AND filename = $2', [folder, filename]);
   }
 
   async purgeFolder(folder: string): Promise<void> {
@@ -421,6 +466,7 @@ export class PostgresMetadataStore implements MetadataStore {
     await this.db.query('DELETE FROM viewer_state WHERE folder = $1', [folder]);
     await this.db.query('DELETE FROM bookmarks WHERE folder = $1', [folder]);
     await this.db.query('DELETE FROM book_outlines WHERE folder = $1', [folder]);
+    await this.db.query('DELETE FROM book_favorites WHERE folder = $1', [folder]);
   }
 
   async purgeOrphanTags(): Promise<void> {
@@ -578,6 +624,12 @@ export class PostgresMetadataStore implements MetadataStore {
       );
       CREATE INDEX IF NOT EXISTS idx_book_tags_book ON book_tags (folder, filename);
       CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags (tag_id);
+      CREATE TABLE IF NOT EXISTS book_favorites (
+        folder TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (folder, filename)
+      );
       INSERT INTO books (folder, filename)
       SELECT folder, filename FROM book_tags
       ON CONFLICT (folder, filename) DO NOTHING;

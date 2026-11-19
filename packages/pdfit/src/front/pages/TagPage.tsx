@@ -5,7 +5,7 @@ import PdfCoverItem from '../components/PdfCoverItem';
 import ListMountProgress from '../components/ListMountProgress';
 import { useProgressiveItems } from '../components/useProgressiveItems';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, List, Checkbox, ToggleButton, ToggleButtonGroup,
@@ -16,10 +16,14 @@ import {
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
+import StarIcon from '@mui/icons-material/Star';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { tagsApi, BookRef } from '../api/tags';
 import { foldersApi, FolderInfo } from '../api/folders';
+import { favoritesApi } from '../api/favorites';
+import { favoritesModel } from '../model/favoritesModel';
+import { FAVORITE_COLOR } from '../components/FavoriteToggle';
 import PdfListItem from '../components/PdfListItem';
 import PdfListHeader from '../components/PdfListHeader';
 import LibraryFixedControls from '../components/LibraryFixedControls';
@@ -49,15 +53,18 @@ interface TagDialogState {
 const bookIdentity = (book: Pick<BookRef, 'folder' | 'filename' | 'driveFileId'>) =>
   book.driveFileId ?? `${book.folder}/${book.filename}`;
 
-/** `untagged`이면 `/tag/:name` 대신 태그가 하나도 없는 문서를 보여 주는 "미분류" 보기다. */
-export default function TagPage({ untagged = false }: { untagged?: boolean } = {}) {
+/**
+ * `untagged`이면 `/tag/:name` 대신 태그가 하나도 없는 문서를 보여 주는 "미분류" 보기이고,
+ * `favorites`이면 즐겨찾기 표시한 문서만 모아 보여 주는 "즐겨찾기" 보기다(DB 기준 목록).
+ */
+export default function TagPage({ untagged = false, favorites = false }: { untagged?: boolean; favorites?: boolean } = {}) {
   const { t, ui } = usePdfitI18n();
   const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved, serverThumbnails } = usePdfitFrontConfig();
   const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
 
-  const tagName = untagged ? '' : decodeURIComponent(name ?? '');
+  const tagName = untagged || favorites ? '' : decodeURIComponent(name ?? '');
 
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [refreshing, setRefreshing] = useState(false);
@@ -68,7 +75,7 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
   const [tagColor, setTagColor] = useState('#22c55e');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   // 태그에 문서가 아무리 많아도 위에서부터 조금씩 붙여 첫 화면이 멈추지 않게 한다.
-  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${untagged ? '__untagged__' : tagName}\u0000${libraryView}`);
+  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${favorites ? '__favorites__' : untagged ? '__untagged__' : tagName}\u0000${libraryView}`);
 
   /** `${folder}/${filename}` → 태그 목록 */
   const [bookTags, setBookTags] = useState<Record<string, string[]>>({});
@@ -116,11 +123,11 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
 
   // ─── 초기 로드 ────────────────────────────────────────────
   const loadBooks = useCallback(async (background = false) => {
-    if (!tagName && !untagged) return;
+    if (!tagName && !untagged && !favorites) return;
     if (!background) setLoading(true);
     setError(null);
     try {
-      const [data, summaries] = await Promise.all([untagged ? tagsApi.listUntaggedBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
+      const [data, summaries] = await Promise.all([favorites ? favoritesApi.listBooks() : untagged ? tagsApi.listUntaggedBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
       setTagColor(summaries.find((item) => item.name === tagName)?.color ?? '#22c55e');
       setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       setBooks(data);
@@ -132,11 +139,30 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
     } finally {
       setLoading(false);
     }
-  }, [tagName, untagged]);
+  }, [tagName, untagged, favorites]);
 
   useEffect(() => { void loadBooks(); }, [loadBooks]);
 
-  useEffect(() => { setSelectedBooks(new Set()); }, [tagName, untagged]);
+  useEffect(() => { setSelectedBooks(new Set()); }, [tagName, untagged, favorites]);
+
+  // 즐겨찾기 보기: 별을 꺼서 즐겨찾기가 아니게 된 책은 바로 목록에서 뺀다. 모델이 서버에서 한 번 받아오기 전에는
+  // 모든 책이 '꺼짐'으로 보이므로 그때는 건드리지 않는다.
+  const favoritesVersion = useSyncExternalStore(favoritesModel.subscribe, favoritesModel.getVersion, favoritesModel.getVersion);
+  useEffect(() => {
+    if (!favorites || !favoritesModel.isLoaded()) return;
+    setBooks((prev) => {
+      const kept = prev.filter((book) => favoritesModel.stateOf(book.folder, book.filename) === 'on');
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [favorites, favoritesVersion]);
+
+  // 다른 창에서 즐겨찾기가 바뀌었거나 파일 점검이 행을 지웠을 때 목록을 다시 읽는다.
+  useEffect(() => {
+    if (!favorites) return;
+    const reload = () => void loadBooks(true);
+    window.addEventListener('favorites-changed', reload);
+    return () => window.removeEventListener('favorites-changed', reload);
+  }, [favorites, loadBooks]);
 
   useEffect(() => {
     setSelectedBooks((current) => {
@@ -383,11 +409,13 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
       {/* 헤더 */}
       <Box sx={{ px: 1, py: 0, mb: 0.5 }}>
         <Box data-testid="tag-title-row" sx={{ display: 'flex', alignItems: 'center', gap: 1, '& > .MuiIconButton-root': { p: 0 } }}>
-          {untagged
+          {favorites
+            ? <StarIcon aria-hidden data-testid="favorites-title-icon" sx={{ fontSize: 28, color: FAVORITE_COLOR }} />
+            : untagged
             ? <LabelOffOutlinedIcon aria-hidden data-testid="untagged-title-icon" sx={{ fontSize: 28, color: 'text.secondary' }} />
             : <TagColorPicker icon={<Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>} color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="h5" fontWeight={700} data-testid={untagged ? 'untagged-title' : undefined}>{untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
+            <Typography variant="h5" fontWeight={700} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />
           </Box>
           <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto' }}>{t('refresh')}</Button>
@@ -401,7 +429,7 @@ export default function TagPage({ untagged = false }: { untagged?: boolean } = {
         {books.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <PictureAsPdfIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-            <Typography color="text.secondary">{untagged ? t('noUntaggedPdfs') : t('noTaggedPdfs')}</Typography>
+            <Typography color="text.secondary">{favorites ? t('noFavoritePdfs') : untagged ? t('noUntaggedPdfs') : t('noTaggedPdfs')}</Typography>
           </Box>
         ) : (
           <>

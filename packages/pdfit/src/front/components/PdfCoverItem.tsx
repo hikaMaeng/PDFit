@@ -20,6 +20,7 @@ import { coversAvailable, coverStateKey, ensureCoverOverrides, subscribeCovers, 
 import { useThumbnailSlot } from './thumbnailLoadQueue.js';
 import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
+import FavoriteToggle from './FavoriteToggle.js';
 
 type Props = {
   filename: string;
@@ -483,6 +484,7 @@ function PdfCoverItem(props: Props) {
           <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
         </Box>
       </Box>
+      <FavoriteToggle folder={props.folder} filename={props.filename} variant="card" disabled={pending} />
       <IconButton
         data-testid="pdf-cover-info-toggle"
         aria-label={infoLabel}

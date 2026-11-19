@@ -606,3 +606,20 @@ pgvector 기반 동작(폴더·파일 목록, 태그, 검색, 북마크, 진행�
   증거가 아니므로 DB 행을 지우지 않는다. 호출되지 않던 `reconcile`은 삭제했다.
 - 썸네일 `find`(클라이언트가 아는 stamp)는 볼륨을 쓰지 않는다. `resolve`·주기 계획·OCR 원본 확인은
   가드를 거친다.
+
+## 즐겨찾기
+
+- 저장: `book_favorites(folder, filename, created_at, PK(folder, filename))`. `ensureSchema()`가 만든다.
+  키는 책 하나(`folder`, `filename`), 범위는 라이브러리 전체, 수명은 책 행과 같다.
+- 목록은 `books`와 조인한다(`listFavoriteKeys`, `listFavoriteBooks`). 파일 시스템은 읽지 않는다. `setFavorite(…, true)`는
+  `books`에 있는 책에만 행을 넣고(`INSERT … SELECT FROM books`), 이미 있으면 처음 표시한 시각을 유지한다.
+- 파일 존재 동기화는 새 점검을 만들지 않고 기존 지점에 얹는다: `purgeFile`/`purgeFolder`가 `book_favorites` 행도
+  지운다(감시기 삭제 처리, 파일 삭제, 폴더 삭제, 이동). 이때 `favorites-changed`를 SSE로 알려 열려 있는 화면이
+  다시 읽는다. 오프라인 볼륨에서는 감시기가 purge를 건너뛰므로(`isOffline()`) 즐겨찾기도 지워지지 않는다.
+- 프런트: `model/favoritesModel.ts`가 키 집합을 들고 낙관적으로 토글한다. 카드·행의 `FavoriteToggle`은
+  `useSyncExternalStore`로 자기 책의 상태(원시값 `on|off|unavailable`)만 구독하므로 `cardPropsEqual` 메모와 충돌하지 않고,
+  한 책을 토글해도 다른 카드는 다시 그려지지 않는다. `load()`는 사이드바 마운트, 새로고침, 주기 동기화, 서버
+  이벤트에서 목록을 통째로 교체하되 토글이 진행 중인 책의 낙관 상태는 유지한다. 서버가 501이면 `unavailable`이 되어
+  별과 사이드바 항목을 그리지 않는다.
+- 보기: `/favorites`는 `TagPage`의 `favorites` 모드다(`untagged` 모드와 같은 구조). 모델이 한 번 로드되기 전에는 모든
+  책이 '꺼짐'으로 읽히므로 목록 필터는 `isLoaded()` 이후에만 동작한다.

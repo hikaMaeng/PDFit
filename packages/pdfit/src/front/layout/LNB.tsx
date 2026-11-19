@@ -55,6 +55,9 @@ import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
 import { UNTAGGED_PATH } from '../model/untagged.js';
+import { FAVORITES_PATH } from '../model/favorites.js';
+import { favoritesModel } from '../model/favoritesModel.js';
+import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { TAG_INDEX_PATH } from '../model/tagIndex.js';
 import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
@@ -118,6 +121,10 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const [tags, setTags] = useState<TagSummary[]>([]);
   const [untaggedCount, setUntaggedCount] = useState(0);
   const [bookmarkCount, setBookmarkCount] = useState(0);
+  // 즐겨찾기 개수와 사용 가능 여부는 모델이 들고 있다. 한 번만 읽고 나서는 모델 변경(토글·서버 이벤트)을 구독한다.
+  useSyncExternalStore(favoritesModel.subscribe, favoritesModel.getVersion, favoritesModel.getVersion);
+  const favoritesAvailable = favoritesModel.isAvailable();
+  const favoriteCount = favoritesModel.count();
   const [loading, setLoading] = useState(true);
   const [foldersOpen, setFoldersOpen] = useState(true);
   const [tagsOpen, setTagsOpen] = useState(true);
@@ -183,7 +190,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       await synchronizeLibraryMetadata();
       folderLibraryModel.invalidateFiles();
       folderLibraryModel.invalidateTags();
-      await Promise.all([loadFolders(), loadTags(), loadBookmarkCount()]);
+      await Promise.all([loadFolders(), loadTags(), loadBookmarkCount(), favoritesModel.load()]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : ui("새로고침에 실패했습니다."));
     } finally {
@@ -193,6 +200,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   useEffect(() => {
     let active = true;
+    void favoritesModel.load();
     void Promise.all([loadFolders(), loadTags(), loadBookmarkCount()]).finally(() => {
       if (active) {
         window.dispatchEvent(new Event('pdfit-initial-rendered'));
@@ -213,7 +221,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         const updated = await synchronizeLibraryMetadata();
         if (!active || !updated) return;
         folderLibraryModel.invalidateFiles();
-        await Promise.all([loadFolders(), loadTags(), loadBookmarkCount()]);
+        await Promise.all([loadFolders(), loadTags(), loadBookmarkCount(), favoritesModel.load()]);
       } catch (error) {
         console.warn('[library-sync] Remote metadata refresh failed; keeping the local snapshot.', error);
       } finally {
@@ -280,6 +288,11 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         }
         if (event.data === 'tags-changed') {
           void loadTags();
+        }
+        // 즐겨찾기를 켜고 끈 경우, 또는 파일 점검이 사라진 파일의 즐겨찾기를 지운 경우.
+        if (event.data === 'favorites-changed') {
+          void favoritesModel.load();
+          window.dispatchEvent(new Event('favorites-changed'));
         }
         // A cover replaced elsewhere: reload the small version list only, not the folders.
         if (event.data === 'covers-changed') {
@@ -600,6 +613,21 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                   <ListItemText primary={<Typography variant="caption" fontWeight={700} letterSpacing={0.7}>{sidebarLabel(item)}</Typography>} />
                 </ListItemButton>
               ))}
+            </List>
+          )}
+          {favoritesAvailable && (
+            <List dense disablePadding sx={{ pt: 0.5, pb: 0.25 }}>
+              <ListItemButton
+                data-testid="lnb-favorites"
+                aria-label={t('favorites')}
+                selected={isActive(FAVORITES_PATH)}
+                onClick={() => { go(FAVORITES_PATH); onMobileClose(); }}
+                sx={{ borderRadius: 1, mx: 1, py: 0.6, color: sidebarTextPrimary, '&:hover': { bgcolor: sidebarHover }, '&.Mui-selected': { color: sidebarTextPrimary, backgroundColor: selectedNavigationBackground, boxShadow: `inset 3px 0 0 ${selectedAccent}`, '&:hover': { backgroundColor: selectedNavigationBackground } } }}
+              >
+                <ListItemIcon sx={{ minWidth: 28 }}><StarRoundedIcon aria-hidden sx={{ fontSize: 18, color: '#fbbf24' }} /></ListItemIcon>
+                <ListItemText primary={<Typography variant="caption" fontWeight={700}>{t('favorites')}</Typography>} />
+                <Typography data-testid="lnb-favorites-count" variant="caption" aria-hidden="true" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem' }}>{favoriteCount}</Typography>
+              </ListItemButton>
             </List>
           )}
           <Box>

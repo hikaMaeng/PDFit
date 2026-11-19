@@ -68,7 +68,7 @@ export function createFoldersRouter(
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
   metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'>,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
-  notifyChange?: (event: 'folders-changed' | 'tags-changed') => void,
+  notifyChange?: (event: 'folders-changed' | 'tags-changed' | 'favorites-changed') => void,
   thumbnails?: FolderThumbnailProvider,
   /** Real-book covers chosen by the user; they replace the rendered first page. */
   covers?: CoverOverrideStore,
@@ -195,6 +195,7 @@ export function createFoldersRouter(
       await metadataMutation?.purgeFolder(req.params.name);
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
+      notifyChange?.('favorites-changed');
       res.json({ ok: true });
     } catch (error) {
       fail(res, error);
@@ -317,6 +318,7 @@ export function createFoldersRouter(
       await covers?.remove(folder, filename).catch(() => false);
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
+      notifyChange?.('favorites-changed');
       res.json({ ok: true });
     } catch (error) {
       fail(res, error);
@@ -342,6 +344,7 @@ export function createFoldersRouter(
       await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
+      notifyChange?.('favorites-changed');
       res.json({ ok: true });
     } catch (error) {
       fail(res, error);

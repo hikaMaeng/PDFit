@@ -50,6 +50,20 @@ remote snapshot. The folder refresh action also revalidates tags. Different
 service origins or different Google OAuth applications are not assumed to share
 the same hidden Google Drive app-data storage.
 
+## Favorites
+
+The sidebar has a **즐겨찾기** (Favorites) entry above the tag section, with a count. Every cover card (top-left
+corner of the cover) and every list row (before the file name) carries a star: an empty star marks the book as a
+favorite, a filled one removes the mark. The favorites view lists only marked books, newest mark first; turning a
+star off there removes the book from the view at once. The same star state shows on every page that lists the
+book, and a change made in another window arrives through the `favorites-changed` event.
+
+Favorites are read from the metadata database only; opening the view or toggling a star never touches the library
+volume. Whether the file still exists is reconciled only where PDFit already checks files: the watcher's change
+handling, file deletion and folder deletion call `purgeFile`/`purgeFolder`, which also delete the favorite row.
+Moving a file to another folder purges the old location, so a favorite does not follow a moved file (the same as
+its tags). A runtime whose metadata store has no favorites (`501`) shows neither the star nor the sidebar entry.
+
 ## Viewer toolbar
 
 The viewer toolbar orders page navigation before single-page and two-page layout,
