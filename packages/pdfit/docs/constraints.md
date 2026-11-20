@@ -73,13 +73,8 @@ pinned PDFGPU package, source commit, and artifact digest.
   the updated `v0.4.4` contract.
 * Release `0.4.6` adds `release-contracts/pdfit/v0.4.6.json`; it keeps the same
   `@pdfgpu/core@0.1.9-pdfit.1` package, source commit, and artifact digest.
-* Release `0.4.7` adds `release-contracts/pdfit/v0.4.7.json`; it pins the upstream
-  `@pdfgpu/core@0.1.11` (tag `v0.1.11`, source commit
-  `d9ea8b1a23adb27ee41f66da1934b6296e3bae19`, tarball SHA-256
-  `4bc84e45a458fc21f47aba4336ebafa4d313acf57b275d79f402be1820289ef4`). It drops the local `0.1.9-pdfit.1` colour patch,
-  because 0.1.10 fixes the same red/blue swap upstream (`FPDF_REVERSE_BYTE_ORDER` kept,
-  conversion only fills alpha). The contract was first written against `v0.1.10`
-  (`c72558d`) and moved to `v0.1.11` before 0.4.7 was pushed or tagged.
+* The unpublished `0.4.7` contract pins `@pdfgpu/core@0.1.12` for page color adjustments. The exact source commit and artifact digest are in [`release-contracts/pdfit/v0.4.7.json`](../../../release-contracts/pdfit/v0.4.7.json). Since core `0.1.10`, PDFium keeps `FPDF_REVERSE_BYTE_ORDER` and the conversion fills alpha.
+* [Viewer color adjustments](../src/front/components/ViewerToolbar/ImageAdjustmentPopover.tsx) use one [session model](../src/front/viewer/sessionModel.ts) for both renderers. WebGPU changes tile RGB once through the core controller. PDF.js and PDFGPU Canvas 2D use the [display filter](../src/front/components/PageColorFilter.tsx). The stored `viewer_state.inverted` flag stays compatible with earlier clients. The other controls are session-only, and the original rasters remain available to clip capture.
 * Consumer: `PdfGpuViewer` window key listener. Invariant: since `@pdfgpu/core@0.1.10`
   the core binds the paging keys on its focused viewport and calls `preventDefault`
   when it navigates; PDFit's window listener ignores events that are already

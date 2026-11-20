@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Box, IconButton, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, type IconButtonProps } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -10,13 +10,15 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
-import InvertColorsIcon from '@mui/icons-material/InvertColors';
+import TuneIcon from '@mui/icons-material/Tune';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TocIcon from '@mui/icons-material/Toc';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
+import { DEFAULT_COLOR_ADJUSTMENTS, sameColorAdjustments, type PdfGpuColorAdjustments, type PdfGpuColorAdjustmentState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { toolbarLabels as labels } from './resource.js';
+import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
 
 type PageLayout = 'single' | 'double';
 
@@ -27,7 +29,7 @@ type Props = {
   zoomInput: string;
   zoomOutDisabled?: boolean;
   zoomInDisabled?: boolean;
-  inverted: boolean;
+  colorAdjustments: PdfGpuColorAdjustmentState;
   bookmarkPanelOpen: boolean;
   bookmarkToggleTestId: string;
   documentActions?: ReactNode;
@@ -46,7 +48,7 @@ type Props = {
   onZoomIn: () => void;
   onZoomInputChange: (value: string) => void;
   onSubmitZoom: () => void;
-  onToggleInverted?: () => void;
+  onColorAdjustmentsChange: (adjustments: PdfGpuColorAdjustments) => void;
   onToggleBookmarks: () => void;
   onOpenOutline: () => void;
   onPrevious: () => void;
@@ -90,6 +92,16 @@ export function ViewerDocumentActions({ onOcr, onDownload }: { onOcr?: () => voi
   </>;
 }
 
+function ImageAdjustmentControl({ colors, onChange }: { colors: PdfGpuColorAdjustmentState; onChange: Props['onColorAdjustmentsChange'] }) {
+  const { t } = usePdfitI18n();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const active = !sameColorAdjustments(colors, DEFAULT_COLOR_ADJUSTMENTS);
+  return <>
+    <ToolbarButton icon={<TuneIcon />} caption={labels.image} label={t('imageAdjustments')} color={active ? 'primary' : 'default'} aria-haspopup="dialog" aria-expanded={anchor !== null} onClick={(event) => setAnchor(event.currentTarget)} />
+    <ImageAdjustmentPopover anchor={anchor} colors={colors} onChange={onChange} onClose={() => setAnchor(null)} />
+  </>;
+}
+
 export function ViewerToolbar(props: Props) {
   const { t } = usePdfitI18n();
   const bookmarkLabel = props.bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar');
@@ -130,7 +142,7 @@ export function ViewerToolbar(props: Props) {
       <ToolbarButton icon={<ZoomInIcon />} caption={labels.zoomIn} label={t('zoomIn')} onClick={props.onZoomIn} disabled={props.zoomInDisabled} />
     </Box>
     <Box sx={dividedGroupStyle}>
-      <ToolbarButton icon={<InvertColorsIcon />} caption={labels.invert} label={t('invertColors')} onClick={props.onToggleInverted} color={props.inverted ? 'primary' : 'default'} aria-pressed={props.inverted} />
+      <ImageAdjustmentControl colors={props.colorAdjustments} onChange={props.onColorAdjustmentsChange} />
       <ToolbarButton icon={<AttachFileIcon />} caption={labels.clips} label={bookmarkLabel} data-testid={props.bookmarkToggleTestId} onClick={props.onToggleBookmarks} color={props.bookmarkPanelOpen ? 'primary' : 'default'} aria-expanded={props.bookmarkPanelOpen} />
       {props.documentActions}
     </Box>

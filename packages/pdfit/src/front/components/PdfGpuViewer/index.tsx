@@ -1,10 +1,13 @@
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Box } from '@mui/material';
 import {
+  DEFAULT_COLOR_ADJUSTMENTS,
   createPdfDocumentEngine,
   createPdfGpuViewer,
+  type PdfGpuColorAdjustments,
+  type PdfGpuColorAdjustmentState,
   type PdfGpuViewerController,
   type PdfGpuViewerState,
 } from '@pdfgpu/core';
@@ -22,6 +25,7 @@ import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
 import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
+import { usePageColorFilter } from '../PageColorFilter.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
@@ -53,8 +57,8 @@ type Props = {
   initialScale?: number;
   initialFitMode?: 'none' | 'width' | 'height';
   initialViewMode?: 'scroll' | 'single' | 'double';
-  inverted?: boolean;
-  onToggleInverted?: () => void;
+  colorAdjustments: PdfGpuColorAdjustmentState;
+  onColorAdjustmentsChange: (adjustments: PdfGpuColorAdjustments) => void;
   initialScrollTop?: number;
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   onUnavailable?: () => void;
@@ -91,6 +95,7 @@ const EMPTY_STATE: PdfGpuViewerState = {
   loadPageCount: 0,
   error: null,
   activePage: undefined,
+  colorAdjustments: DEFAULT_COLOR_ADJUSTMENTS,
 };
 
 function toLegacyViewMode(state: PdfGpuViewerState): ViewerStatePayload['viewMode'] {
@@ -104,8 +109,8 @@ export default function PdfGpuViewer({
   initialScale,
   initialFitMode,
   initialViewMode,
-  inverted = false,
-  onToggleInverted,
+  colorAdjustments,
+  onColorAdjustmentsChange,
   initialScrollTop,
   onStateChange,
   onUnavailable,
@@ -145,6 +150,9 @@ export default function PdfGpuViewer({
   }, [controller]);
   const getSnapshot = useCallback(() => controller?.getState() ?? EMPTY_STATE, [controller]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const pageColors = usePageColorFilter(colorAdjustments, state.backend === 'unsupported');
+  const inverted = colorAdjustments.invert;
+  useLayoutEffect(() => { controller?.setColorAdjustments(colorAdjustments); }, [controller, colorAdjustments]);
   const [zoomInput, setZoomInput] = useState(String(Math.round(state.zoom * 100)));
   useEffect(() => setZoomInput(String(Math.round(state.zoom * 100))), [state.zoom]);
 
@@ -280,11 +288,6 @@ export default function PdfGpuViewer({
   }, [inverted, onStateChange, state]);
 
   useEffect(() => {
-    const canvas = viewportRef.current?.querySelector('canvas');
-    if (canvas) canvas.style.filter = inverted ? 'invert(1)' : 'none';
-  }, [inverted, state.pageCount, state.renderQuality]);
-
-  useEffect(() => {
     // @pdfgpu/core >= 0.1.10 binds the same paging keys on its focused viewport and calls
     // preventDefault when it navigates. This window listener covers focus outside the
     // viewport only; handling an already-consumed event would page twice.
@@ -405,7 +408,7 @@ export default function PdfGpuViewer({
           coverAloneSelected={isSpread ? state.spreadPairing === 'alone' : undefined}
           continuousScroll={state.scrollMode === 'continuous'}
           zoomInput={zoomInput}
-          inverted={inverted}
+          colorAdjustments={colorAdjustments}
           bookmarkPanelOpen={bookmark.panelOpen}
           bookmarkToggleTestId="bookmark-sidebar-toggle"
           documentActions={documentActions}
@@ -424,7 +427,7 @@ export default function PdfGpuViewer({
           onZoomIn={() => controller?.zoomIn()}
           onZoomInputChange={setZoomInput}
           onSubmitZoom={submitZoom}
-          onToggleInverted={onToggleInverted}
+          onColorAdjustmentsChange={onColorAdjustmentsChange}
           onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)}
           onOpenOutline={() => setOutlineOpen(true)}
           onPrevious={() => goToPage(currentPage - pageStep)}
@@ -445,7 +448,8 @@ export default function PdfGpuViewer({
         {bookmark.panelOpen && <BookmarkSidebar bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: uiHidden ? '100%' : `calc(100% - ${ANNOTATION_RAIL_WIDTH}px)`, height: '100%', ml: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px`, minWidth: 0, minHeight: 0, position: 'relative', touchAction: state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height') ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
-            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: state.fitMode === 'height' || state.fitMode === 'page' ? 0 : 3, filter: inverted ? 'invert(1)' : 'none' }} />
+            {pageColors.definition}
+            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: state.fitMode === 'height' || state.fitMode === 'page' ? 0 : 3, '& > canvas': { filter: pageColors.filter } }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>

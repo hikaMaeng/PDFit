@@ -11,6 +11,8 @@ import {
   createViewerInteractionState,
   normalizeViewerPage,
   reduceViewerInteraction,
+  type PdfGpuColorAdjustmentState,
+  type PdfGpuColorAdjustments,
 } from '@pdfgpu/core';
 import type { PdfJsModule } from '../../pdfjs.js';
 import {
@@ -30,6 +32,7 @@ import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
+import { usePageColorFilter } from '../PageColorFilter.js';
 import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { usePageSwipe } from '../usePageSwipe.js';
 import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
@@ -102,9 +105,8 @@ interface Props {
   initialScale?: number;
   initialFitMode?: FitMode;
   initialViewMode?: ViewMode;
-  initialInverted?: boolean;
-  inverted?: boolean;
-  onToggleInverted?: () => void;
+  colorAdjustments: PdfGpuColorAdjustmentState;
+  onColorAdjustmentsChange: (adjustments: PdfGpuColorAdjustments) => void;
   initialScrollTop?: number;
   onPageChange?: (page: number) => void;
   /** 뷰어 내부 상태(page/scale/fitMode/viewMode/inverted/scrollTop) 변경 시 호출 */
@@ -126,9 +128,8 @@ export default function PdfViewer({
   initialScale,
   initialFitMode,
   initialViewMode,
-  initialInverted,
-  inverted: controlledInverted,
-  onToggleInverted,
+  colorAdjustments,
+  onColorAdjustmentsChange,
   initialScrollTop,
   onPageChange,
   onStateChange,
@@ -155,8 +156,8 @@ export default function PdfViewer({
   // Spread pairing is a reader choice, not a fixed rule: (1,2),(3,4) or cover alone (1),(2,3).
   const [spreadCover, setSpreadCover] = useState<SpreadCover>(() => readSpreadCoverPreference());
   const viewMode: ViewMode = continuousScroll ? 'scroll' : pageLayout;
-  const [localInverted, setLocalInverted] = useState(initialInverted ?? false);
-  const inverted = controlledInverted ?? localInverted;
+  const inverted = colorAdjustments.invert;
+  const pageColors = usePageColorFilter(colorAdjustments);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadProgressDeterminate, setLoadProgressDeterminate] = useState(false);
@@ -230,7 +231,7 @@ export default function PdfViewer({
     scale: initialScale ?? DEFAULT_VIEWER_ZOOM,
     fitMode: initialFitMode ?? 'none',
     viewMode: initialViewMode ?? 'scroll',
-    inverted: initialInverted ?? false,
+    inverted,
     scrollTop: 0,
   });
   // 스크롤 복원 여부 플래그
@@ -865,7 +866,7 @@ export default function PdfViewer({
           zoomInput={zoomInput}
           zoomOutDisabled={scale <= ZOOM_LEVELS[0]}
           zoomInDisabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-          inverted={inverted}
+          colorAdjustments={colorAdjustments}
           bookmarkPanelOpen={bookmarkPanelOpen}
           bookmarkToggleTestId="legacy-bookmark-sidebar-toggle"
           documentActions={documentActions}
@@ -884,7 +885,7 @@ export default function PdfViewer({
           onZoomIn={zoomIn}
           onZoomInputChange={setZoomInput}
           onSubmitZoom={submitZoom}
-          onToggleInverted={onToggleInverted ?? (() => setLocalInverted((value) => !value))}
+          onColorAdjustmentsChange={onColorAdjustmentsChange}
           onToggleBookmarks={() => setBookmarkPanelOpen((value) => !value)}
           onOpenOutline={() => setOutlineOpen(true)}
           onPrevious={prevPage}
@@ -897,6 +898,7 @@ export default function PdfViewer({
         />
       )}
 
+      {pageColors.definition}
       <Box
         ref={surfaceElementRef}
         data-testid="legacy-bookmark-capture-surface"
@@ -916,7 +918,7 @@ export default function PdfViewer({
           if (annotation.tool === 'bookmark') { captureStartRef.current = null; setCaptureDrag(null); }
           else if (annotation.tool === 'select') pan.pointerCancel(event);
         }}
-        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: viewMode !== 'scroll' && fitMode === 'height' ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }}
+        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: viewMode !== 'scroll' && fitMode === 'height' ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default', '& [data-pdf-page] > canvas': { filter: pageColors.filter } }}
       >
       {!uiHidden && <AnnotationControls leftOffset={bookmarkPanelOpen ? 220 : 0} tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
       <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} visiblePages={annotationPageIndices} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />

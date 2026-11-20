@@ -9,7 +9,7 @@ export const toolbarLabels = {
   fitHeight: 'Fit Height',
   zoomOut: 'Zoom −',
   zoomIn: 'Zoom +',
-  invert: 'Invert',
+  image: 'Image',
   clips: 'Clips',
   ocr: 'OCR',
   download: 'Download',

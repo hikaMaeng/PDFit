@@ -154,8 +154,6 @@ export default function PdfPage({
           ref={canvasRef}
           style={{
             display: 'block',
-            filter: inverted ? 'invert(1)' : 'none',
-            transition: 'filter 0.2s',
           }}
         />
       ) : (

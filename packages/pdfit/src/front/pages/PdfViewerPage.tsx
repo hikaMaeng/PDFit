@@ -14,7 +14,7 @@ import type { ViewerStatePayload } from '../api/viewerState';
 import { ViewerSessionModel } from '../viewer/sessionModel';
 import { listBookmarks } from '../api/bookmarks';
 import { BookmarkModel } from '../model/bookmarkModel';
-import type { PdfGpuCaptureResult } from '@pdfgpu/core';
+import { DEFAULT_COLOR_ADJUSTMENTS, type PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { getViewerNavigationModel } from '../model/viewerNavigationModel.js';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
@@ -180,20 +180,18 @@ export default function PdfViewerPage() {
       remove: (bookmarkId) => bookmarkModel.remove(bookmarkId),
     });
   }, [bookmarkModel]);
-  const sessionState = useSyncExternalStore(
+  const colorAdjustments = useSyncExternalStore(
     sessionModel.subscribe,
-    sessionModel.getState,
-    sessionModel.getState,
+    sessionModel.getColorAdjustments,
+    sessionModel.getColorAdjustments,
   );
   useEffect(() => {
-    sessionModel.dispatch({ type: 'setInverted', value: false });
-  }, [fileName, folderName, sessionModel]);
+    sessionModel.setColorAdjustments(DEFAULT_COLOR_ADJUSTMENTS);
+  }, [driveFileId, fileName, folderName, sessionModel]);
 
-  // 색상 반전은 독서 상태로 복원하되, 뷰어 UI는 항상 노출한다.
+  // Preserve the per-document inversion saved by older viewers and servers.
   useEffect(() => {
-    if (savedState) {
-      sessionModel.dispatch({ type: 'setInverted', value: savedState.inverted });
-    }
+    if (savedState) sessionModel.setColorAdjustments({ invert: savedState.inverted });
   }, [savedState, sessionModel]);
 
   useEffect(() => {
@@ -421,8 +419,8 @@ export default function PdfViewerPage() {
           initialScale={initialViewerScale}
           initialFitMode={initialViewerFitMode}
           initialViewMode={savedState?.viewMode}
-          inverted={sessionState.inverted}
-          onToggleInverted={() => sessionModel.dispatch({ type: 'toggleInverted' })}
+          colorAdjustments={colorAdjustments}
+          onColorAdjustmentsChange={sessionModel.setColorAdjustments}
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
           onUnavailable={handleGpuUnavailable}
@@ -441,9 +439,8 @@ export default function PdfViewerPage() {
           initialScale={initialViewerScale}
           initialFitMode={initialViewerFitMode}
           initialViewMode={savedState?.viewMode}
-          initialInverted={sessionState.inverted}
-          inverted={sessionState.inverted}
-          onToggleInverted={() => sessionModel.dispatch({ type: 'toggleInverted' })}
+          colorAdjustments={colorAdjustments}
+          onColorAdjustmentsChange={sessionModel.setColorAdjustments}
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
           uiHidden={false}

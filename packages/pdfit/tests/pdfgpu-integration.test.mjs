@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  DEFAULT_COLOR_ADJUSTMENTS,
   createViewerInteractionState,
   normalizeDetailDpi,
   reduceViewerInteraction,
@@ -50,8 +51,16 @@ describe('PDFit pdfgpu artifact integration', () => {
 
   it('preserves PDFit-only viewer session state', () => {
     const model = new ViewerSessionModel();
-    model.dispatch({ type: 'toggleInverted' });
-    assert.deepEqual(model.getState(), { uiHidden: false, inverted: true });
+    const values = [];
+    const unsubscribe = model.subscribe(() => values.push(model.getColorAdjustments()));
+    model.setColorAdjustments({ invert: true });
+    model.setColorAdjustments({ brightness: 0.25, contrast: 1.5, saturation: 0 });
+    const adjusted = { invert: true, brightness: 0.25, contrast: 1.5, saturation: 0 };
+    model.setColorAdjustments(adjusted);
+    assert.deepEqual(model.getColorAdjustments(), adjusted);
+    model.setColorAdjustments(DEFAULT_COLOR_ADJUSTMENTS);
+    assert.deepEqual(values, [{ ...DEFAULT_COLOR_ADJUSTMENTS, invert: true }, adjusted, DEFAULT_COLOR_ADJUSTMENTS]);
+    unsubscribe();
   });
 
   it('interpolates PDFGPU preview progress so 35% fills the displayed gauge', () => {

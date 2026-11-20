@@ -39,6 +39,8 @@ The image-search button under a cover ("Use a real book cover") replaces the ren
 
 The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to read the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 
+Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
+
 ## Table of contents
 
 The contents button in the viewer toolbar, left of the page arrows, opens the book's table of contents in a dialog. It lists the PDF's own outline (the bookmarks pane of a desktop PDF reader), indented by level, with each entry's page number at the right. Clicking an entry goes to that page and closes the dialog; the chapter containing the current page is highlighted. An entry that points nowhere in the file (a web link, a missing target) is greyed out with "No page".
