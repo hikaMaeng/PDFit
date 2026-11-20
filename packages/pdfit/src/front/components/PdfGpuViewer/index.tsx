@@ -1,5 +1,6 @@
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { Alert, Box } from '@mui/material';
 import {
   createPdfDocumentEngine,
@@ -20,7 +21,7 @@ import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
-import { ViewerToolbar } from './ViewerToolbar.js';
+import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
@@ -35,6 +36,7 @@ import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { DEFAULT_VIEWER_ZOOM } from '../PdfViewer/pdfDisplayScale.js';
 import { usePageSwipe } from '../usePageSwipe.js';
 import {
+  lastSpreadLead,
   nextSpreadToggleMemory,
   readSpreadCoverPreference,
   spreadToggleTarget,
@@ -57,6 +59,7 @@ type Props = {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   onUnavailable?: () => void;
   uiHidden?: boolean;
+  documentActions?: ReactNode;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
@@ -107,6 +110,7 @@ export default function PdfGpuViewer({
   onStateChange,
   onUnavailable,
   uiHidden = false,
+  documentActions,
   bookmarks = [],
   onBookmarkCaptured,
   onBookmarkUpdated,
@@ -141,6 +145,17 @@ export default function PdfGpuViewer({
   }, [controller]);
   const getSnapshot = useCallback(() => controller?.getState() ?? EMPTY_STATE, [controller]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const [zoomInput, setZoomInput] = useState(String(Math.round(state.zoom * 100)));
+  useEffect(() => setZoomInput(String(Math.round(state.zoom * 100))), [state.zoom]);
+
+  const submitZoom = () => {
+    const percentage = Number.parseFloat(zoomInput);
+    if (!Number.isFinite(percentage)) {
+      setZoomInput(String(Math.round(state.zoom * 100)));
+      return;
+    }
+    controller?.setZoom(Math.min(800, Math.max(25, percentage)) / 100);
+  };
   const currentPage = state.activePage ?? 1;
   const activePageIndex = Math.max(0, currentPage - 1);
   const spreadStartPageIndex = activePageIndex === 0
@@ -373,13 +388,50 @@ export default function PdfGpuViewer({
   }, [controller]);
 
   if (initError) {
-    return <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>;
+    return <>
+      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+      <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
+    </>;
   }
 
+  const isSpread = state.viewMode === 'spread';
+  const pageStep = isSpread ? 2 : 1;
+  const lastPage = isSpread ? lastSpreadLead(state.pageCount, state.spreadPairing) : state.pageCount;
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {!uiHidden && (
-        <ViewerToolbar controller={controller} state={state} currentPage={currentPage} pageInput={pageInput} inverted={inverted} bookmarkPanelOpen={bookmark.panelOpen} onPageInputChange={setPageInput} onSubmitPage={submitPageInput} onGoToPage={goToPage} onToggleInverted={onToggleInverted} onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)} outlineOpen={outlineOpen} onOpenOutline={() => setOutlineOpen(true)} onFitHeight={fitHeight} onPageLayoutChange={changePageLayout} onToggleContinuousScroll={toggleContinuousScroll} onToggleSpreadCover={() => selectSpreadCover(state.spreadPairing === 'alone' ? 'paired' : 'alone')} />
+        <ViewerToolbar
+          pageLayout={isSpread ? 'double' : 'single'}
+          coverAloneSelected={isSpread ? state.spreadPairing === 'alone' : undefined}
+          continuousScroll={state.scrollMode === 'continuous'}
+          zoomInput={zoomInput}
+          inverted={inverted}
+          bookmarkPanelOpen={bookmark.panelOpen}
+          bookmarkToggleTestId="bookmark-sidebar-toggle"
+          documentActions={documentActions}
+          outlineOpen={outlineOpen}
+          outlineDisabled={!state.pageCount}
+          pageInput={pageInput}
+          pageCount={state.pageCount}
+          previousDisabled={currentPage <= 1}
+          nextDisabled={!state.pageCount || currentPage >= lastPage}
+          onPageLayoutChange={changePageLayout}
+          onToggleSpreadCover={() => selectSpreadCover(state.spreadPairing === 'alone' ? 'paired' : 'alone')}
+          onToggleContinuousScroll={toggleContinuousScroll}
+          onFitWidth={() => controller?.fitWidth()}
+          onFitHeight={fitHeight}
+          onZoomOut={() => controller?.zoomOut()}
+          onZoomIn={() => controller?.zoomIn()}
+          onZoomInputChange={setZoomInput}
+          onSubmitZoom={submitZoom}
+          onToggleInverted={onToggleInverted}
+          onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)}
+          onOpenOutline={() => setOutlineOpen(true)}
+          onPrevious={() => goToPage(currentPage - pageStep)}
+          onNext={() => goToPage(currentPage + pageStep)}
+          onPageInputChange={setPageInput}
+          onSubmitPage={submitPageInput}
+        />
       )}
 
       <Box role="status" aria-label="viewer status" sx={{ position: 'absolute', width: '1px', height: '1px', minWidth: '1px', maxWidth: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0, opacity: 0 }}>

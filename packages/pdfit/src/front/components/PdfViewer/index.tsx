@@ -1,23 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import {
-  Box, CircularProgress, Alert, Typography,
-  IconButton, Tooltip, Divider, TextField, ToggleButton, ToggleButtonGroup,
-} from '@mui/material';
-import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import ZoomInIcon from '@mui/icons-material/ZoomIn';
-import ZoomOutIcon from '@mui/icons-material/ZoomOut';
-import ViewStreamIcon from '@mui/icons-material/ViewStream';
-import CropPortraitIcon from '@mui/icons-material/CropPortrait';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import AutoStoriesIcon from '@mui/icons-material/AutoStories';
-import FitScreenIcon from '@mui/icons-material/FitScreen';
-import HeightIcon from '@mui/icons-material/Height';
-import InvertColorsIcon from '@mui/icons-material/InvertColors';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
+import { Box, CircularProgress, Alert, Typography, IconButton } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import TocIcon from '@mui/icons-material/Toc';
 import PdfPage from './PdfPage';
 import PdfOutlineDialog from './PdfOutlineDialog.js';
 import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.js';
@@ -45,6 +29,7 @@ import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/Annot
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
+import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
 import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { usePageSwipe } from '../usePageSwipe.js';
 import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
@@ -126,6 +111,7 @@ interface Props {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
+  documentActions?: React.ReactNode;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
@@ -147,6 +133,7 @@ export default function PdfViewer({
   onPageChange,
   onStateChange,
   uiHidden = false,
+  documentActions,
   bookmarks = [],
   onBookmarkCaptured,
   onBookmarkDeleted,
@@ -690,9 +677,6 @@ export default function PdfViewer({
       setTimeout(() => setScale(calcScale(fitMode, next)), 0);
     }
   };
-  const handlePageLayout = (_: React.MouseEvent, next: PageLayout | null) => {
-    if (next) selectPageLayout(next);
-  };
   useLayoutEffect(() => {
     if (!continuousScroll && containerRef.current) containerRef.current.scrollTop = 0;
   }, [continuousScroll]);
@@ -853,14 +837,20 @@ export default function PdfViewer({
 
   if (loading) {
     return (
-      <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading} label={rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
-      </Box>
+      <>
+        {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+        <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading} label={rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
+        </Box>
+      </>
     );
   }
 
   if (error) {
-    return <Box sx={{ p: 4 }}><Alert severity="error">{error}</Alert></Box>;
+    return <>
+      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+      <Box sx={{ p: 4 }}><Alert severity="error">{error}</Alert></Box>
+    </>;
   }
 
   return (
@@ -868,120 +858,43 @@ export default function PdfViewer({
 
       {/* ── 툴바 (UI 숨김 시 사라짐) ── */}
       {!uiHidden && (
-        <Box
-          role="toolbar"
-          aria-label="viewer controls"
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 0.5,
-            px: 2, py: 0.5,
-            bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : 'background.paper',
-            borderBottom: '1px solid', borderColor: 'divider',
-            flexShrink: 0, position: 'relative', zIndex: 10, overflowX: 'auto',
+        <ViewerToolbar
+          pageLayout={pageLayout}
+          coverAloneSelected={pageLayout === 'double' && !continuousScroll ? spreadCover === 'alone' : undefined}
+          continuousScroll={continuousScroll}
+          zoomInput={zoomInput}
+          zoomOutDisabled={scale <= ZOOM_LEVELS[0]}
+          zoomInDisabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+          inverted={inverted}
+          bookmarkPanelOpen={bookmarkPanelOpen}
+          bookmarkToggleTestId="legacy-bookmark-sidebar-toggle"
+          documentActions={documentActions}
+          outlineOpen={outlineOpen}
+          outlineDisabled={!docReady}
+          pageInput={pageInput}
+          pageCount={totalPages}
+          previousDisabled={isPrevDisabled}
+          nextDisabled={isNextDisabled}
+          onPageLayoutChange={selectPageLayout}
+          onToggleSpreadCover={() => selectSpreadCover(spreadCover === 'alone' ? 'paired' : 'alone')}
+          onToggleContinuousScroll={toggleContinuousScroll}
+          onFitWidth={() => fitTo('width')}
+          onFitHeight={() => fitTo('height')}
+          onZoomOut={zoomOut}
+          onZoomIn={zoomIn}
+          onZoomInputChange={setZoomInput}
+          onSubmitZoom={submitZoom}
+          onToggleInverted={onToggleInverted ?? (() => setLocalInverted((value) => !value))}
+          onToggleBookmarks={() => setBookmarkPanelOpen((value) => !value)}
+          onOpenOutline={() => setOutlineOpen(true)}
+          onPrevious={prevPage}
+          onNext={nextPage}
+          onPageInputChange={setPageInput}
+          onSubmitPage={(value) => {
+            const page = Number.parseInt(value, 10);
+            if (Number.isFinite(page)) goToPage(page);
           }}
-        >
-          {/* 페이지 레이아웃 */}
-          <ToggleButtonGroup
-            size="small" value={pageLayout} exclusive onChange={handlePageLayout}
-            sx={{ '& .MuiToggleButton-root': { py: 0.25, px: 0.75, border: 'none' } }}
-          >
-            <ToggleButton value="single" aria-label={t('singlePage')}>
-              <Tooltip title={t('singlePage')} arrow enterDelay={0} enterNextDelay={0}><CropPortraitIcon fontSize="small" /></Tooltip>
-            </ToggleButton>
-            <ToggleButton value="double" aria-label={t('doublePage')}>
-              <Tooltip title={t('doublePage')} arrow enterDelay={0} enterNextDelay={0}><MenuBookIcon fontSize="small" /></Tooltip>
-            </ToggleButton>
-          </ToggleButtonGroup>
-          {pageLayout === 'double' && !continuousScroll && (
-            <Tooltip title={t('coverAlone')} arrow enterDelay={0} enterNextDelay={0}>
-              <ToggleButton
-                value="cover-alone" selected={spreadCover === 'alone'} aria-label={t('coverAlone')} aria-pressed={spreadCover === 'alone'}
-                data-testid="spread-cover-alone" onClick={() => selectSpreadCover(spreadCover === 'alone' ? 'paired' : 'alone')}
-                sx={{ py: 0.25, px: 0.75, border: 'none' }}
-              >
-                <AutoStoriesIcon fontSize="small" />
-              </ToggleButton>
-            </Tooltip>
-          )}
-
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-          <Tooltip title={t('continuousScroll')} arrow enterDelay={0} enterNextDelay={0}>
-            <ToggleButton value="scroll" selected={continuousScroll} aria-label={t('continuousScroll')} aria-pressed={continuousScroll} onClick={toggleContinuousScroll} sx={{ py: 0.25, px: 0.75, border: 'none' }}>
-              <ViewStreamIcon fontSize="small" />
-            </ToggleButton>
-          </Tooltip>
-
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-          <Tooltip title={t('fitWidth')} arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" aria-label={t('fitWidth')} onClick={() => fitTo('width')}>
-              <FitScreenIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title={t('fitHeight')} arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" aria-label={t('fitHeight')} onClick={() => fitTo('height')}>
-              <HeightIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title={t('zoomOut')} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" onClick={zoomOut} disabled={scale <= ZOOM_LEVELS[0]}><ZoomOutIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <TextField
-              size="small"
-              value={zoomInput}
-              onChange={(event) => setZoomInput(event.target.value.replace(/[^0-9.]/g, ''))}
-              onKeyDown={(event) => { if (event.key === 'Enter') (event.currentTarget.querySelector('input') as HTMLInputElement | null)?.blur(); }}
-              onBlur={submitZoom}
-              inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', width: 38, padding: '2px 2px', fontSize: '0.8rem' }, 'aria-label': t('zoomPercentage') }}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25 }}>%</Typography>
-          </Box>
-          <Tooltip title={t('zoomIn')} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" onClick={zoomIn} disabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}><ZoomInIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
-
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-          <Tooltip title={t('invertColors')} arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton size="small" onClick={onToggleInverted ?? (() => setLocalInverted((v) => !v))} color={inverted ? 'primary' : 'default'}>
-              <InvertColorsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} arrow enterDelay={0} enterNextDelay={0}>
-            <IconButton data-testid="legacy-bookmark-sidebar-toggle" aria-label={bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar')} size="small" onClick={() => setBookmarkPanelOpen((value) => !value)} color={bookmarkPanelOpen ? 'primary' : 'default'}>
-              <AttachFileIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Box sx={{ flex: 1 }} />
-
-          <Tooltip title={t('tableOfContents')} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton data-testid="viewer-outline-open" aria-label={t('tableOfContents')} aria-haspopup="dialog" size="small" disabled={!docReady} onClick={() => setOutlineOpen(true)} color={outlineOpen ? 'primary' : 'default'}><TocIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
-
-          <Tooltip title={`${t('previousPage')} (←/PageUp)`} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" aria-label={t('previousPage')} onClick={prevPage} disabled={isPrevDisabled}><NavigateBeforeIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
-          <Box data-testid="viewer-page-indicator" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <TextField
-              size="small"
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { const n = parseInt(pageInput, 10); if (!isNaN(n)) goToPage(n); } }}
-              onBlur={() => { const n = parseInt(pageInput, 10); if (!isNaN(n)) goToPage(n); }}
-              inputProps={{ style: { textAlign: 'center', width: 40, padding: '2px 4px', fontSize: '0.8rem' }, 'aria-label': t('pageNumber') }}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
-            />
-            <Typography variant="caption" color="text.secondary">/ {totalPages}</Typography>
-          </Box>
-          <Tooltip title={`${t('nextPage')} (→/PageDown)`} arrow enterDelay={0} enterNextDelay={0}>
-            <span><IconButton size="small" aria-label={t('nextPage')} onClick={nextPage} disabled={isNextDisabled}><NavigateNextIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
-        </Box>
+        />
       )}
 
       <Box

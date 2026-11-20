@@ -3,11 +3,9 @@ import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, Snackbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import AddToDriveOutlinedIcon from '@mui/icons-material/AddToDriveOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
-import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
 import { foldersApi } from '../api/folders';
 import { useViewerState } from '../hooks/useViewerState';
 import PdfViewer from '../components/PdfViewer';
@@ -25,6 +23,7 @@ import { isPendingUploadDriveFileId, isViewerCommand, registerViewerWindow } fro
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
 import DocumentExportDialog from '../components/DocumentExportDialog.js';
 import PageOcrDialog from '../components/PageOcrDialog.js';
+import { ViewerDocumentActions, ViewerToolbarFrame } from '../components/ViewerToolbar/index.js';
 import { addSampleToLibrary, getSampleLibraryStatus } from '../api/samples.js';
 import BookMetadataDialog from '../components/BookMetadataDialog.js';
 import { usePdfitFrontConfig } from '../context.js';
@@ -298,11 +297,21 @@ export default function PdfViewerPage() {
     }
   }, [driveFileId, sampleLibraryState, t]);
 
+  const openOcr = () => {
+    setOcrPage(Math.max(1, Math.trunc(latestViewerStateRef.current?.page ?? savedState?.page ?? 1)));
+    setOcrOpen(true);
+  };
+  const documentActions = <ViewerDocumentActions
+    onOcr={!driveFileId && !sample && !pendingUpload ? openOcr : undefined}
+    onDownload={() => setExportOpen(true)}
+  />;
+
   return (
     <Box component="main" sx={{ display: 'flex', flexDirection: 'column', height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, minHeight: 0, overflow: 'hidden' }}>
 
       {/* 상단 헤더 */}
       <Box
+        component="header"
         sx={{
           display: 'flex', alignItems: 'center', gap: 1.5,
           px: 2, py: 1,
@@ -367,20 +376,9 @@ export default function PdfViewerPage() {
             >
               {ui("파일 정보")}</Button>
           ) : null}
-          {!driveFileId && !sample && !pendingUpload ? (
-            <Tooltip title={t('ocrPage')} arrow>
-              <IconButton data-testid="page-ocr-open" aria-label={t('ocrPage')} size="small" onClick={() => { setOcrPage(Math.max(1, Math.trunc(latestViewerStateRef.current?.page ?? savedState?.page ?? 1))); setOcrOpen(true); }}>
-                <TextSnippetOutlinedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          ) : null}
-          <Tooltip title={t('exportDocument')} arrow>
-            <IconButton data-testid="document-export-open" aria-label={t('exportDocument')} size="small" onClick={() => setExportOpen(true)}>
-              <FileDownloadOutlinedIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
       </Box>
 
+      {(pendingUpload || !stateLoaded) && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
       {!driveFileId && !sample ? <PageOcrDialog open={ocrOpen} folder={folderName} filename={fileName} page={ocrPage} onClose={() => setOcrOpen(false)} /> : null}
 
       <DocumentExportDialog
@@ -434,6 +432,7 @@ export default function PdfViewerPage() {
           onBookmarkUpdated={handleBookmarkUpdated}
           onBookmarkDeleted={handleBookmarkDeleted}
           outlineStorage={outlineStorage}
+          documentActions={documentActions}
         />
       ) : (
         <PdfViewer
@@ -453,6 +452,7 @@ export default function PdfViewerPage() {
           onBookmarkDeleted={handleBookmarkDeleted}
           onDocumentUnavailable={handleDocumentUnavailable}
           outlineStorage={outlineStorage}
+          documentActions={documentActions}
         />
       ) : (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
