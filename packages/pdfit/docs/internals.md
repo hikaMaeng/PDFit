@@ -199,6 +199,12 @@ requests with automatic fetching and the competing full-body stream disabled.
 The HEAD endpoint checks file ownership exactly as the GET endpoint does and
 does not expose a content stream. Viewer cleanup aborts an unfinished download.
 
+The local folder/file route also gets a HEAD probe before PDF.js starts. The
+[initial-open retry](../src/front/viewer/pdfOpenRetry.ts#openPdfWithRetry) handles
+connection failures and 502, 503 or 504 through the library guard's cooldown.
+The viewer offers a manual retry after five automatic attempts. A missing file
+still triggers the existing library refresh and missing-document message.
+
 ## Sidebar preferences and document selection
 
 왼쪽 폴더·태그 항목은 이름과 개수만 표시한다. 섹션 제목 아이콘, 항목 이동,
@@ -622,6 +628,8 @@ pgvector 기반 동작(폴더·파일 목록, 태그, 검색, 북마크, 진행�
   쥔다. 가드가 없으면 몇 개만으로 로컬 파일 읽기까지 굶는다. 컨테이너는
   `UV_THREADPOOL_SIZE=32`로 가드 한도(12)보다 여유를 둔다.
 - `FilesystemService`의 목록·생성·삭제·이름변경·이동은 모두 비동기이며 동기 `fs` 호출이 없다.
+  [`listFolders`](../src/server/services/filesystem.ts#createFilesystemService)의 PDF 개수는 디렉터리 항목에서
+  계산한다. 목록 읽기에는 전체 반복이 아닌 개별 디스크 호출에만 타임아웃을 적용한다.
   폴더 라우터는 볼륨 오류를 `503 { code: 'LIBRARY_OFFLINE' }`로 답한다. 책 열기
   (`GET /:name/files/:filename`)도 가드 프로브로 즉시 503을 낸다.
 - 워처는 볼륨이 오프라인인 동안 변경 이벤트를 무시한다. 응답하지 않는 볼륨은 파일이 사라졌다는

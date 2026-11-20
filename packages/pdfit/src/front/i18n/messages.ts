@@ -142,6 +142,8 @@ const rows = {
   previousPage: ['Previous page', '이전 페이지', '上一页', 'Página anterior', 'पिछला पेज', 'الصفحة السابقة', 'Page précédente', 'Página anterior'],
   nextPage: ['Next page', '다음 페이지', '下一页', 'Página siguiente', 'अगला पेज', 'الصفحة التالية', 'Page suivante', 'Próxima página'],
   pageNumber: ['Page number', '페이지 번호', '页码', 'Número de página', 'पेज संख्या', 'رقم الصفحة', 'Numéro de page', 'Número da página'],
+  'viewer.pdf.openRetrying.status': ['The PDF is temporarily unavailable. Retrying…', 'PDF에 잠시 연결할 수 없습니다. 다시 시도 중…', '暂时无法访问 PDF，正在重试…', 'El PDF no está disponible temporalmente. Reintentando…', 'PDF अस्थायी रूप से उपलब्ध नहीं है। फिर से कोशिश की जा रही है…', 'ملف PDF غير متاح مؤقتًا. جارٍ إعادة المحاولة…', 'Le PDF est temporairement indisponible. Nouvelle tentative…', 'O PDF está temporariamente indisponível. Tentando novamente…'],
+  'viewer.pdf.openUnavailable.alert': ['The PDF is still unavailable. Try opening it again.', 'PDF에 연결할 수 없습니다. 다시 열어 보세요.', '仍无法访问 PDF，请重新打开。', 'El PDF sigue sin estar disponible. Intenta abrirlo de nuevo.', 'PDF अभी उपलब्ध नहीं है। इसे फिर से खोलकर देखें।', 'ملف PDF لا يزال غير متاح. حاول فتحه مجددًا.', 'Le PDF est toujours indisponible. Essayez de le rouvrir.', 'O PDF continua indisponível. Tente abri-lo novamente.'],
   zoomOut: ['Zoom out', '축소', '缩小', 'Alejar', 'ज़ूम आउट', 'تصغير', 'Zoom arrière', 'Reduzir zoom'],
   zoomIn: ['Zoom in', '확대', '放大', 'Acercar', 'ज़ूम इन', 'تكبير', 'Zoom avant', 'Ampliar zoom'],
   zoomPercentage: ['Zoom percentage', '확대/축소 비율', '缩放百分比', 'Porcentaje de zoom', 'ज़ूम प्रतिशत', 'نسبة التكبير', 'Pourcentage de zoom', 'Percentual de zoom'],

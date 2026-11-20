@@ -1,4 +1,6 @@
 export enum RSC {
+  VIEWER_PDF_OPEN_RETRYING_STATUS = "viewer.pdf.openRetrying.status",
+  VIEWER_PDF_OPEN_UNAVAILABLE_ALERT = "viewer.pdf.openUnavailable.alert",
   VIEWER_OUTLINE_REGENERATE_BUTTON = "viewer.outline.regenerate.button",
   VIEWER_OUTLINE_EDIT_BUTTON = "viewer.outline.edit.button",
   VIEWER_OUTLINE_DELETE_BUTTON = "viewer.outline.delete.button",

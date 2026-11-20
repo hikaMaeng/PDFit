@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { Box, CircularProgress, Alert, Typography, IconButton } from '@mui/material';
+import { Box, Button, CircularProgress, Alert, Typography, IconButton } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PdfPage from './PdfPage';
 import PdfOutlineDialog from './PdfOutlineDialog.js';
 import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.js';
+import { isTransientPdfOpenError, openPdfWithRetry } from '../../viewer/pdfOpenRetry.js';
 import type { BookstoreOutlineLookup } from '../../viewer/bookstoreOutline.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import type { ViewerStatePayload } from '../../api/viewerState';
@@ -39,6 +40,7 @@ import { usePageSwipe } from '../usePageSwipe.js';
 import { LegacyAnnotationLayer } from './LegacyAnnotationLayer.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { DEFAULT_VIEWER_ZOOM, fitZoomForCssExtent, toPdfJsViewportScale } from './pdfDisplayScale.js';
+import { RSC } from './resource.js';
 
 const loadPdfJs = () => import('../../pdfjs.js').then(({ loadPdfJs: load }) => load());
 
@@ -54,14 +56,22 @@ const SINGLE_REQUEST_PDF_MAX_BYTES = 20 * 1024 * 1024;
 const PAGE_HORIZONTAL_PADDING = 12;
 type ViewMode = 'scroll' | 'single' | 'double';
 type PageLayout = Exclude<ViewMode, 'scroll'>;
+type PdfOpenFailure = { kind: 'temporary' } | { kind: 'missing' } | { kind: 'error'; message: string };
 type FitMode = 'none' | 'width' | 'height';
 
 /** @see docs/internals.md#remote-pdf-loading */
 async function readSmallRemotePdf(url: string, signal: AbortSignal, onProgress: (loaded: number, total: number) => void): Promise<Uint8Array | null> {
   const target = new URL(url, window.location.href);
-  if (target.origin !== window.location.origin || !/^\/api\/folders\/by-id\/[^/]+$/.test(target.pathname)) return null;
-  const metadata = await fetch(target, { method: 'HEAD', signal });
+  const byId = /^\/api\/folders\/by-id\/[^/]+$/.test(target.pathname);
+  const local = /^\/api\/folders\/[^/]+\/files\/[^/]+$/.test(target.pathname);
+  if (target.origin !== window.location.origin || (!byId && !local)) return null;
+  // Avoid opening a PDF.js worker while the server is already reporting an outage.
+  const metadata = await fetch(target, { method: 'HEAD', cache: 'no-store', signal }).catch((cause) => {
+    signal.throwIfAborted();
+    throw Object.assign(new Error('PDF availability check failed.'), { status: 0, cause });
+  });
   if (!metadata.ok) throw Object.assign(new Error(`PDF request failed (${metadata.status})`), { status: metadata.status });
+  if (!byId) return null;
   const total = Number(metadata.headers.get('Content-Length'));
   if (!Number.isSafeInteger(total) || total <= 0 || total > SINGLE_REQUEST_PDF_MAX_BYTES) return null;
 
@@ -164,7 +174,9 @@ export default function PdfViewer({
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadProgressDeterminate, setLoadProgressDeterminate] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PdfOpenFailure | null>(null);
+  const [waitingForPdf, setWaitingForPdf] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
   // doc이 로드되고 첫 페이지가 준비된 상태 (스프레드 트리거용)
   const [docReady, setDocReady] = useState(false);
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
@@ -295,6 +307,7 @@ export default function PdfViewer({
     setLoadProgressDeterminate(false);
     setDocReady(false);
     setError(null);
+    setWaitingForPdf(false);
     setPages([]);
     setCurrentPage(1);
     setPageInput('1');
@@ -318,17 +331,19 @@ export default function PdfViewer({
       docRef.current = null;
     }
 
-    Promise.all([
-      loadPdfJs(),
-      readSmallRemotePdf(url, downloadAbort.signal, (loaded, total) => {
-        if (cancelled) return;
-        setLoadProgressDeterminate(true);
-        setLoadProgress(Math.min(100, Math.max(0, (loaded / total) * 100)));
-      }).then((bytes) => { if (bytes && !cancelled) setLoadProgressDeterminate(false); return bytes; }),
-    ])
-      .then(([pdfjsLib, smallPdf]) => {
-        if (cancelled) return null;
+    const open = async () => {
+      try {
+        const [pdfjsLib, smallPdf] = await Promise.all([
+          loadPdfJs(),
+          readSmallRemotePdf(url, downloadAbort.signal, (loaded, total) => {
+            if (cancelled) return;
+            setLoadProgressDeterminate(true);
+            setLoadProgress(Math.min(100, Math.max(0, (loaded / total) * 100)));
+          }),
+        ]);
+        downloadAbort.signal.throwIfAborted();
         setRangeLoading(!smallPdf);
+        if (smallPdf) setLoadProgressDeterminate(false);
         rangeLoadingRef.current = !smallPdf;
         pdfjsLibRef.current = pdfjsLib;
         task = pdfjsLib.getDocument(smallPdf ? { data: smallPdf } : {
@@ -339,20 +354,27 @@ export default function PdfViewer({
           setLoadProgressDeterminate(true);
           setLoadProgress(Math.min(100, Math.max(0, (loaded / total) * 100)));
         };
-        return task.promise;
-      })
-      .then(async (doc: PDFDocumentProxy | null) => {
-        if (!doc) return;
-        if (cancelled) { await doc.cleanup(); return; }
+        const doc = await task.promise;
+        // Boot the viewer at the saved page before publishing the document as ready.
+        const firstPageNumber = Math.max(1, Math.min(doc.numPages, initialPageRef.current ?? 1));
+        const firstPage = await doc.getPage(firstPageNumber);
+        return { doc, firstPage, firstPageNumber };
+      } catch (failure) {
+        const failedTask = task;
+        task = null;
+        void failedTask?.destroy().catch(() => {});
+        throw failure;
+      }
+    };
+
+    openPdfWithRetry(open, downloadAbort.signal, () => setWaitingForPdf(true))
+      .then(({ doc, firstPage, firstPageNumber }) => {
+        if (cancelled) return;
         docRef.current = doc;
         setTotalPages(doc.numPages);
         // 희소 배열로 초기화
         setPages(new Array(doc.numPages).fill(null));
 
-        // 저장된 현재 페이지를 먼저 로드해 불필요한 1페이지 왕복을 피한다.
-        const firstPageNumber = Math.max(1, Math.min(doc.numPages, initialPageRef.current ?? 1));
-        const firstPage = await doc.getPage(firstPageNumber);
-        if (cancelled) return;
         loadedRef.current.add(firstPageNumber);
         currentDocPagesRef.current.add(firstPage);
         const vp = firstPage.getViewport({ scale: 1 });
@@ -373,6 +395,7 @@ export default function PdfViewer({
         setPageInput(String(firstPageNumber));
         initialPageAppliedRef.current = initialPageRef.current != null;
         setLoadProgress(100);
+        setWaitingForPdf(false);
         setLoading(false);
         setDocReady(true); // → currentPage 스프레드 effect 트리거
       })
@@ -380,9 +403,11 @@ export default function PdfViewer({
         if (cancelled) return;
         const status = (e as { status?: unknown } | null)?.status;
         if (status === 404 || status === 410) {
-          setError(t('documentUnavailable'));
+          setError({ kind: 'missing' });
           onDocumentUnavailable?.();
-        } else setError(String(e));
+        } else {
+          setError(isTransientPdfOpenError(e) ? { kind: 'temporary' } : { kind: 'error', message: String(e) });
+        }
         setLoading(false);
       });
 
@@ -398,7 +423,7 @@ export default function PdfViewer({
       current.task?.destroy().catch(() => {});
       current.task = null;
     };
-  }, [url]);
+  }, [url, loadRevision]);
 
   // ── 일시적 로드 실패 복구 ────────────────────────────────────
   // 구간(range) 로딩 중 한 구간 요청이 실패하면(서버 재시작 중 502, 연결 끊김) PDF.js 는 그
@@ -844,7 +869,8 @@ export default function PdfViewer({
       <>
         {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
-          <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading} label={rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
+          <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading && !waitingForPdf}
+            label={waitingForPdf ? t(RSC.VIEWER_PDF_OPEN_RETRYING_STATUS) : rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
         </Box>
       </>
     );
@@ -853,7 +879,9 @@ export default function PdfViewer({
   if (error) {
     return <>
       {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
-      <Box sx={{ p: 4 }}><Alert severity="error">{error}</Alert></Box>
+      <Box sx={{ p: 4 }}><Alert severity="error" action={error.kind === 'temporary' && <Button color="inherit" size="small" onClick={() => setLoadRevision((value) => value + 1)}>{t('retry')}</Button>}>
+        {error.kind === 'temporary' ? t(RSC.VIEWER_PDF_OPEN_UNAVAILABLE_ALERT) : error.kind === 'missing' ? t('documentUnavailable') : error.message}
+      </Alert></Box>
     </>;
   }
 

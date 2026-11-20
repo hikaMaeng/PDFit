@@ -39,6 +39,37 @@ test('hung calls keep their slot, so at most maxInFlight of them reach the disk'
   assert.equal(reached, 0);
 });
 
+test('folder counts skip PDF stats and many fast calls do not trip a disk timeout', async (context) => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-listings-'));
+  const shelf = path.join(base, 'Shelf');
+  const files = ['a.pdf', 'b.pdf', 'c.pdf', 'd.pdf', 'e.pdf', 'f.pdf'];
+  try {
+    await fs.mkdir(shelf);
+    await Promise.all(files.map((name) => fs.writeFile(path.join(shelf, name), 'fixture')));
+    await fs.writeFile(path.join(base, 'root.PDF'), 'fixture');
+    await fs.writeFile(path.join(shelf, 'notes.txt'), 'fixture');
+    const stat = fs.stat;
+    let pdfStats = 0;
+    context.mock.method(fs, 'stat', async (target) => {
+      if (String(target).toLowerCase().endsWith('.pdf')) {
+        pdfStats += 1;
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
+      return stat(target);
+    });
+
+    const guard = createLibraryVolumeGuard({ timeoutMs: 220 });
+    const library = createFilesystemService(base, 'Library', guard);
+    assert.deepEqual((await library.listFolders()).map(({ name, pdfCount }) => [name, pdfCount]), [['Library', 1], ['Shelf', 6]]);
+    assert.equal(pdfStats, 0);
+    assert.deepEqual((await library.listPdfs('Shelf')).map(({ name }) => name), files);
+    assert.equal(pdfStats, 6);
+    assert.equal(guard.isOffline(), false);
+  } finally {
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
+
 test('with the volume down, file work answers 503 and keeps the index; index-backed routes still answer', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-volume-'));
   try {

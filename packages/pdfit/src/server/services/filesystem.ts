@@ -12,6 +12,10 @@ const exists = (target: string) => fs.promises.access(target).then(() => true, (
   throw error;
 });
 
+function isPdfFile(entry: fs.Dirent): boolean {
+  return entry.isFile() && entry.name.toLowerCase().endsWith('.pdf');
+}
+
 export function createFilesystemService(booksRoot: string, rootFolderName = path.basename(booksRoot), volume: LibraryVolumeGuard = createLibraryVolumeGuard()): FilesystemService {
   const normalizedRootFolderName = sanitizeName(rootFolderName.trim()) || 'Library';
   /** Every disk access below goes through the volume guard; nothing here blocks the event loop. */
@@ -31,15 +35,17 @@ export function createFilesystemService(booksRoot: string, rootFolderName = path
   }
 
   async function listPdfsInDir(dir: string): Promise<PdfInfo[]> {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    const entries = await readDirectory(dir);
     const pdfs: PdfInfo[] = [];
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.pdf')) continue;
-      const stat = await fs.promises.stat(path.join(dir, entry.name));
+      if (!isPdfFile(entry)) continue;
+      const stat = await disk(() => fs.promises.stat(path.join(dir, entry.name)));
       pdfs.push({ name: entry.name, size: stat.size, modifiedAt: stat.mtime.toISOString() });
     }
     return pdfs.sort((left, right) => left.name.localeCompare(right.name, 'ko'));
   }
+
+  const readDirectory = (dir: string) => disk(() => fs.promises.readdir(dir, { withFileTypes: true }));
 
   return {
     booksRoot,
@@ -51,36 +57,37 @@ export function createFilesystemService(booksRoot: string, rootFolderName = path
     },
     getFolderPath,
     getFilePath,
-    listChildFolderNames: () => disk(async () => {
-      const entries = await fs.promises.readdir(booksRoot, { withFileTypes: true });
+    listChildFolderNames: async () => {
+      const entries = await readDirectory(booksRoot);
       return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-    }),
-    listFolders: () => disk(async () => {
-      await fs.promises.mkdir(booksRoot, { recursive: true });
-      const rootStat = await fs.promises.stat(booksRoot);
+    },
+    listFolders: async () => {
+      await disk(() => fs.promises.mkdir(booksRoot, { recursive: true }));
+      const rootStat = await disk(() => fs.promises.stat(booksRoot));
+      const entries = await readDirectory(booksRoot);
       const rootFolder: FolderInfo = {
         name: normalizedRootFolderName,
-        pdfCount: (await listPdfsInDir(booksRoot)).length,
+        pdfCount: entries.filter(isPdfFile).length,
         createdAt: rootStat.birthtime.toISOString(),
         isRoot: true,
         color: '#3b82f6',
       };
       const childFolders: FolderInfo[] = [];
-      for (const entry of await fs.promises.readdir(booksRoot, { withFileTypes: true })) {
+      for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const folderPath = path.join(booksRoot, entry.name);
-        const pdfs = await listPdfsInDir(folderPath);
-        const stat = await fs.promises.stat(folderPath);
-        childFolders.push({ name: entry.name, pdfCount: pdfs.length, createdAt: stat.birthtime.toISOString(), isRoot: false, color: '#3b82f6' });
+        const files = await readDirectory(folderPath);
+        const stat = await disk(() => fs.promises.stat(folderPath));
+        childFolders.push({ name: entry.name, pdfCount: files.filter(isPdfFile).length, createdAt: stat.birthtime.toISOString(), isRoot: false, color: '#3b82f6' });
       }
       childFolders.sort((left, right) => left.name.localeCompare(right.name, 'ko'));
       return [rootFolder, ...childFolders];
-    }),
-    listPdfs: (folder: string) => disk(async () => {
+    },
+    listPdfs: async (folder: string) => {
       const dir = getFolderPath(folder);
-      if (!(await exists(dir))) throw new Error('Folder does not exist.');
+      if (!(await disk(() => exists(dir)))) throw new Error('Folder does not exist.');
       return listPdfsInDir(dir);
-    }),
+    },
     createFolder: (name: string) => disk(async () => {
       const safeName = sanitizeName(name);
       if (safeName === normalizedRootFolderName) throw new Error('The library root cannot be recreated.');
