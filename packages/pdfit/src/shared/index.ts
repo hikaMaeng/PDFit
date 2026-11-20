@@ -81,6 +81,19 @@ export interface MetadataStore {
   listFavoriteBooks?(): Promise<TaggedBookRecord[]>;
   /** 즐겨찾기를 켜거나 끈다. `books`에 없는 책은 켜지 않는다. 바뀐 값을 돌려준다. */
   setFavorite?(folder: string, filename: string, favorite: boolean): Promise<boolean>;
+  /**
+   * 태그 폴더(사이드바에서 태그를 묶어 접고 펴는 그룹). 책 폴더와는 무관하다.
+   * 구현하지 않는 저장소는 라우트가 501로 답하고 화면은 태그 폴더 UI를 숨긴다.
+   */
+  listTagFolders?(): Promise<Array<{ name: string; tags: string[] }>>;
+  /** 태그 폴더를 만든다. 이미 있으면 false. */
+  createTagFolder?(name: string): Promise<boolean>;
+  /** 태그 폴더를 지운다. 안의 태그는 폴더에서만 빠지고 태그 자체는 남는다. 있었으면 true. */
+  deleteTagFolder?(name: string): Promise<boolean>;
+  /** 태그를 폴더에 넣는다. 폴더나 태그가 없으면 false. 이미 들어 있으면 true. */
+  addTagToTagFolder?(folderName: string, tag: string): Promise<boolean>;
+  /** 태그를 폴더에서 뺀다. 태그 자체는 지우지 않는다. */
+  removeTagFromTagFolder?(folderName: string, tag: string): Promise<boolean>;
   listBooksByFolder(folder: string): Promise<BookRecord[]>;
   listFolderBookCounts(): Promise<Record<string, number>>;
   listFolderColors(): Promise<Record<string, string>>;

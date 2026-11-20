@@ -64,6 +64,20 @@ handling, file deletion and folder deletion call `purgeFile`/`purgeFolder`, whic
 Moving a file to another folder purges the old location, so a favorite does not follow a moved file (the same as
 its tags). A runtime whose metadata store has no favorites (`501`) shows neither the star nor the sidebar entry.
 
+## Tag folders
+
+The folder-plus icon in the sidebar **태그** header (left of the index icon) asks for a name and creates a tag folder.
+Folders are listed directly below **미분류**, sorted by name in Unicode order, and the tags follow them. Drag a tag
+onto a folder to put it there: a tag that is in a folder is shown only inside that folder and disappears from the
+plain tag list below. A folder opens and closes with a click (the state is remembered in this browser), and that is all
+a folder does: the book list is still opened by clicking a tag, inside a folder or not.
+
+A tag can be in several folders: drag it from inside one folder onto another. The folder-off button on a tag row inside
+a folder takes it out of that folder only; a tag that is in no folder shows in the plain list again. Deleting a folder
+(trash button, with confirmation) removes its tags from the folder and nothing else; the tags and their books stay.
+Deleting a tag removes it from every folder. Dragging needs a mouse or trackpad. A runtime whose metadata store has no
+tag folders (`501`) shows neither the button nor the folders.
+
 ## Viewer toolbar
 
 The viewer toolbar orders page navigation before single-page and two-page layout,

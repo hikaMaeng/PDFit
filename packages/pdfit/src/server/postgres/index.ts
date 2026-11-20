@@ -200,6 +200,48 @@ export class PostgresMetadataStore implements MetadataStore {
     return existing.rows.length > 0;
   }
 
+  async listTagFolders(): Promise<Array<{ name: string; tags: string[] }>> {
+    const result = await this.db.query(`
+      SELECT f.name, COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+      FROM tag_folders f
+      LEFT JOIN tag_folder_tags ft ON ft.folder_name = f.name
+      LEFT JOIN tags t ON t.id = ft.tag_id
+      GROUP BY f.name
+      ORDER BY f.name
+    `);
+    return result.rows.map((row) => ({ name: String(row.name), tags: (row.tags as string[]).map(String) }));
+  }
+
+  async createTagFolder(name: string): Promise<boolean> {
+    const result = await this.db.query('INSERT INTO tag_folders (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteTagFolder(name: string): Promise<boolean> {
+    // tag_folder_tags는 ON DELETE CASCADE라 소속 관계만 지워지고 태그는 남는다.
+    const result = await this.db.query('DELETE FROM tag_folders WHERE name = $1', [name]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async addTagToTagFolder(folderName: string, tag: string): Promise<boolean> {
+    await this.db.query(`
+      INSERT INTO tag_folder_tags (folder_name, tag_id)
+      SELECT f.name, t.id FROM tag_folders f, tags t WHERE f.name = $1 AND t.name = $2
+      ON CONFLICT (folder_name, tag_id) DO NOTHING
+    `, [folderName, tag]);
+    const existing = await this.db.query(`
+      SELECT 1 FROM tag_folder_tags ft JOIN tags t ON t.id = ft.tag_id WHERE ft.folder_name = $1 AND t.name = $2
+    `, [folderName, tag]);
+    return existing.rows.length > 0;
+  }
+
+  async removeTagFromTagFolder(folderName: string, tag: string): Promise<boolean> {
+    const result = await this.db.query(`
+      DELETE FROM tag_folder_tags WHERE folder_name = $1 AND tag_id = (SELECT id FROM tags WHERE name = $2)
+    `, [folderName, tag]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async searchBooksByTitle(query: string, limit = 500): Promise<BookTitleSearchResult> {
     const needle = query.normalize('NFC').trim();
     if (!needle) return { total: 0, books: [] };
@@ -630,6 +672,16 @@ export class PostgresMetadataStore implements MetadataStore {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (folder, filename)
       );
+      CREATE TABLE IF NOT EXISTS tag_folders (
+        name TEXT PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS tag_folder_tags (
+        folder_name TEXT NOT NULL REFERENCES tag_folders(name) ON DELETE CASCADE,
+        tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (folder_name, tag_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tag_folder_tags_tag ON tag_folder_tags (tag_id);
       INSERT INTO books (folder, filename)
       SELECT folder, filename FROM book_tags
       ON CONFLICT (folder, filename) DO NOTHING;

@@ -607,6 +607,21 @@ pgvector 기반 동작(폴더·파일 목록, 태그, 검색, 북마크, 진행�
 - 썸네일 `find`(클라이언트가 아는 stamp)는 볼륨을 쓰지 않는다. `resolve`·주기 계획·OCR 원본 확인은
   가드를 거친다.
 
+## 태그 폴더
+
+- 저장: `tag_folders(name PK, created_at)`, `tag_folder_tags(folder_name → tag_folders ON DELETE CASCADE, tag_id → tags ON DELETE CASCADE,
+  PK(folder_name, tag_id))`. `ensureSchema()`가 만든다. 한 태그는 여러 폴더에 속할 수 있다. 책 폴더(`folders`)와는 무관하다.
+  폴더를 지우면 소속 행만 사라지고 `tags`는 남는다. 태그를 지우면(`deleteTag`, `deleteAllTags`, 고아 태그 정리) 모든 폴더에서 소속도 사라진다.
+- 라우트: `routes/tagFolders.ts`(`/api/tag-folders`). 이름은 NFC로 정규화하고 앞뒤 공백을 다듬은 1~100자이며 같은 이름은 409다.
+  성공한 변경만 `tag-folders-changed`를 SSE로 알린다. 스토어에 메서드가 없으면 501이고 화면은 폴더 UI를 그리지 않는다
+  (Pro 저장소는 구현하지 않으므로 숨겨진다).
+- 프런트: `model/tagFoldersModel.ts`가 폴더 목록(이름 유니코드 순, 폴더 안 태그도 유니코드 순)을 들고 낙관적으로 바꾼다. 실패하면 서버 목록으로
+  되돌린다. `load()`는 사이드바 마운트, 새로고침, 주기 동기화, `tag-folders-changed`와 `tags-changed`에서 목록을 통째로 교체한다.
+  접힘 상태는 모델이 아니라 사이드바가 `localStorage`(`pdfit.lnb.collapsedTagFolders`, 접은 폴더 이름 배열)에 두며 폴더 목록을 받을 때 사라진 이름을 지운다.
+- 화면: `LNB.tsx`의 `renderTagFolder`/`renderTagRow`. 폴더 안에 있는 태그는 일반 목록(`rootTags`)에서 가린다. 태그 행은 `application/pdfit-tag`
+  드래그 데이터(`{ tag, fromFolder? }`)를 싣고, 폴더 행만 이를 받는다. 책 행을 태그에 놓는 기존 드롭(`application/pdf-item`)은 종류를
+  확인한 뒤에만 반응하므로 두 드래그가 섞이지 않는다. 폴더를 누르면 접기·펴기만 하고 이동하지 않는다.
+
 ## 즐겨찾기
 
 - 저장: `book_favorites(folder, filename, created_at, PK(folder, filename))`. `ensureSchema()`가 만든다.
