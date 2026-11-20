@@ -21,7 +21,7 @@ import TocIcon from '@mui/icons-material/Toc';
 import PdfPage from './PdfPage';
 import PdfOutlineDialog from './PdfOutlineDialog.js';
 import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.js';
-import { loadOutlineWithStorage, type PdfOutlineStorage } from '../../viewer/storedOutline.js';
+import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import type { ViewerStatePayload } from '../../api/viewerState';
 import {
   createViewerInteractionState,
@@ -479,21 +479,11 @@ export default function PdfViewer({
   }, [currentPage, docReady, startSpread]);
 
   // ── 목차 ──────────────────────────────────────────────────────
-  // 키: 열린 문서 객체(docRef). 범위: 이 뷰어 인스턴스. 수명: 문서가 바뀌면(주소 변경, 복구 재열기)
-  // 다른 객체가 되어 새로 읽는다. 크기: 문서 하나분 한 칸. 읽기 오류 결과는 담지 않아 다시 열면 재시도한다.
-  const outlineCacheRef = useRef<{ doc: PDFDocumentProxy; promise: Promise<PdfOutlineResult> } | null>(null);
-  const loadOutline = useCallback((): Promise<PdfOutlineResult> => {
-    const doc = docRef.current;
-    if (!doc) return Promise.resolve({ status: 'failed', reason: 'error' });
-    const cached = outlineCacheRef.current;
-    if (cached && cached.doc === doc) return cached.promise;
-    const promise = loadOutlineWithStorage(() => readPdfOutline(doc as unknown as Parameters<typeof readPdfOutline>[0]), outlineStorage).then((result) => {
-      if (result.status === 'failed' && result.reason === 'error' && outlineCacheRef.current?.promise === promise) outlineCacheRef.current = null;
-      return result;
-    });
-    outlineCacheRef.current = { doc, promise };
-    return promise;
-  }, [outlineStorage]);
+  const outlineDocument = docReady ? docRef.current : null;
+  const readOutline = useCallback((): Promise<PdfOutlineResult> => {
+    if (!outlineDocument) return Promise.resolve({ status: 'failed', reason: 'error' });
+    return readPdfOutline(outlineDocument as unknown as Parameters<typeof readPdfOutline>[0]);
+  }, [outlineDocument]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
   const goToPage = useCallback((n: number, mode?: ViewMode) => {
@@ -1135,7 +1125,7 @@ export default function PdfViewer({
       )}
 
       </Box>
-      <PdfOutlineDialog open={outlineOpen} loadOutline={loadOutline} currentPage={currentPage} onSelectPage={(page) => goToPage(page)} onClose={() => setOutlineOpen(false)} />
+      <PdfOutlineDialog open={outlineOpen} readOutline={readOutline} storage={outlineStorage} pageCount={totalPages} currentPage={currentPage} onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
     </Box>
   );
 }

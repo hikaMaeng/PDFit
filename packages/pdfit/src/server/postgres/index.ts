@@ -475,12 +475,20 @@ export class PostgresMetadataStore implements MetadataStore {
         AND o.source_modified_at IS NOT DISTINCT FROM b.modified_at
     `, [folder, filename]);
     const row = result.rows[0];
-    return row ? parseBookOutlineEntries(row.entries) : null;
+    return row ? parseBookOutlineEntries(row.entries, { allowEmpty: true }) : null;
   }
 
-  /** Stores (or replaces) a successfully read outline, stamped with the book's current size and modified time. */
+  /** Stores the outline or a deletion against the book's current size and modified time. */
   async setBookOutline(folder: string, filename: string, entries: BookOutlineEntry[]): Promise<void> {
-    await this.db.query(`
+    await this.writeBookOutline(folder, filename, entries, false);
+  }
+
+  async initializeBookOutline(folder: string, filename: string, entries: BookOutlineEntry[]): Promise<boolean> {
+    return this.writeBookOutline(folder, filename, entries, true);
+  }
+
+  private async writeBookOutline(folder: string, filename: string, entries: BookOutlineEntry[], onlyIfMissing: boolean): Promise<boolean> {
+    const result = await this.db.query(`
       INSERT INTO book_outlines (folder, filename, entries, source_size, source_modified_at, updated_at)
       SELECT $1::text, $2::text, $3::jsonb, b.size, b.modified_at, NOW()
       FROM (SELECT 1) AS one
@@ -488,7 +496,11 @@ export class PostgresMetadataStore implements MetadataStore {
       ON CONFLICT (folder, filename)
       DO UPDATE SET entries = EXCLUDED.entries, source_size = EXCLUDED.source_size,
         source_modified_at = EXCLUDED.source_modified_at, updated_at = EXCLUDED.updated_at
-    `, [folder, filename, JSON.stringify(entries)]);
+      WHERE NOT $4::boolean OR
+        (book_outlines.source_size, book_outlines.source_modified_at)
+          IS DISTINCT FROM (EXCLUDED.source_size, EXCLUDED.source_modified_at)
+    `, [folder, filename, JSON.stringify(entries), onlyIfMissing]);
+    return result.rowCount === 1;
   }
 
   async purgeFile(folder: string, filename: string): Promise<void> {

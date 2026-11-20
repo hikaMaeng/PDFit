@@ -1,8 +1,8 @@
 /**
  * Table-of-contents wire contract shared by the viewer and `/api/outlines`.
  *
- * A stored outline is one the viewer read successfully from the PDF's own `/Outlines`.
- * Failed lookups (no outline, unreadable outline) are never stored.
+ * A stored outline comes from the PDF's `/Outlines` or a reader's edits.
+ * An empty stored array records an explicit deletion.
  */
 
 /** One flattened outline row. `page` is 1-based, or null when the entry names no page of the PDF. */
@@ -15,7 +15,7 @@ export interface BookOutlineEntry {
   page: number | null;
 }
 
-/** `GET /api/outlines/:folder/:filename` answer, and the `PUT` body. */
+/** GET returns an empty array after deletion. PUT requires at least one entry. */
 export interface BookOutlinePayload {
   entries: BookOutlineEntry[];
 }
@@ -29,9 +29,9 @@ export const BOOK_OUTLINE_MAX_TITLE_LENGTH = 1000;
 
 const KEY_PATTERN = /^\d+(?:\.\d+)*$/;
 
-/** Validates a stored or submitted outline. Returns the entries, or null when it is empty or any row is invalid. */
-export function parseBookOutlineEntries(value: unknown): BookOutlineEntry[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > BOOK_OUTLINE_MAX_ENTRIES) return null;
+/** Validates an outline. Empty arrays are accepted only when reading stored data. */
+export function parseBookOutlineEntries(value: unknown, { allowEmpty = false } = {}): BookOutlineEntry[] | null {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > BOOK_OUTLINE_MAX_ENTRIES) return null;
   const keys = new Set<string>();
   const entries: BookOutlineEntry[] = [];
   for (const row of value) {

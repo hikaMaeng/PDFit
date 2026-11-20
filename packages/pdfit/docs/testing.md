@@ -6,7 +6,8 @@ Shared package changes are verified through:
 * `npm run verify:repo`
 * `npm run verify:pdfit`
 * `npm run test:pdfgpu`
-* `npm run test:outline`: viewer table of contents. Builds a 3-page PDF with a real `/Outlines` tree (nested entry, named destination, page-index destination, UTF-16 title, URI action, missing destination) and a PDF without one, opens both with PDF.js and checks the flattened rows; checks that only successful reads are stored, the `/api/outlines` validation and 501 path, and, with `PDFIT_TEST_DATABASE_URL`, the PostgreSQL row lifecycle (replace, stale after the file changes, `purgeFile`, `purgeFolder`).
+* `npm run test:outline` verifies outline extraction, conditional initialization, deletion, validation and unsupported storage. With `PDFIT_TEST_DATABASE_URL`, it also checks the PostgreSQL row lifecycle.
+* [Outline management browser scenarios](../../../apps/pdfit/tests/plans/viewer-outline-management-20261120.md) cover edit and retry, page navigation, deletion across reloads, and PDF.js and PDFGPU regeneration. Open the `Table of contents` toolbar button (`viewer-outline-open`) and use visible actions in its named dialog. `pdf-outline-entry` identifies a listed row and `pdf-outline-edit-row` scopes labels in each editor row.
 * `npm run test:tasks`: background task queue, scheduler (replan, parallelism budget,
   failed plan, urgent submissions, timers), worker pool with real worker threads
   (script error, contract violation, timeout recovery), and the thumbnail job end to

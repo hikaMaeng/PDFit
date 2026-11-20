@@ -155,16 +155,17 @@ The route is part of `createPdfitMetadataRouterMounts`, so the hosted runtime mo
 
 ## Table of contents endpoints
 
-`/api/outlines/:folder/:filename[?driveFileId=]` ([`src/server/routes/outlines.ts`](../src/server/routes/outlines.ts)) keeps the table of contents the viewer read successfully. The wire types and validation are in [`src/common/protocol/outlines/index.ts`](../src/common/protocol/outlines/index.ts).
+[`/api/outlines/:folder/:filename[?driveFileId=]`](../src/server/routes/outlines.ts#createOutlinesRouter) keeps embedded or edited outlines. The wire types and validation are in [`src/common/protocol/outlines/index.ts`](../src/common/protocol/outlines/index.ts).
 
-* Row: `BookOutlineEntry` `{ key, title, depth, page }`. `key` is the position path (`0`, `0.2`, `0.2.1`), unique per outline; `depth` is 0 for a top-level entry; `page` is 1-based or `null` when the entry names no page of the PDF. At most 5000 rows, depth below 32, titles up to 1000 UTF-16 units.
-* `GET` answers `{ entries }`, or `404` when nothing valid is stored.
-* `PUT` with `{ entries }` stores or replaces the outline and answers `{ ok: true }`; an empty or invalid list answers `400`. The viewer only sends a successful read; there is no way to store a failure.
-* Both answer `501` when the metadata store does not implement the optional `getBookOutline` / `setBookOutline`. The viewer then reads the outline from the PDF on every open.
+* `BookOutlineEntry` has `key`, `title`, `depth` and `page`. Keys are unique within the outline. Depth starts at 0. Pages start at 1 and can be `null` for entries without a destination. The limits are 5000 rows, 32 levels and 1000 UTF-16 units per title.
+* `GET` returns `{ entries }`, including `[]` after deletion. It returns `404` when there is no current saved outline.
+* `PUT` replaces the outline and returns `{ ok: true }`. Empty or invalid entries return `400`. `PUT` with `If-None-Match: *` initializes the stored outline and returns `412` when a current copy or deletion already exists.
+* `DELETE` records an empty outline and returns `204`. The marker prevents automatic restoration when opening the dialog.
+* Stores without the corresponding optional metadata method return `501`. If `GET` returns `501`, the viewer reads the PDF and hides the persistent edit and delete controls.
 
 PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, filename)`, one row per book, `entries JSONB`, and `source_size` / `source_modified_at` copied from the book's `books` row when stored. `getBookOutline` returns the row only while those two still equal the `books` row (`IS NOT DISTINCT FROM`), so a replaced PDF is read again and its next successful read overwrites the row. `purgeFile` and `purgeFolder` delete the rows; the folders router's move calls `purgeFile` on the old location. The route is mounted by `createPdfitMetadataRouterMounts`.
 
-Viewer side: `readPdfOutline(doc)` ([`src/front/viewer/pdfOutline.ts`](../src/front/viewer/pdfOutline.ts)) flattens PDF.js `getOutline()` and resolves explicit, named and page-index destinations; a missing or empty outline is `{ status: 'failed', reason: 'empty' }`, a throwing one `reason: 'error'`. `loadOutlineWithStorage(read, storage)` ([`src/front/viewer/storedOutline.ts`](../src/front/viewer/storedOutline.ts)) asks storage first and saves only an `ok` read. The PDFGPU engine has no PDF.js document, so `readPdfOutlineFromUrl(url)` opens the same URL with PDF.js range requests for the outline only.
+[`OutlineModel`](../src/front/viewer/outlineModel.ts#OutlineModel) owns dialog operations for both viewer engines. [`loadOutlineWithStorage`](../src/front/viewer/storedOutline.ts#loadOutlineWithStorage) checks storage first and conditionally initializes a missing outline after a successful PDF read. On `412`, it reads the current storage value. [`readPdfOutline`](../src/front/viewer/pdfOutline.ts#readPdfOutline) flattens PDF.js `getOutline()` and resolves its page destinations. The PDFGPU engine uses [`readPdfOutlineFromUrl`](../src/front/viewer/readPdfOutlineFromUrl.ts#readPdfOutlineFromUrl) to read the same PDF URL through PDF.js.
 
 ## Bookmark endpoints
 

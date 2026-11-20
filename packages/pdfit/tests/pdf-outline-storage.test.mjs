@@ -22,7 +22,13 @@ function memoryStorage(initial = null, { saveOk = true } = {}) {
     calls,
     storage: {
       load: async () => { calls.load += 1; return stored; },
-      save: async (entries) => { calls.save.push(entries); if (saveOk) stored = entries; return saveOk; },
+      initialize: async (entries) => {
+        calls.save.push(entries);
+        if (stored !== null) return 'exists';
+        if (!saveOk) return 'failed';
+        stored = entries;
+        return 'saved';
+      },
     },
   };
 }
@@ -32,7 +38,7 @@ describe('stored table of contents (viewer side)', () => {
     const { storage, calls } = memoryStorage(ENTRIES);
     let reads = 0;
     const result = await loadOutlineWithStorage(async () => { reads += 1; return { status: 'ok', entries: [] }; }, storage);
-    assert.deepEqual(result, { status: 'ok', entries: ENTRIES, source: 'stored' });
+    assert.deepEqual(result, { result: { status: 'ok', entries: ENTRIES, source: 'stored' }, canSave: true });
     assert.equal(reads, 0);
     assert.equal(calls.save.length, 0);
   });
@@ -41,23 +47,42 @@ describe('stored table of contents (viewer side)', () => {
     const { storage, calls } = memoryStorage(null);
     let reads = 0;
     const read = async () => { reads += 1; return { status: 'ok', entries: ENTRIES }; };
-    assert.deepEqual(await loadOutlineWithStorage(read, storage), { status: 'ok', entries: ENTRIES, source: 'pdf', saved: true });
+    assert.deepEqual((await loadOutlineWithStorage(read, storage)).result, { status: 'ok', entries: ENTRIES, source: 'pdf', saved: true });
     assert.deepEqual(calls.save, [ENTRIES]);
-    assert.deepEqual(await loadOutlineWithStorage(read, storage), { status: 'ok', entries: ENTRIES, source: 'stored' });
+    assert.deepEqual((await loadOutlineWithStorage(read, storage)).result, { status: 'ok', entries: ENTRIES, source: 'stored' });
     assert.equal(reads, 1);
   });
 
   it('never stores a failed lookup', async () => {
     for (const reason of ['empty', 'error']) {
       const { storage, calls } = memoryStorage(null);
-      assert.deepEqual(await loadOutlineWithStorage(async () => ({ status: 'failed', reason }), storage), { status: 'failed', reason });
+      assert.deepEqual((await loadOutlineWithStorage(async () => ({ status: 'failed', reason }), storage)).result, { status: 'failed', reason });
       assert.equal(calls.save.length, 0, reason);
     }
   });
 
   it('still shows a fresh outline when the server does not store it', async () => {
     const { storage } = memoryStorage(null, { saveOk: false });
-    assert.deepEqual(await loadOutlineWithStorage(async () => ({ status: 'ok', entries: ENTRIES }), storage), { status: 'ok', entries: ENTRIES, source: 'pdf', saved: false });
+    assert.deepEqual((await loadOutlineWithStorage(async () => ({ status: 'ok', entries: ENTRIES }), storage)).result, { status: 'ok', entries: ENTRIES, source: 'pdf', saved: false });
+  });
+
+  it('does not restore a deleted outline, including when another viewer deletes it during the first read', async () => {
+    const { storage, calls } = memoryStorage([]);
+    const read = async () => { throw new Error('Must not read PDF'); };
+    assert.deepEqual(await loadOutlineWithStorage(read, storage), { result: { status: 'deleted' }, canSave: true });
+    assert.equal(calls.save.length, 0);
+
+    let deleted = false;
+    const racingStorage = {
+      load: async () => deleted ? [] : null,
+      initialize: async () => 'exists',
+    };
+    assert.deepEqual(await loadOutlineWithStorage(async () => {
+      deleted = true;
+      return { status: 'ok', entries: ENTRIES };
+    }, racingStorage), {
+      result: { status: 'deleted' }, canSave: true,
+    });
   });
 });
 
@@ -96,9 +121,29 @@ describe('/api/outlines', () => {
     });
   });
 
+  it('persists deletion and rejects automatic initialization until explicitly restored', async () => {
+    let entries = ENTRIES;
+    const store = {
+      getBookOutline: async () => entries,
+      setBookOutline: async (folder, filename, next) => { entries = next; },
+      initializeBookOutline: async () => false,
+    };
+    await withServer(store, async (base) => {
+      const url = `${base}/A/b.pdf`;
+      const headers = { 'Content-Type': 'application/json', 'If-None-Match': '*' };
+      const body = JSON.stringify({ entries: ENTRIES });
+      assert.equal((await fetch(url, { method: 'DELETE' })).status, 204);
+      assert.equal((await fetch(url, { method: 'PUT', headers, body })).status, 412);
+      assert.deepEqual(await (await fetch(url)).json(), { entries: [] });
+      assert.equal((await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })).status, 200);
+      assert.deepEqual(await (await fetch(url)).json(), { entries: ENTRIES });
+    });
+  });
+
   it('answers 501 when the store does not keep outlines', async () => {
     await withServer({}, async (base) => {
       assert.equal((await fetch(`${base}/A/b.pdf`)).status, 501);
+      assert.equal((await fetch(`${base}/A/b.pdf`, { method: 'DELETE' })).status, 501);
       const put = await fetch(`${base}/A/b.pdf`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries: ENTRIES }) });
       assert.equal(put.status, 501);
     });
@@ -121,7 +166,7 @@ it('PostgresMetadataStore keeps an outline until the PDF changes, moves or is re
       ]);
 
       assert.equal(await store.getBookOutline('Dev', 'a.pdf'), null, 'nothing stored yet');
-      await store.setBookOutline('Dev', 'a.pdf', ENTRIES);
+      assert.equal(await store.initializeBookOutline('Dev', 'a.pdf', ENTRIES), true);
       assert.deepEqual(await store.getBookOutline('Dev', 'a.pdf'), ENTRIES);
       assert.equal(await store.getBookOutline('Dev', 'b.pdf'), null, 'another book has its own row');
 
@@ -131,10 +176,14 @@ it('PostgresMetadataStore keeps an outline until the PDF changes, moves or is re
       const count = await client.query('SELECT COUNT(*)::int AS n FROM book_outlines');
       assert.equal(count.rows[0].n, 1);
 
+      await store.setBookOutline('Dev', 'a.pdf', []);
+      assert.equal(await store.initializeBookOutline('Dev', 'a.pdf', ENTRIES), false);
+      assert.deepEqual(await store.getBookOutline('Dev', 'a.pdf'), []);
+
       // The PDF was replaced (new size / modified time): the stored outline is no longer used.
       await store.syncBooks([{ folder: 'Dev', filename: 'a.pdf', size: 101, modified_at: '2026-11-02T00:00:00.000Z' }]);
       assert.equal(await store.getBookOutline('Dev', 'a.pdf'), null, 'stale after the file changed');
-      await store.setBookOutline('Dev', 'a.pdf', ENTRIES);
+      assert.equal(await store.initializeBookOutline('Dev', 'a.pdf', ENTRIES), true);
       assert.deepEqual(await store.getBookOutline('Dev', 'a.pdf'), ENTRIES, 'stored again against the new file');
 
       // Move / delete path (folders router calls purgeFile on the old location) and folder removal.

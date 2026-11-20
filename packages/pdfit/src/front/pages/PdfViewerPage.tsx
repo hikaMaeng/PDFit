@@ -256,7 +256,9 @@ export default function PdfViewerPage() {
   // A sample or a still-uploading PDF has no library row to keep a table of contents against.
   const outlineStorage = useMemo<PdfOutlineStorage | null>(() => (sample || pendingUpload ? null : {
     load: () => outlinesApi.getStored(folderName, fileName, driveFileId),
+    initialize: (entries) => outlinesApi.initialize(folderName, fileName, entries, driveFileId),
     save: (entries) => outlinesApi.save(folderName, fileName, entries, driveFileId),
+    remove: () => outlinesApi.remove(folderName, fileName, driveFileId),
   }), [driveFileId, fileName, folderName, pendingUpload, sample]);
 
   const handleGpuUnavailable = useCallback(() => {

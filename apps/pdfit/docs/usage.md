@@ -37,7 +37,9 @@ The contents button in the viewer toolbar, left of the page arrows, opens the bo
 
 Nothing is guessed from page text. A PDF without an outline shows **Could not load the table of contents** with "This PDF has no table of contents."; an outline that cannot be read shows the same title with **Try again**.
 
-The first successful read is saved in the database, so later opens, from any browser, show the saved copy without reading the PDF. When the PDF file is replaced (its size or modified time changes) the copy is ignored and the outline is read again. Deleting or moving the file, or removing its folder, deletes the copy. A failed lookup is not saved. Sample books are read every time.
+The first successful read is saved in the database. Later opens use that copy until the PDF is replaced or the saved outline is changed. **Regenerate** replaces the saved outline with the PDF’s embedded outline when it can be read. **Edit outline** lets you add or remove entries and change their titles, page numbers, and levels. A blank page gives the entry no destination. You can also start an outline for a PDF without one. **Delete outline** asks for confirmation and keeps the viewer’s outline empty on later opens. Use **Regenerate** to restore the embedded outline or **Edit outline** to start over.
+
+These actions change the viewer’s outline in the database. If a PDF is replaced, moved, or removed, its saved outline is discarded. Sample books support reading and regenerating the embedded outline during the session.
 
 ## Clip and page text (OCR)
 
