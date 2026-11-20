@@ -69,7 +69,7 @@ export default function SearchPage() {
     };
   }, [load]);
 
-  const actions = useBookLibraryActions({ books, setBooks, tagColors, setTagColors, reload: (background) => load(() => true, background), onError: setError });
+  const actions = useBookLibraryActions({ books, setBooks, tagColors, setTagColors, onError: setError });
   const openFolder = useCallback((folder: string, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -129,8 +129,8 @@ export default function SearchPage() {
                   onTagDelete={(folder, filename, tag) => void actions.removeTagInline(folder, filename, tag, book.driveFileId)}
                   onManageTags={(folder, filename) => void actions.openTagDialog(folder, filename, book.driveFileId)}
                   onAutoTag={actions.canUseAiAutoTag ? () => void actions.autoTag(book) : undefined}
-                  autoTagging={actions.tagMutation === `ai:${bookActionIdentity(book)}`}
-                  autoTagDisabled={actions.tagMutation !== null}
+                  autoTagging={actions.isAutoTagging(bookActionIdentity(book))}
+                  autoTagDisabled={actions.isAutoTagDisabled(bookActionIdentity(book))}
                   onEditMetadata={actions.bookMetadataEnabled ? () => void actions.openDocumentMetadata(book) : undefined}
                   onMove={(folder, filename) => void actions.openMoveDialog(folder, filename, book.driveFileId)}
                   onDelete={(folder, filename) => actions.requestDelete(folder, filename, book.driveFileId)}
@@ -163,8 +163,8 @@ export default function SearchPage() {
                   onTagDelete={(folder, filename, tag) => void actions.removeTagInline(folder, filename, tag, book.driveFileId)}
                   onManageTags={(folder, filename) => void actions.openTagDialog(folder, filename, book.driveFileId)}
                   onAutoTag={actions.canUseAiAutoTag ? () => void actions.autoTag(book) : undefined}
-                  autoTagging={actions.tagMutation === `ai:${bookActionIdentity(book)}`}
-                  autoTagDisabled={actions.tagMutation !== null}
+                  autoTagging={actions.isAutoTagging(bookActionIdentity(book))}
+                  autoTagDisabled={actions.isAutoTagDisabled(bookActionIdentity(book))}
                   onEditMetadata={actions.bookMetadataEnabled ? () => void actions.openDocumentMetadata(book) : undefined}
                   onMove={(folder, filename) => void actions.openMoveDialog(folder, filename, book.driveFileId)}
                   onDelete={(folder, filename) => actions.requestDelete(folder, filename, book.driveFileId)}

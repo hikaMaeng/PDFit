@@ -30,6 +30,7 @@ import LibraryFixedControls from '../components/LibraryFixedControls';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from '../components/TagColorPicker';
 import TagChip from '../components/TagChip';
 import HashTagIcon from '../components/HashTagIcon';
+import { useTagMutationLocks } from '../components/useTagMutationLocks';
 import { folderLibraryModel } from '../model/folderLibraryModel';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
@@ -94,7 +95,10 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   const [tagInput, setTagInput] = useState('');
   const [tagInputColor, setTagInputColor] = useState(lastTagInputColor);
   const [tagLoading, setTagLoading] = useState(false);
-  const [tagMutation, setTagMutation] = useState<string | null>(null);
+  const locks = useTagMutationLocks();
+  /** 태그 다이얼로그가 연 책. 다이얼로그 안의 잠금은 그 책 하나만 따른다. */
+  const dialogBookKey = tagDialog ? (tagDialog.driveFileId ?? `${tagDialog.folder}/${tagDialog.file}`) : null;
+  const dialogBusy = dialogBookKey !== null && locks.isBookBusy(dialogBookKey);
   const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
   const [metadataTarget, setMetadataTarget] = useState<BookMetadataTarget | null>(null);
 
@@ -269,7 +273,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   }, [bookTags]);
 
   const handleAddTag = async (tag: string) => {
-    if (!tagDialog || !tag.trim() || tagMutation) return false;
+    if (!tagDialog || !tag.trim()) return false;
     const trimmed = tag.trim();
     const isNewTag = !allTags.includes(trimmed);
     if (tagDialog.currentTags.includes(trimmed)) {
@@ -279,7 +283,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     }
     const { folder, file, driveFileId } = tagDialog;
     const key = driveFileId ?? `${folder}/${file}`;
-    setTagMutation(trimmed);
+    if (!locks.begin('tag', key)) return false;
     setTagNotice({ message: ui("\"{p0}\" 태그를 추가하는 중입니다…", { p0: trimmed }), severity: 'info' });
     try {
       await tagsApi.addTag(folder, file, trimmed, driveFileId);
@@ -313,12 +317,12 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
       setTagNotice({ message: ui("태그를 추가하지 못했습니다. {p0}", { p0: message }), severity: 'error' });
       return false;
     } finally {
-      setTagMutation(null);
+      locks.end('tag', key);
     }
   };
 
   const handleCloseTagDialog = async () => {
-    if (tagMutation) return;
+    if (dialogBusy) return;
     if (tagInput.trim() && !tagDialog?.currentTags.includes(tagInput.trim())) {
       void handleAddTag(tagInput);
     }
@@ -327,11 +331,11 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   };
 
   const handleRemoveTag = async (tag: string) => {
-    if (!tagDialog || tagMutation) return;
+    if (!tagDialog) return;
     const { folder, file, driveFileId } = tagDialog;
     const key = driveFileId ?? `${folder}/${file}`;
     const removedBook = books.find((book) => bookIdentity(book) === key);
-    setTagMutation(tag);
+    if (!locks.begin('tag', key)) return;
     setTagNotice({ message: ui("\"{p0}\" 태그를 삭제하는 중입니다…", { p0: tag }), severity: 'info' });
     setTagDialog((prev) => prev ? { ...prev, currentTags: prev.currentTags.filter((item) => item !== tag) } : prev);
     setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((item) => item !== tag) }));
@@ -353,15 +357,14 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
       const message = e instanceof Error ? e.message : ui("태그 삭제 실패");
       setTagNotice({ message: ui("태그를 삭제하지 못했습니다. {p0}", { p0: message }), severity: 'error' });
     } finally {
-      setTagMutation(null);
+      locks.end('tag', key);
     }
   };
 
   const handleInlineRemoveTag = useCallback(async (folder: string, filename: string, tag: string, driveFileId?: string) => {
-    if (tagMutation) return;
     const key = driveFileId ?? `${folder}/${filename}`;
     const removedBook = books.find((book) => bookIdentity(book) === key);
-    setTagMutation(tag);
+    if (!locks.begin('tag', key)) return;
     setTagNotice({ message: ui("\"{p0}\" 태그를 삭제하는 중입니다…", { p0: tag }), severity: 'info' });
     setBookTags((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((item) => item !== tag) }));
     if (tag === tagName) setBooks((prev) => prev.filter((book) => bookIdentity(book) !== key));
@@ -379,19 +382,31 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
       const message = e instanceof Error ? e.message : ui("태그 삭제 실패");
       setTagNotice({ message: ui("태그를 삭제하지 못했습니다. {p0}", { p0: message }), severity: 'error' });
     } finally {
-      setTagMutation(null);
+      locks.end('tag', key);
     }
-  }, [books, tagMutation, tagName]);
+  }, [books, locks, tagName]);
 
   const handleCoverAutoTag = async (book: BookRef) => {
-    if (!canUseAiAutoTag || tagMutation !== null) return;
-    setTagMutation(`ai:${bookIdentity(book)}`);
+    if (!canUseAiAutoTag) return;
+    const key = bookIdentity(book);
+    if (!locks.begin('ai', key)) return;
     try {
-      await tagsApi.autoTag(book.folder, book.filename, book.driveFileId);
-      await loadBooks(true);
+      const result = await tagsApi.autoTag(book.folder, book.filename, book.driveFileId);
+      // 서버가 적용한 태그만 반영한다. 목록을 통째로 다시 불러오면 같은 화면에서
+      // 동시에 돌고 있는 다른 책의 낙관적 갱신까지 덮어쓴다.
+      setBookTags((prev) => {
+        const current = prev[key] ?? [];
+        const kept = current.filter((tag) => !result.removedTags.includes(tag));
+        return { ...prev, [key]: [...kept, ...result.addedTags.filter((tag) => !kept.includes(tag))] };
+      });
+      const library = folderLibraryModel.get(book.folder);
+      for (const tag of result.addedTags) { library.addTag(book.filename, tag, book.driveFileId); publishTagSummaryOptimistic(tag, 1); }
+      for (const tag of result.removedTags) { library.removeTag(book.filename, tag, book.driveFileId); publishTagSummaryOptimistic(tag, -1); }
+      // 보고 있는 태그가 떨어져 나갔다면 이 목록에 더는 속하지 않는다.
+      if (tagName && result.removedTags.includes(tagName)) setBooks((prev) => prev.filter((item) => bookIdentity(item) !== key));
       window.dispatchEvent(new Event('tags-changed'));
     } catch (error) { setError(error instanceof Error ? error.message : t('aiTaggingFailed')); }
-    finally { setTagMutation(null); }
+    finally { locks.end('ai', key); }
   };
 
   const openFolder = useCallback((folder: string, event: React.MouseEvent) => {
@@ -468,7 +483,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
           </List>
           <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
           </> : <><Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
-            {renderedBooks.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={!serverThumbnails ? foldersApi.thumbnailUrl(book.driveFileId) : book.driveFileId ? foldersApi.thumbnailUrl(book.driveFileId, book.modified_at, book.size) : foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size)} tags={bookTags[bookIdentity(book)] ?? []} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={tagMutation === `ai:${bookIdentity(book)}`} autoTagDisabled={tagMutation !== null} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
+            {renderedBooks.map(book => <PdfCoverItem key={bookIdentity(book)} filename={book.filename} folder={book.folder} driveFileId={book.driveFileId} size={book.size} url={foldersApi.fileUrl(book.folder, book.filename, book.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={!serverThumbnails ? foldersApi.thumbnailUrl(book.driveFileId) : book.driveFileId ? foldersApi.thumbnailUrl(book.driveFileId, book.modified_at, book.size) : foldersApi.localThumbnailUrl(book.folder, book.filename, book.modified_at, book.size)} tags={bookTags[bookIdentity(book)] ?? []} tagColors={tagColors} selected={false} hideSelection onSelectionChange={() => {}} onMove={(folder, filename) => void openMoveDialog(folder, filename, book.driveFileId)} onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })} onAutoTag={canUseAiAutoTag ? () => void handleCoverAutoTag(book) : undefined} autoTagging={locks.isAutoTagging(bookIdentity(book))} autoTagDisabled={locks.isBookBusy(bookIdentity(book)) || (locks.autoTagSlotsFull && !locks.isAutoTagging(bookIdentity(book)))} onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)} onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)} onEditMetadata={bookMetadataEnabled ? () => void openDocumentMetadata(book) : undefined} />)}
           </Box>
           <ListMountProgress done={listFullyMounted} sentinelRef={listSentinelRef} rendered={renderedBooks.length} total={books.length} />
           </>}
@@ -540,7 +555,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
                   <Typography variant="caption" color="text.disabled">{t('noTags')}</Typography>
                 ) : (
                   tagDialog?.currentTags.map((tag) => (
-                    <TagChip hashLabel key={tag} tag={tag} color={tagColors[tag]} disabled={tagMutation !== null} onDelete={() => void handleRemoveTag(tag)} />
+                    <TagChip hashLabel key={tag} tag={tag} color={tagColors[tag]} disabled={dialogBusy} onDelete={() => void handleRemoveTag(tag)} />
                   ))
                 )}
               </Box>
@@ -556,7 +571,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
                   }}
                   fullWidth
                   value={null}
-                  disabled={tagMutation !== null}
+                  disabled={dialogBusy}
                   options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))}
                   inputValue={tagInput}
                   onInputChange={(_e, val, reason) => {
@@ -576,14 +591,14 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
                   )}
                 />
                 <TagColorPicker color={tagInputColor} onChange={(color) => { setTagInputColor(color); rememberTagInputColor(color); }} label={ui("새 태그 색상")} variant="swatch" />
-                <Button data-testid="add-tag-button" variant="contained" size="small" disabled={tagMutation !== null} onClick={(event) => { if (tagInput.trim()) void handleAddTag(tagInput); else event.currentTarget.parentElement?.querySelector('input')?.focus(); }} sx={{ flexShrink: 0, bgcolor: '#3b82f6', color: '#ffffff', '&:hover': { bgcolor: '#2563eb' } }}>{ui("추가")}</Button>
+                <Button data-testid="add-tag-button" variant="contained" size="small" disabled={dialogBusy} onClick={(event) => { if (tagInput.trim()) void handleAddTag(tagInput); else event.currentTarget.parentElement?.querySelector('input')?.focus(); }} sx={{ flexShrink: 0, bgcolor: '#3b82f6', color: '#ffffff', '&:hover': { bgcolor: '#2563eb' } }}>{ui("추가")}</Button>
               </Box>
               {!canUseAiAutoTag && <Typography data-testid="pdf-auto-classify-access-guide" variant="body2" color="text.secondary" sx={{ mt: 2, fontSize: 14, lineHeight: 1.6 }}>{ui('유료 이용권 결제 시 AI 자동태그를 사용할 수 있습니다.')}</Typography>}
             </>
           )}
         </DialogContent>
         <DialogActions>
-          <Button disabled={tagMutation !== null} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>
+          <Button disabled={dialogBusy} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>
         </DialogActions>
       </Dialog>
       <TagNoticeSnackbar notice={tagNotice} onClose={() => setTagNotice(null)} />
