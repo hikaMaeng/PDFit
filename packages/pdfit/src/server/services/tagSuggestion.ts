@@ -137,7 +137,7 @@ export function createYes24PublicBookLookup(request: typeof fetch = fetch): (tit
     const searchUrl = new URL(YES24_PUBLIC_SEARCH_URL);
     searchUrl.searchParams.set('domain', 'BOOK');
     searchUrl.searchParams.set('query', title);
-    const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; PDFit/0.4.7; book categorization)' };
+    const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; PDFit/0.4.8; book categorization)' };
     const searchResponse = await queuedRequest(() => request(searchUrl, { headers, signal: AbortSignal.timeout(10_000) }));
     if (!searchResponse.ok) throw new Error(`YES24 공개 도서 검색에 실패했습니다 (${searchResponse.status}).`);
     const searchHtml = await searchResponse.text();
@@ -422,7 +422,7 @@ export function createWikidataSubjectTagSuggestionProvider(request: typeof fetch
       const url = new URL('https://www.wikidata.org/w/api.php');
       for (const [name, value] of Object.entries({ action: 'wbsearchentities', search: token, language: /[가-힣]/u.test(token) ? 'ko' : 'en', format: 'json', limit: '5' })) url.searchParams.set(name, value);
       try {
-        const response = await request(url, { headers: { Accept: 'application/json', 'User-Agent': 'PDFit/0.4.7 (book subject classification)' }, signal: AbortSignal.timeout(5_000) });
+        const response = await request(url, { headers: { Accept: 'application/json', 'User-Agent': 'PDFit/0.4.8 (book subject classification)' }, signal: AbortSignal.timeout(5_000) });
         if (!response.ok) continue;
         const payload = await response.json() as WikidataEntitySearch;
         const exact = (payload.search ?? []).filter((entity) =>

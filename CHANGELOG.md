@@ -1,6 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.8] - 2026-11-20
+
+### Highlights
+
+- The viewer toolbar uses compact English captions and includes OCR and Download.
+- The **Image** panel provides inversion, brightness, contrast, saturation, and three presets. GPU rendering uses the `@pdfgpu/core` 0.1.12 shader.
+- Readers can regenerate, edit, and delete the saved table of contents. Clip saving works over LAN HTTP.
+- Tag folders accept wider drop targets and provide a folder picker. Book-level tag locks let readers keep working on other books during automatic classification.
 
 ### Added
 
