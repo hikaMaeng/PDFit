@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { sanitizeName } from '../services/filesystem.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
 import { parseBookOutlineEntries, type BookOutlinePayload } from '../../common/protocol/outlines/index.js';
+import { bookTitleFromFilename, createYes24PublicBookLookup } from '../services/tagSuggestion.js';
 
 const DRIVE_FILE_ID = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -16,8 +17,28 @@ function driveFileId(req: Request): string | undefined {
  * GET returns `{ entries }` or 404. PUT replaces the outline, or initializes it when
  * If-None-Match is `*`. DELETE stores an empty outline to suppress automatic initialization.
  */
-export function createOutlinesRouter(metadataStoreResolver: MetadataStoreResolver): Router {
+export function createOutlinesRouter(metadataStoreResolver: MetadataStoreResolver, request?: typeof fetch): Router {
   const router = Router();
+  const lookupBook = createYes24PublicBookLookup(request);
+
+  router.get('/:folder/:filename/yes24', async (req: Request, res: Response) => {
+    const isbn = req.query.isbn;
+    if (isbn !== undefined && (typeof isbn !== 'string' || !/^97[89]\d{10}$/.test(isbn))) {
+      res.status(400).json({ error: 'Invalid ISBN.' });
+      return;
+    }
+    try {
+      await resolveMetadataStore(metadataStoreResolver, req);
+      const filename = sanitizeName(req.params.filename);
+      const title = bookTitleFromFilename(filename);
+      if (!title || title.length > 250) { res.sendStatus(404); return; }
+      const book = await lookupBook(title, { isbn });
+      if (!book.tableOfContents) { res.sendStatus(404); return; }
+      res.json({ title: book.matchedTitle, contents: book.tableOfContents });
+    } catch (error) {
+      res.sendStatus((error as { status?: number }).status === 404 ? 404 : 502);
+    }
+  });
 
   router.get('/:folder/:filename', async (req: Request, res: Response) => {
     try {
@@ -46,7 +67,7 @@ export function createOutlinesRouter(metadataStoreResolver: MetadataStoreResolve
         if (!initialized) { res.status(412).json({ error: 'An outline is already stored.' }); return; }
       } else {
         if (!store.setBookOutline) { res.status(501).json({ error: 'Stored outlines are not supported.' }); return; }
-        await store.setBookOutline(folder, filename, entries, id);
+        await store.setBookOutline(folder, filename, entries, id, req.body?.generated === true);
       }
       res.json({ ok: true });
     } catch (error) {

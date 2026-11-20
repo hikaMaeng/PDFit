@@ -2,9 +2,8 @@
  * Reads a PDF's table of contents (the document outline, `/Outlines` in the PDF catalog)
  * through PDF.js and flattens it into rows the viewer's table-of-contents dialog can list.
  *
- * Only the PDF's own outline is used. A book without one, or one whose outline cannot be
- * read, is reported as `failed` so the dialog shows a lookup failure instead of guessing
- * a table of contents from page text.
+ * Uses the PDF's own outline when it names navigable sections. If the catalog has no usable
+ * outline, the optional bookstore lookup supplies the titles and local PDF text locates them.
  */
 
 import {
@@ -13,6 +12,7 @@ import {
   BOOK_OUTLINE_MAX_TITLE_LENGTH,
   type BookOutlineEntry,
 } from '../../common/protocol/outlines/index.js';
+import { readBookstoreOutline, type BookstoreOutlineLookup, type OutlinePageSource } from './bookstoreOutline.js';
 
 /** Explicit PDF destination: `[pageRef | pageIndex, /XYZ | /Fit ..., ...]`. */
 type ExplicitDestination = readonly unknown[];
@@ -26,7 +26,7 @@ export interface PdfOutlineNode {
 }
 
 /** The subset of `PDFDocumentProxy` the resolver needs, so tests can pass a plain object. */
-export interface PdfOutlineSource {
+export interface PdfOutlineSource extends Partial<OutlinePageSource> {
   numPages: number;
   getOutline(): Promise<PdfOutlineNode[] | null>;
   getDestination(id: string): Promise<ExplicitDestination | null>;
@@ -43,7 +43,7 @@ export type PdfOutlineResult =
     status: 'ok';
     entries: PdfOutlineEntry[];
     /** Where the entries came from: the stored copy, or a fresh read of the PDF. Absent from `readPdfOutline`. */
-    source?: 'stored' | 'pdf';
+    source?: 'stored' | 'pdf' | 'yes24';
     /** After a fresh read: whether the server stored it. */
     saved?: boolean;
   }
@@ -82,7 +82,7 @@ export async function resolveOutlineDestinationPage(source: PdfOutlineSource, de
  * resolved are still listed with `page: null`. An outline that is missing, empty, or throws
  * while being read is `failed`.
  */
-export async function readPdfOutline(source: PdfOutlineSource): Promise<PdfOutlineResult> {
+async function readEmbeddedOutline(source: PdfOutlineSource): Promise<PdfOutlineResult> {
   let roots: PdfOutlineNode[] | null;
   try {
     roots = await source.getOutline();
@@ -110,4 +110,16 @@ export async function readPdfOutline(source: PdfOutlineSource): Promise<PdfOutli
     page: pages[index] ?? null,
   }));
   return { status: 'ok', entries };
+}
+
+export async function readPdfOutline(source: PdfOutlineSource, lookup?: BookstoreOutlineLookup): Promise<PdfOutlineResult> {
+  let embedded = await readEmbeddedOutline(source);
+  if (embedded.status === 'ok') {
+    const named = embedded.entries.filter(({ title }) => /\p{L}/u.test(title) && !/^[ivx]+$/i.test(title));
+    if (named.some(({ page }) => page !== null)) return embedded;
+    if (!named.length) embedded = { status: 'failed', reason: 'empty' };
+  }
+  if (!lookup || !source.getPage || !source.getPageLabels) return embedded;
+  const entries = await readBookstoreOutline(source as OutlinePageSource, lookup);
+  return entries ? { status: 'ok', entries, source: 'yes24' } : embedded;
 }

@@ -43,11 +43,11 @@ Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**,
 
 ## Table of contents
 
-The contents button in the viewer toolbar, left of the page arrows, opens the book's table of contents in a dialog. It lists the PDF's own outline (the bookmarks pane of a desktop PDF reader), indented by level, with each entry's page number at the right. Clicking an entry goes to that page and closes the dialog; the chapter containing the current page is highlighted. An entry that points nowhere in the file (a web link, a missing target) is greyed out with "No page".
+The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and closes the dialog.
 
-Nothing is guessed from page text. A PDF without an outline shows **Could not load the table of contents** with "This PDF has no table of contents."; an outline that cannot be read shows the same title with **Try again**.
+If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
 
-The first successful read is saved in the database. Later opens use that copy until the PDF is replaced or the saved outline is changed. **Regenerate** replaces the saved outline with the PDF’s embedded outline when it can be read. **Edit outline** lets you add or remove entries and change their titles, page numbers, and levels. A blank page gives the entry no destination. You can also start an outline for a PDF without one. **Delete outline** asks for confirmation and keeps the viewer’s outline empty on later opens. Use **Regenerate** to restore the embedded outline or **Edit outline** to start over.
+An outline with a verified destination is saved in the database. Later opens use that copy until the PDF is replaced or the saved outline is changed. **Regenerate** repeats the PDF and YES24 lookup and can replace an older saved numeric outline. **Edit outline** lets you add or remove entries and change titles, page numbers, and levels. **Delete outline** asks for confirmation and keeps the outline empty on later opens.
 
 These actions change the viewer’s outline in the database. If a PDF is replaced, moved, or removed, its saved outline is discarded. Sample books support reading and regenerating the embedded outline during the session.
 

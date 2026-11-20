@@ -5,7 +5,7 @@ export interface PdfOutlineStorage {
   /** Null means missing, an empty array means deleted, undefined means unsupported. */
   load(): Promise<BookOutlineEntry[] | null | undefined>;
   initialize(entries: BookOutlineEntry[]): Promise<'saved' | 'exists' | 'failed'>;
-  save(entries: BookOutlineEntry[]): Promise<boolean>;
+  save(entries: BookOutlineEntry[], generated?: boolean): Promise<boolean>;
   remove(): Promise<boolean>;
 }
 
@@ -20,6 +20,10 @@ export function tryReadPdfOutline(read: OutlineReader): Promise<PdfOutlineResult
   return Promise.resolve().then(read).catch(() => ({ status: 'failed', reason: 'error' }));
 }
 
+export function hasOutlineDestination(entries: BookOutlineEntry[]): boolean {
+  return entries.some(({ page }) => page !== null);
+}
+
 export async function loadOutlineWithStorage(readFromPdf: OutlineReader, storage?: PdfOutlineStorage | null):
 Promise<{ result: ViewerOutlineResult; canSave: boolean }> {
   const stored = await storage?.load().catch(() => undefined);
@@ -28,10 +32,11 @@ Promise<{ result: ViewerOutlineResult; canSave: boolean }> {
   const result = await tryReadPdfOutline(readFromPdf);
   const canSave = stored === null;
   if (result.status !== 'ok') return { result, canSave };
-  const initialized = canSave ? await storage?.initialize(result.entries).catch(() => 'failed') : undefined;
+  const initialized = canSave && hasOutlineDestination(result.entries)
+    ? await storage?.initialize(result.entries).catch(() => 'failed') : undefined;
   if (initialized === 'exists') {
     const current = await storage?.load().catch(() => undefined);
     if (current) return { result: storedOutline(current), canSave };
   }
-  return { result: { ...result, source: 'pdf', saved: initialized === 'saved' }, canSave };
+  return { result: { ...result, source: result.source ?? 'pdf', saved: initialized === 'saved' }, canSave };
 }

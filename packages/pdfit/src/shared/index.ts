@@ -117,7 +117,7 @@ export interface MetadataStore {
    * array records a deletion and prevents the viewer from automatically restoring the outline.
    */
   getBookOutline?(folder: string, filename: string, driveFileId?: string): Promise<import('../common/protocol/outlines/index.js').BookOutlineEntry[] | null>;
-  setBookOutline?(folder: string, filename: string, entries: import('../common/protocol/outlines/index.js').BookOutlineEntry[], driveFileId?: string): Promise<void>;
+  setBookOutline?(folder: string, filename: string, entries: import('../common/protocol/outlines/index.js').BookOutlineEntry[], driveFileId?: string, generated?: boolean): Promise<void>;
   initializeBookOutline?(folder: string, filename: string, entries: import('../common/protocol/outlines/index.js').BookOutlineEntry[], driveFileId?: string): Promise<boolean>;
   purgeFile(folder: string, filename: string): Promise<void>;
   purgeFolder(folder: string): Promise<void>;

@@ -254,9 +254,10 @@ export default function PdfViewerPage() {
   const outlineStorage = useMemo<PdfOutlineStorage | null>(() => (sample || pendingUpload ? null : {
     load: () => outlinesApi.getStored(folderName, fileName, driveFileId),
     initialize: (entries) => outlinesApi.initialize(folderName, fileName, entries, driveFileId),
-    save: (entries) => outlinesApi.save(folderName, fileName, entries, driveFileId),
+    save: (entries, generated) => outlinesApi.save(folderName, fileName, entries, driveFileId, generated),
     remove: () => outlinesApi.remove(folderName, fileName, driveFileId),
   }), [driveFileId, fileName, folderName, pendingUpload, sample]);
+  const outlineLookup = useCallback((isbn?: string) => outlinesApi.lookupYes24(folderName, fileName, isbn), [folderName, fileName]);
 
   const handleGpuUnavailable = useCallback(() => {
     setViewerEngine('legacy');
@@ -430,6 +431,7 @@ export default function PdfViewerPage() {
           onBookmarkUpdated={handleBookmarkUpdated}
           onBookmarkDeleted={handleBookmarkDeleted}
           outlineStorage={outlineStorage}
+          outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
         />
       ) : (
@@ -449,6 +451,7 @@ export default function PdfViewerPage() {
           onBookmarkDeleted={handleBookmarkDeleted}
           onDocumentUnavailable={handleDocumentUnavailable}
           outlineStorage={outlineStorage}
+          outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
         />
       ) : (

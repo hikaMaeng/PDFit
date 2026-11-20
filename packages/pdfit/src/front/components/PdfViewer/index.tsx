@@ -5,6 +5,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PdfPage from './PdfPage';
 import PdfOutlineDialog from './PdfOutlineDialog.js';
 import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.js';
+import type { BookstoreOutlineLookup } from '../../viewer/bookstoreOutline.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import type { ViewerStatePayload } from '../../api/viewerState';
 import {
@@ -120,6 +121,7 @@ interface Props {
   onDocumentUnavailable?: () => void;
   /** Stored table of contents for this book. Without it the outline is read from the PDF each time and not stored. */
   outlineStorage?: PdfOutlineStorage | null;
+  outlineLookup?: BookstoreOutlineLookup;
 }
 
 export default function PdfViewer({
@@ -140,6 +142,7 @@ export default function PdfViewer({
   onBookmarkDeleted,
   onDocumentUnavailable,
   outlineStorage,
+  outlineLookup,
 }: Props) {
   const { t, ui } = usePdfitI18n();
   // pages: 희소 배열 (null = 아직 미로드)
@@ -470,8 +473,8 @@ export default function PdfViewer({
   const outlineDocument = docReady ? docRef.current : null;
   const readOutline = useCallback((): Promise<PdfOutlineResult> => {
     if (!outlineDocument) return Promise.resolve({ status: 'failed', reason: 'error' });
-    return readPdfOutline(outlineDocument as unknown as Parameters<typeof readPdfOutline>[0]);
-  }, [outlineDocument]);
+    return readPdfOutline(outlineDocument, outlineLookup);
+  }, [outlineDocument, outlineLookup]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
   const goToPage = useCallback((n: number, mode?: ViewMode) => {

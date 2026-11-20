@@ -28,6 +28,7 @@ import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
 import { usePageColorFilter } from '../PageColorFilter.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
+import type { BookstoreOutlineLookup } from '../../viewer/bookstoreOutline.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
 import { BookmarkSidebar } from './BookmarkSidebar.js';
 import { BookmarkEditorDialog } from './BookmarkEditorDialog.js';
@@ -70,6 +71,7 @@ type Props = {
   onBookmarkDeleted?: (id: string) => Promise<void>;
   /** Stored table of contents for this book. Without it the outline is read from the PDF each time and not stored. */
   outlineStorage?: PdfOutlineStorage | null;
+  outlineLookup?: BookstoreOutlineLookup;
 };
 
 const EMPTY_STATE: PdfGpuViewerState = {
@@ -121,6 +123,7 @@ export default function PdfGpuViewer({
   onBookmarkUpdated,
   onBookmarkDeleted,
   outlineStorage,
+  outlineLookup,
 }: Props) {
   const { ui } = usePdfitI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -128,7 +131,7 @@ export default function PdfGpuViewer({
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const annotation = usePdfAnnotations(url);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  const readOutline = useCallback(() => readPdfOutlineFromUrl(url), [url]);
+  const readOutline = useCallback(() => readPdfOutlineFromUrl(url, outlineLookup), [url, outlineLookup]);
   const bookmark = usePdfBookmarks({ enabled: annotation.tool === 'bookmark', controller, onCaptured: onBookmarkCaptured, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
   const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
   // Wheel on the surface around the core viewport: page modes forward it to the viewport,

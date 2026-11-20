@@ -107,7 +107,7 @@ const YES24_DESCRIPTION_MAX_CHARS = 2_000;
 const YES24_TOC_MAX_CHARS = 6_000;
 
 /** Text of one `infoset_*` section of a YES24 detail page, preferring its plain-text textarea. */
-function yes24DetailSection(html: string, id: string, maxChars: number): string | undefined {
+function yes24DetailSection(html: string, id: string, maxChars: number, preserveLines = false): string | undefined {
   const start = html.indexOf(`id="${id}"`);
   if (start < 0) return undefined;
   const next = html.indexOf('id="infoset_', start + id.length + 4);
@@ -117,7 +117,10 @@ function yes24DetailSection(html: string, id: string, maxChars: number): string 
   const raw = textarea !== undefined
     ? textarea.replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&amp;/gi, '&')
     : segment.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ');
-  const text = decodeHtmlText(raw);
+  const lineBreaks = /<br\s*\/?\s*>|<\/(?:p|li|div|tr|h[1-6])>/i;
+  const text = preserveLines
+    ? raw.split(lineBreaks.test(raw) ? new RegExp(lineBreaks.source, 'gi') : /\r?\n/).map(decodeHtmlText).filter(Boolean).join('\n')
+    : decodeHtmlText(raw);
   return text ? text.slice(0, maxChars) : undefined;
 }
 
@@ -126,17 +129,17 @@ function yes24DetailSection(html: string, id: string, maxChars: number): string 
  * result matches the title closely enough (score >= 0.72). Lookups made through one
  * returned function are serialized, because public pages throttle a folder-wide burst.
  */
-export function createYes24PublicBookLookup(request: typeof fetch = fetch): (title: string) => Promise<Yes24PublicBook> {
+export function createYes24PublicBookLookup(request: typeof fetch = fetch): (title: string, outline?: { isbn?: string }) => Promise<Yes24PublicBook> {
   let requestQueue = Promise.resolve();
   const queuedRequest = <T>(action: () => Promise<T>): Promise<T> => {
     const pending = requestQueue.then(action, action);
     requestQueue = pending.then(() => undefined, () => undefined);
     return pending;
   };
-  return async (title) => {
+  return async (title, outline) => {
     const searchUrl = new URL(YES24_PUBLIC_SEARCH_URL);
-    searchUrl.searchParams.set('domain', 'BOOK');
-    searchUrl.searchParams.set('query', title);
+    searchUrl.searchParams.set('domain', outline ? 'ALL' : 'BOOK');
+    searchUrl.searchParams.set('query', outline?.isbn ?? title);
     const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; PDFit/0.4.8; book categorization)' };
     const searchResponse = await queuedRequest(() => request(searchUrl, { headers, signal: AbortSignal.timeout(10_000) }));
     if (!searchResponse.ok) throw new Error(`YES24 공개 도서 검색에 실패했습니다 (${searchResponse.status}).`);
@@ -146,20 +149,38 @@ export function createYes24PublicBookLookup(request: typeof fetch = fetch): (tit
       const candidateTitle = decodeHtmlText(match[2] ?? '');
       candidates.push({ itemId: match[1], title: candidateTitle, score: scoreBookTitleMatch(title, candidateTitle) });
     }
-    const match = candidates.sort((left, right) => right.score - left.score)[0];
-    if (!match || match.score < 0.72) throw new Error('YES24 공개 검색에서 제목이 일치하는 도서를 찾지 못했습니다.');
-    const detailResponse = await queuedRequest(() => request(`https://www.yes24.com/product/goods/${match.itemId}`, { headers, signal: AbortSignal.timeout(10_000) }));
-    if (!detailResponse.ok) throw new Error(`YES24 도서 상세 조회에 실패했습니다 (${detailResponse.status}).`);
-    const detailHtml = await detailResponse.text();
-    const genreJson = detailHtml.match(/"genre"\s*:\s*(\[[^\]]*\])/i)?.[1];
-    let categories: string[] = [];
-    try {
-      categories = genreJson ? (JSON.parse(genreJson) as unknown[]).filter((value): value is string => typeof value === 'string') : [];
-    } catch { /* malformed genre JSON: classify from the text sections */ }
-    const description = yes24DetailSection(detailHtml, 'infoset_introduce', YES24_DESCRIPTION_MAX_CHARS);
-    const tableOfContents = yes24DetailSection(detailHtml, 'infoset_toc', YES24_TOC_MAX_CHARS);
-    return { itemId: match.itemId, matchedTitle: match.title, categories, ...(description ? { description } : {}), ...(tableOfContents ? { tableOfContents } : {}) };
+    candidates.sort((left, right) => right.score - left.score);
+    const preferred = !outline ? candidates.find(({ score }) => score >= 0.72) : matchOutlineTitle(title, candidates);
+    const candidatesToCheck = outline?.isbn ? candidates.slice(0, 3) : preferred ? [preferred] : [];
+    for (const match of candidatesToCheck) {
+      const detailResponse = await queuedRequest(() => request(`https://www.yes24.com/product/goods/${match.itemId}`, { headers, signal: AbortSignal.timeout(10_000) }));
+      if (!detailResponse.ok) throw new Error(`YES24 도서 상세 조회에 실패했습니다 (${detailResponse.status}).`);
+      const detailHtml = await detailResponse.text();
+      const isbn = /ISBN13\s*<\/th>\s*<td\b[^>]*>\s*(\d{13})/.exec(detailHtml)?.[1];
+      if (outline?.isbn && isbn !== outline.isbn) continue;
+      const genreJson = detailHtml.match(/"genre"\s*:\s*(\[[^\]]*\])/i)?.[1];
+      let categories: string[] = [];
+      try {
+        categories = genreJson ? (JSON.parse(genreJson) as unknown[]).filter((value): value is string => typeof value === 'string') : [];
+      } catch { /* malformed genre JSON: classify from the text sections */ }
+      const description = yes24DetailSection(detailHtml, 'infoset_introduce', YES24_DESCRIPTION_MAX_CHARS);
+      const tableOfContents = yes24DetailSection(detailHtml, 'infoset_toc', outline ? 100_000 : YES24_TOC_MAX_CHARS, Boolean(outline));
+      return { itemId: match.itemId, matchedTitle: match.title, categories, ...(description ? { description } : {}), ...(tableOfContents ? { tableOfContents } : {}) };
+    }
+    throw Object.assign(new Error('YES24 공개 검색에서 제목이나 ISBN이 일치하는 도서를 찾지 못했습니다.'), { status: 404 });
   };
+}
+
+function normalizedBookTitle(title: string): string {
+  return title.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+function matchOutlineTitle<T extends { title: string }>(title: string, candidates: T[]): T | undefined {
+  const normalized = normalizedBookTitle(title);
+  const exact = candidates.find((candidate) => normalizedBookTitle(candidate.title) === normalized);
+  if (exact) return exact;
+  const subtitles = candidates.filter((candidate) => normalizedBookTitle(candidate.title.split(/[:：]/, 1)[0]) === normalized);
+  return new Set(subtitles.map((candidate) => normalizedBookTitle(candidate.title))).size === 1 ? subtitles[0] : undefined;
 }
 
 /** Uses the public YES24 product page as a no-key fallback for titles the local classifier cannot identify. */

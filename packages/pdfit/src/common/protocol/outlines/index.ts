@@ -18,6 +18,8 @@ export interface BookOutlineEntry {
 /** GET returns an empty array after deletion. PUT requires at least one entry. */
 export interface BookOutlinePayload {
   entries: BookOutlineEntry[];
+  /** PUT marks an explicit regeneration. A normal PUT is a manual edit. */
+  generated?: boolean;
 }
 
 /** Upper bound on stored entries; the viewer stops reading at the same count. */

@@ -7,6 +7,7 @@ Shared package changes are verified through:
 * `npm run verify:pdfit`
 * `npm run test:pdfgpu`
 * `npm run test:outline` verifies outline extraction, conditional initialization, deletion, validation and unsupported storage. With `PDFIT_TEST_DATABASE_URL`, it also checks the PostgreSQL row lifecycle.
+* [YES24 outline quality](../../../apps/pdfit/tests/plans/viewer-outline-quality-20261120.md) checks both scan-volume PDFs against their YES24 listings and physical PDF pages, including the numeric-cache migration and page navigation.
 * [Outline management browser scenarios](../../../apps/pdfit/tests/plans/viewer-outline-management-20261120.md) cover edit and retry, page navigation, deletion across reloads, and PDF.js and PDFGPU regeneration. Open the `Table of contents` toolbar button (`viewer-outline-open`) and use visible actions in its named dialog. `pdf-outline-entry` identifies a listed row and `pdf-outline-edit-row` scopes labels in each editor row.
 * `npm run test:tasks`: background task queue, scheduler (replan, parallelism budget,
   failed plan, urgent submissions, timers), worker pool with real worker threads

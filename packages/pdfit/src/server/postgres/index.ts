@@ -17,6 +17,18 @@ import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 
+// Invalidate only scan-volume sequences with known automatic provenance.
+// Existing rows without provenance are indistinguishable from manual edits.
+const LEGACY_PLACEHOLDER_OUTLINE = `
+  o.is_manually_edited IS FALSE
+  AND CASE WHEN jsonb_typeof(o.entries) = 'array' THEN jsonb_array_length(o.entries) > 0 ELSE FALSE END
+  AND NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(o.entries) = 'array' THEN o.entries ELSE '[]'::jsonb END
+    ) WITH ORDINALITY AS outline_item(entry, ordinal)
+    WHERE entry->>'title' IS DISTINCT FROM ordinal::text OR entry->>'depth' IS DISTINCT FROM '0'
+  )`;
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
 
@@ -473,33 +485,36 @@ export class PostgresMetadataStore implements MetadataStore {
       WHERE o.folder = $1 AND o.filename = $2
         AND o.source_size IS NOT DISTINCT FROM b.size
         AND o.source_modified_at IS NOT DISTINCT FROM b.modified_at
+        AND NOT (${LEGACY_PLACEHOLDER_OUTLINE})
     `, [folder, filename]);
     const row = result.rows[0];
     return row ? parseBookOutlineEntries(row.entries, { allowEmpty: true }) : null;
   }
 
   /** Stores the outline or a deletion against the book's current size and modified time. */
-  async setBookOutline(folder: string, filename: string, entries: BookOutlineEntry[]): Promise<void> {
-    await this.writeBookOutline(folder, filename, entries, false);
+  async setBookOutline(folder: string, filename: string, entries: BookOutlineEntry[], _driveFileId?: string, generated = false): Promise<void> {
+    await this.writeBookOutline(folder, filename, entries, false, !generated);
   }
 
   async initializeBookOutline(folder: string, filename: string, entries: BookOutlineEntry[]): Promise<boolean> {
-    return this.writeBookOutline(folder, filename, entries, true);
+    return this.writeBookOutline(folder, filename, entries, true, false);
   }
 
-  private async writeBookOutline(folder: string, filename: string, entries: BookOutlineEntry[], onlyIfMissing: boolean): Promise<boolean> {
+  private async writeBookOutline(folder: string, filename: string, entries: BookOutlineEntry[], onlyIfMissing: boolean, manuallyEdited: boolean): Promise<boolean> {
     const result = await this.db.query(`
-      INSERT INTO book_outlines (folder, filename, entries, source_size, source_modified_at, updated_at)
-      SELECT $1::text, $2::text, $3::jsonb, b.size, b.modified_at, NOW()
+      INSERT INTO book_outlines AS o (folder, filename, entries, source_size, source_modified_at, updated_at, is_manually_edited)
+      SELECT $1::text, $2::text, $3::jsonb, b.size, b.modified_at, NOW(), $5::boolean
       FROM (SELECT 1) AS one
       LEFT JOIN books b ON b.folder = $1::text AND b.filename = $2::text
       ON CONFLICT (folder, filename)
       DO UPDATE SET entries = EXCLUDED.entries, source_size = EXCLUDED.source_size,
-        source_modified_at = EXCLUDED.source_modified_at, updated_at = EXCLUDED.updated_at
+        source_modified_at = EXCLUDED.source_modified_at, updated_at = EXCLUDED.updated_at,
+        is_manually_edited = EXCLUDED.is_manually_edited
       WHERE NOT $4::boolean OR
-        (book_outlines.source_size, book_outlines.source_modified_at)
+        (o.source_size, o.source_modified_at)
           IS DISTINCT FROM (EXCLUDED.source_size, EXCLUDED.source_modified_at)
-    `, [folder, filename, JSON.stringify(entries), onlyIfMissing]);
+        OR (${LEGACY_PLACEHOLDER_OUTLINE})
+    `, [folder, filename, JSON.stringify(entries), onlyIfMissing, manuallyEdited]);
     return result.rowCount === 1;
   }
 
@@ -773,6 +788,7 @@ export class PostgresMetadataStore implements MetadataStore {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (folder, filename)
       );
+      ALTER TABLE book_outlines ADD COLUMN IF NOT EXISTS is_manually_edited BOOLEAN;
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
     await this.backfillTitleChoseong();

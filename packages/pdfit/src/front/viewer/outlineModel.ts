@@ -1,5 +1,5 @@
 import { BOOK_OUTLINE_MAX_ENTRIES, parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
-import { loadOutlineWithStorage, tryReadPdfOutline, type OutlineReader, type PdfOutlineStorage, type ViewerOutlineResult } from './storedOutline.js';
+import { hasOutlineDestination, loadOutlineWithStorage, tryReadPdfOutline, type OutlineReader, type PdfOutlineStorage, type ViewerOutlineResult } from './storedOutline.js';
 
 type DraftRow = { id: number; entry?: BookOutlineEntry };
 
@@ -105,8 +105,12 @@ export class OutlineModel {
       this.error = result.reason === 'empty' ? 'empty' : 'read';
       return;
     }
-    if (this.canSave && !await this.storage?.save(result.entries)) throw new Error('Outline write failed');
-    this.result = { ...result, source: 'pdf' };
+    if (!hasOutlineDestination(result.entries)) {
+      if (this.result?.status === 'ok') { this.error = 'read'; return; }
+    } else if (this.canSave && !await this.storage?.save(result.entries, true)) {
+      throw new Error('Outline write failed');
+    }
+    this.result = { ...result, source: result.source ?? 'pdf' };
   });
 
   remove = () => this.change(async () => {

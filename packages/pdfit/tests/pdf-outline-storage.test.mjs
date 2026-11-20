@@ -66,6 +66,14 @@ describe('stored table of contents (viewer side)', () => {
     assert.deepEqual((await loadOutlineWithStorage(async () => ({ status: 'ok', entries: ENTRIES }), storage)).result, { status: 'ok', entries: ENTRIES, source: 'pdf', saved: false });
   });
 
+  it('shows YES24 headings without permanently caching an all-unlinked outline', async () => {
+    const { storage, calls } = memoryStorage(null);
+    const entries = ENTRIES.map((entry) => ({ ...entry, page: null }));
+    const result = await loadOutlineWithStorage(async () => ({ status: 'ok', entries, source: 'yes24' }), storage);
+    assert.deepEqual(result.result, { status: 'ok', entries, source: 'yes24', saved: false });
+    assert.equal(calls.save.length, 0);
+  });
+
   it('does not restore a deleted outline, including when another viewer deletes it during the first read', async () => {
     const { storage, calls } = memoryStorage([]);
     const read = async () => { throw new Error('Must not read PDF'); };
@@ -86,16 +94,35 @@ describe('stored table of contents (viewer side)', () => {
   });
 });
 
-async function withServer(store, run) {
+async function withServer(store, run, request) {
   const app = express();
   app.use(express.json());
-  app.use('/api/outlines', createOutlinesRouter(store));
+  app.use('/api/outlines', createOutlinesRouter(store, request));
   const server = app.listen(0); await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}/api/outlines`); }
   finally { server.close(); await once(server, 'close'); }
 }
 
 describe('/api/outlines', () => {
+  it('verifies the YES24 ISBN, retains line breaks and refuses a similar title', async () => {
+    const calls = [];
+    const request = async (url) => {
+      calls.push(String(url));
+      return new Response(String(url).includes('/search?')
+        ? '<a class="gd_name" href="/product/goods/123">Sample Study: Introduction</a>'
+        : `<th scope="row">ISBN13</th><td>9780306406157</td>
+           <div id="infoset_toc"><textarea class="txtContentText">Chapter 1&lt;br /&gt;1.1 First lesson</textarea></div>`);
+    };
+    await withServer({}, async (base) => {
+      const matched = await fetch(`${base}/A/Sample%20Study.pdf/yes24?isbn=9780306406157`);
+      assert.deepEqual(await matched.json(), { title: 'Sample Study: Introduction', contents: 'Chapter 1\n1.1 First lesson' });
+      assert.equal(new URL(calls[0]).searchParams.get('query'), '9780306406157');
+      assert.equal(new URL(calls[0]).searchParams.get('domain'), 'ALL');
+      assert.equal((await fetch(`${base}/A/Sample%20Study.pdf/yes24?isbn=9780306406158`)).status, 404);
+      assert.equal((await fetch(`${base}/A/Sample%20Studies.pdf/yes24`)).status, 404);
+      assert.equal(calls.length, 5);
+    }, request);
+  });
   it('stores a valid outline and returns it; 404 before', async () => {
     const rows = new Map();
     const store = {
@@ -170,11 +197,22 @@ it('PostgresMetadataStore keeps an outline until the PDF changes, moves or is re
       assert.deepEqual(await store.getBookOutline('Dev', 'a.pdf'), ENTRIES);
       assert.equal(await store.getBookOutline('Dev', 'b.pdf'), null, 'another book has its own row');
 
+      const volumes = [1, 2].map((page) => ({ key: String(page - 1), title: String(page), depth: 0, page }));
+      await store.setBookOutline('Dev', 'b.pdf', volumes, undefined, true);
+      assert.equal(await store.getBookOutline('Dev', 'b.pdf'), null, 'legacy scan-volume bookmarks are skipped');
+      assert.equal(await store.initializeBookOutline('Dev', 'b.pdf', ENTRIES), true, 'new outline replaces the placeholders');
+      await store.setBookOutline('Dev', 'b.pdf', volumes);
+      assert.deepEqual(await store.getBookOutline('Dev', 'b.pdf'), volumes, 'numeric titles from a manual edit are preserved');
+      assert.equal(await store.initializeBookOutline('Dev', 'b.pdf', ENTRIES), false);
+      await client.query("UPDATE book_outlines SET is_manually_edited = NULL WHERE folder = 'Dev' AND filename = 'b.pdf'");
+      assert.deepEqual(await store.getBookOutline('Dev', 'b.pdf'), volumes, 'older titles with unknown provenance are also preserved');
+      assert.equal(await store.initializeBookOutline('Dev', 'b.pdf', ENTRIES), false);
+
       // Replacing the stored copy keeps one row per book.
       await store.setBookOutline('Dev', 'a.pdf', ENTRIES.slice(0, 1));
       assert.deepEqual(await store.getBookOutline('Dev', 'a.pdf'), ENTRIES.slice(0, 1));
       const count = await client.query('SELECT COUNT(*)::int AS n FROM book_outlines');
-      assert.equal(count.rows[0].n, 1);
+      assert.equal(count.rows[0].n, 2);
 
       await store.setBookOutline('Dev', 'a.pdf', []);
       assert.equal(await store.initializeBookOutline('Dev', 'a.pdf', ENTRIES), false);
