@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- The GPU viewer shows low-resolution previews first, renders visible detail after the page settles, and prefetches nearby pages in both directions.
+
 ## [0.4.8] - 2026-11-20
 
 ### Highlights

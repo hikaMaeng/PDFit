@@ -21,6 +21,14 @@ renderer composites the visible frame with WebGPU when available or 2D canvas
 otherwise. `front/components/PdfGpuViewer/index.tsx` is the PDFit React adapter;
 the controller remains the mutable source of truth outside React.
 
+The [PDFit adapter](../src/front/components/PdfGpuViewer/index.tsx) requests four
+PDFium workers. Core uses two for previews and two for detail, with one render in
+flight per worker. A visible preview is read from cache or requested immediately.
+Detail work starts after 200 ms of viewport stability. After 500 ms, preview
+prefetch resumes in both directions from the current page and skips cached
+pages. The 64 MiB preview budget favors nearby pages and the separate 128 MiB
+detail budget protects visible tiles.
+
 PDFit does not own a second pdfgpu implementation. Core interaction transitions,
 DPI normalization, layout, queueing, and rendering are tested and versioned in
 the independent repository. PDFit only retains app-specific session state and

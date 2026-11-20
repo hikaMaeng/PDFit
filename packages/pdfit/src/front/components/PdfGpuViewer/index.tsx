@@ -223,7 +223,12 @@ export default function PdfGpuViewer({
       if (!viewport) return;
 
       try {
-        const provider = await createPdfDocumentEngine();
+        // Use the four raster slots described in docs/internals.md#webgpu-viewer-contract.
+        const provider = await createPdfDocumentEngine({ poolSize: 4 });
+        if (cancelled) {
+          await provider.dispose();
+          return;
+        }
         nextController = await createPdfGpuViewer({
           container: viewport,
           provider,

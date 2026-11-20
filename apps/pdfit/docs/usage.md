@@ -37,6 +37,8 @@ The image-search button under a cover ("Use a real book cover") replaces the ren
 
 ## Viewer toolbar
 
+Open a document with `engine=gpu` in the viewer URL to enable PDFium's progressive preview cache. The default viewer uses PDF.js with HTTP range loading.
+
 The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to read the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
