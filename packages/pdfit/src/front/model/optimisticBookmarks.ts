@@ -1,3 +1,4 @@
+import { createBrowserUuid } from '../browserUuid.js';
 import { uiText } from '../i18n/uiText.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks.js';
@@ -31,7 +32,7 @@ export function createBookmarkOptimistically(
   hooks: BookmarkMutationHooks,
   driveFileId?: string | null,
 ): BookmarkMutationResult {
-  const operationId = input.operationId ?? crypto.randomUUID();
+  const operationId = input.operationId ?? createBrowserUuid();
   const timestamp = new Date().toISOString();
   const optimistic: BookmarkRecord = {
     id: `pending-bookmark-${operationId}`,

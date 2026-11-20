@@ -1,3 +1,5 @@
+import { createBrowserUuid } from '../browserUuid.js';
+
 export interface MetadataOutboxOptions { scope: () => string; onFlushed?: () => void | Promise<void> }
 export interface MetadataOutboxRequest { operationId?: string; coalesceKey?: string; url: string; method: string; headers?: Record<string, string>; body?: string }
 interface OutboxRow extends MetadataOutboxRequest { id: string; operationId: string; createdAt: string; attempts: number }
@@ -23,7 +25,7 @@ export function configureMetadataOutbox(value?: MetadataOutboxOptions) {
 export async function requestWithMetadataOutbox(input: MetadataOutboxRequest): Promise<Response> {
   const scope = options?.scope() ?? '';
   if (!scope || typeof indexedDB === 'undefined') return fetch(input.url, { method: input.method, headers: input.headers, body: input.body });
-  const operationId = input.operationId ?? crypto.randomUUID();
+  const operationId = input.operationId ?? createBrowserUuid();
   const row: OutboxRow = { ...input, id: input.coalesceKey ?? operationId, operationId, createdAt: new Date().toISOString(), attempts: 0 };
   await put(scope, row);
   try {

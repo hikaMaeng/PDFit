@@ -1,3 +1,5 @@
+import { createBrowserUuid } from '../browserUuid.js';
+
 export type MutationPerformancePhase =
   | 'ui'
   | 'indexeddb'
@@ -18,7 +20,7 @@ export interface MutationPerformanceDetail {
 export const MUTATION_PERFORMANCE_EVENT = 'pdfit-mutation-performance';
 
 /** Records user-perceived mutation timing without blocking the mutation itself. */
-export function beginMutationPerformance(operation: string, mutationId: string = crypto.randomUUID()) {
+export function beginMutationPerformance(operation: string, mutationId: string = createBrowserUuid()) {
   const startedAt = performance.now();
   const mark = (phase: MutationPerformancePhase, metadata?: MutationPerformanceDetail['metadata']) => {
     const detail: MutationPerformanceDetail = {

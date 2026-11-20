@@ -1,3 +1,5 @@
+import { createBrowserUuid } from '../browserUuid.js';
+
 export type BackgroundSyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
 export interface BackgroundSyncEntry {
@@ -18,7 +20,7 @@ class BackgroundSyncModel {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
 
   begin(label: string, retry?: () => void): string {
-    const id = crypto.randomUUID();
+    const id = createBrowserUuid();
     this.entries.set(id, { id, label, status: 'pending', retry });
     this.emit();
     return id;

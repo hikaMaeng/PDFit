@@ -1,3 +1,4 @@
+import { createBrowserUuid } from '../browserUuid.js';
 import { uiText } from '../i18n/uiText.js';
 import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { cacheBookmarkRecord, deleteCachedBookmark, listCachedBookmarks } from '../cache/metadataCache.js';
@@ -20,7 +21,7 @@ export async function listBookmarks(folder: string, filename: string, driveFileI
 }
 
 export async function createBookmark(folder: string, filename: string, request: CreateBookmarkRequest, driveFileId?: string | null): Promise<BookmarkRecord> {
-  const operationId = request.operationId ?? crypto.randomUUID();
+  const operationId = request.operationId ?? createBrowserUuid();
   const response = await requestWithMetadataOutbox({ operationId, url: path(folder, filename, driveFileId), method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, operationId }) });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;

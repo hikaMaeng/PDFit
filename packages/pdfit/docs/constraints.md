@@ -57,6 +57,7 @@ same-origin signal; they never treat a cross-window event payload as bookmark tr
 `front/model/windowSync.ts`, route by a stable topic, validate their own payload at the topic
 boundary, and register only the lambda that owns the affected model/API reload. They must not add
 feature-specific transport listeners or duplicate `BroadcastChannel`/`localStorage` plumbing.
+
 * Release `0.4.0` adds `release-contracts/pdfit/v0.4.0.json`; it keeps the exact
   `@pdfgpu/core@0.1.9` source commit and digest from the previous contract.
 * Release `0.4.1` adds `release-contracts/pdfit/v0.4.1.json`; it keeps the same
@@ -94,3 +95,11 @@ pinned PDFGPU package, source commit, and artifact digest.
   switch-back memory from them. In `paired`, the core ignores `spreadPlacement`.
 * AI automatic tagging sends only the title derived from the filename, the fixed bookstore taxonomy, and existing tag names. Model output is untrusted and restricted to one to three shared taxonomy values. Titles, authors, proper nouns, and arbitrary title tokens must never become generated categories.
 * Folder-wide automatic tagging classifies at most three books concurrently, then persists successful relations in one storage batch. It reports classifier failures without discarding successful results. Empty remote-AI configuration falls back to the deterministic shared title classifier; partially configured remote credentials fail at startup.
+
+## Clip mutation IDs
+
+The viewer and clip library support LAN HTTP. Generate browser-side UUID v4 values
+with [createBrowserUuid](../src/front/browserUuid.ts#createBrowserUuid), which uses
+Web Crypto `getRandomValues` in both HTTP and HTTPS contexts. The
+[optimistic clip create](../src/front/model/optimisticBookmarks.ts#createBookmarkOptimistically)
+reuses its operation ID for retries, the API payload, and the metadata outbox.
