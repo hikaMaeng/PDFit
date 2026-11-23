@@ -457,11 +457,11 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
               ? <TagGlyph icon={tagIcon} sx={{ fontSize: 25, color: tagColor }} />
               : <Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>}
               color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
-          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="h5" fontWeight={700} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, minWidth: 0 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />
           </Box>
-          <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto' }}>{t('refresh')}</Button>
+          <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>{t('refresh')}</Button>
         </Box>
       </Box>
 

@@ -105,7 +105,7 @@ try {
   await editor.getByRole('alert').getByText('이미 사용 중인 태그 이름입니다.').waitFor();
   assert.deepEqual((await tags()).find(({ id }) => id === initial.id), initial);
   await nameInput.fill(` ${updated} `);
-  await page.screenshot({ path: resolve(output, 'edit-tag-dialog.png') });
+  await page.screenshot({ path: resolve(output, 'edit-tag-dialog.png'), animations: 'disabled' });
   const response = page.waitForResponse((result) => result.request().method() === 'PATCH' && result.url().endsWith('/details'), { timeout: 10000 });
   await nameInput.press('Enter');
   const saved = await response;
@@ -130,7 +130,7 @@ try {
   await page.getByTestId('tag-title-row').locator('[data-tag-icon="code"]').waitFor();
   await member(updated).locator('[data-tag-icon="code"]').waitFor();
   await member(updated).scrollIntoViewIfNeeded();
-  await page.screenshot({ path: resolve(output, 'tag-renamed.png') });
+  await page.screenshot({ path: resolve(output, 'tag-renamed.png'), animations: 'disabled' });
   await page.getByRole('button', { name: '태그 인덱스 열기' }).click();
   const card = page.getByTestId('tag-index-card').filter({ has: page.getByRole('link', { name: `태그 ${updated} 열기`, exact: true }) });
   await card.locator('[data-tag-icon="code"]').waitFor();
@@ -140,6 +140,9 @@ try {
   const mobile = await touch.newPage();
   mobile.on('pageerror', (error) => errors.push(error.message));
   await mobile.goto(tagUrl(updated), { waitUntil: 'domcontentloaded' });
+  await mobile.getByRole('heading', { name: updated, exact: true }).waitFor();
+  const refresh = await mobile.getByTestId('tag-refresh').boundingBox();
+  assert.ok(refresh && refresh.height < 45, 'A long tag name must not wrap the refresh button vertically.');
   await mobile.getByRole('button', { name: '메뉴 열기' }).tap();
   const mobileRow = mobile.getByTestId('lnb-tag-folder').filter({ has: mobile.getByRole('button', { name: folderNames[0], exact: true }) })
     .getByTestId('lnb-folder-tag-row').filter({ hasText: updated });
@@ -149,7 +152,7 @@ try {
   await touchEdit.tap();
   const mobileEditor = mobile.getByRole('dialog', { name: '태그 수정' });
   await mobileEditor.waitFor();
-  await mobile.screenshot({ path: resolve(output, 'touch-tag-dialog.png') });
+  await mobile.screenshot({ path: resolve(output, 'touch-tag-dialog.png'), animations: 'disabled' });
   await mobileEditor.getByRole('button', { name: '취소' }).tap();
   await mobileEditor.waitFor({ state: 'hidden' });
   await touchEdit.tap();
