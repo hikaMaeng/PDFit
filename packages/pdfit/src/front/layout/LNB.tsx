@@ -802,6 +802,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   return (
     <>
       <Drawer
+        anchor={language === 'ar' ? 'right' : 'left'}
         variant={isMobile ? 'temporary' : 'permanent'}
         open={!isMobile || mobileOpen}
         onClose={onMobileClose}
@@ -819,7 +820,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             overflow: 'hidden',
             backgroundColor: sidebarBackground,
             color: sidebarTextPrimary,
-            borderRight: '1px solid',
+            borderInlineEnd: '1px solid',
             borderColor: sidebarDivider,
           },
         }}

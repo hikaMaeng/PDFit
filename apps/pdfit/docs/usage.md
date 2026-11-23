@@ -6,6 +6,15 @@ npm run deploy:standalone
 npm run verify:pdfit
 ```
 
+## Home and library tools
+
+On the [home page](../../../packages/pdfit/src/front/pages/HomePage.tsx), open
+the library or browse by topic through the tag index. Use **Untagged** to review
+documents that still need classification, and **Favorites** for frequent reads.
+The **Set up AI servers** link opens Settings for the language and vision
+models used by auto-tagging, display-name translation, and scan OCR. **View
+bookmarks** opens the library-wide clip collection.
+
 ## npm installation
 
 Requirements: Node.js 20 or newer with npm, and Docker Desktop (or Docker Engine) with Compose. Install the released launcher from GitHub:
