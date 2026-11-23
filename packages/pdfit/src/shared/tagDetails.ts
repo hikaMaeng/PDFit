@@ -1,4 +1,11 @@
-export const TAG_ICONS = ['tag', 'book', 'code', 'science', 'school', 'work', 'star', 'lightbulb', 'language', 'palette', 'music', 'build'] as const;
+// See docs/internals.md#태그-편집 for the storage and rendering contract.
+export const TAG_ICONS = [
+  'tag', 'book', 'code', 'science', 'school', 'work', 'star', 'lightbulb', 'language', 'palette', 'music', 'build',
+  'robot', 'terminal', 'database', 'cloud', 'network', 'security', 'lock', 'chip', 'devices', 'phone',
+  'chart', 'math', 'biotech', 'medicine', 'health', 'psychology', 'finance', 'commerce', 'factory', 'architecture',
+  'travel', 'map', 'history', 'law', 'people', 'chat', 'writing', 'image', 'video', 'audio',
+  'sports', 'nature', 'animals', 'food', 'home', 'space',
+] as const;
 
 export type TagIconName = typeof TAG_ICONS[number];
 export const DEFAULT_TAG_ICON: TagIconName = 'tag';

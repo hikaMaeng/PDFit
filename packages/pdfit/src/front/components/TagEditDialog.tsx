@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, ToggleButton, Tooltip, Typography } from '@mui/material';
-import { DEFAULT_TAG_ICON, isEditableTagName, TAG_ICONS, type TagDetailsPatch } from '../../shared/tagDetails.js';
+import { DEFAULT_TAG_ICON, isEditableTagName, TAG_ICONS, type TagDetailsPatch, type TagIconName } from '../../shared/tagDetails.js';
 import { tagsApi, type TagSummary } from '../api/tags.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { publishTagDetailsChange } from '../model/tagDetailsEvents.js';
@@ -21,7 +21,43 @@ const iconLabels = {
   palette: RSC.TAG_ICON_PALETTE_LABEL,
   music: RSC.TAG_ICON_MUSIC_LABEL,
   build: RSC.TAG_ICON_BUILD_LABEL,
-};
+  robot: RSC.TAG_ICON_ROBOT_LABEL,
+  terminal: RSC.TAG_ICON_TERMINAL_LABEL,
+  database: RSC.TAG_ICON_DATABASE_LABEL,
+  cloud: RSC.TAG_ICON_CLOUD_LABEL,
+  network: RSC.TAG_ICON_NETWORK_LABEL,
+  security: RSC.TAG_ICON_SECURITY_LABEL,
+  lock: RSC.TAG_ICON_LOCK_LABEL,
+  chip: RSC.TAG_ICON_CHIP_LABEL,
+  devices: RSC.TAG_ICON_DEVICES_LABEL,
+  phone: RSC.TAG_ICON_PHONE_LABEL,
+  chart: RSC.TAG_ICON_CHART_LABEL,
+  math: RSC.TAG_ICON_MATH_LABEL,
+  biotech: RSC.TAG_ICON_BIOTECH_LABEL,
+  medicine: RSC.TAG_ICON_MEDICINE_LABEL,
+  health: RSC.TAG_ICON_HEALTH_LABEL,
+  psychology: RSC.TAG_ICON_PSYCHOLOGY_LABEL,
+  finance: RSC.TAG_ICON_FINANCE_LABEL,
+  commerce: RSC.TAG_ICON_COMMERCE_LABEL,
+  factory: RSC.TAG_ICON_FACTORY_LABEL,
+  architecture: RSC.TAG_ICON_ARCHITECTURE_LABEL,
+  travel: RSC.TAG_ICON_TRAVEL_LABEL,
+  map: RSC.TAG_ICON_MAP_LABEL,
+  history: RSC.TAG_ICON_HISTORY_LABEL,
+  law: RSC.TAG_ICON_LAW_LABEL,
+  people: RSC.TAG_ICON_PEOPLE_LABEL,
+  chat: RSC.TAG_ICON_CHAT_LABEL,
+  writing: RSC.TAG_ICON_WRITING_LABEL,
+  image: RSC.TAG_ICON_IMAGE_LABEL,
+  video: RSC.TAG_ICON_VIDEO_LABEL,
+  audio: RSC.TAG_ICON_AUDIO_LABEL,
+  sports: RSC.TAG_ICON_SPORTS_LABEL,
+  nature: RSC.TAG_ICON_NATURE_LABEL,
+  animals: RSC.TAG_ICON_ANIMALS_LABEL,
+  food: RSC.TAG_ICON_FOOD_LABEL,
+  home: RSC.TAG_ICON_HOME_LABEL,
+  space: RSC.TAG_ICON_SPACE_LABEL,
+} satisfies Record<TagIconName, RSC>;
 
 export default function TagEditDialog({ tag, onClose }: { tag: TagSummary & { id: string }; onClose: () => void }) {
   const { t } = usePdfitI18n();

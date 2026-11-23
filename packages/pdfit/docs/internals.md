@@ -668,6 +668,7 @@ pgvector 기반 동작(폴더·파일 목록, 태그, 검색, 북마크, 진행�
 ## 태그 편집
 
 - [PostgreSQL 저장소](../src/server/postgres/index.ts)는 `tags.id`와 기존 이름으로 대상을 확인하고 한 문장으로 변경 필드를 갱신한다. `book_tags.tag_id`와 `tag_folder_tags.tag_id`는 같은 ID를 그대로 참조한다. 기존 행의 아이콘은 `tag` 기본값으로 이관된다.
+- [아이콘 목록](../src/shared/tagDetails.ts#tag_icons)의 48개 키를 API 입력 검증과 편집 창이 공유한다. 키는 PostgreSQL의 텍스트 열에 저장하며 [TagGlyph](../src/front/components/TagGlyph.tsx)가 사이드바, 태그 제목, 인덱스에 같은 도형을 표시한다.
 - [사이드바](../src/front/layout/LNB.tsx)는 요약 응답에 편집 ID가 있는 행에만 수정 버튼을 표시한다. [편집 창](../src/front/components/TagEditDialog.tsx)은 저장 성공 후 [창 간 메시지](../src/front/model/tagDetailsEvents.ts)를 보낸다. 같은 브라우저의 열린 태그 페이지는 새 주소로 바뀌고, 사이드바·인덱스·문서 폴더의 태그 데이터도 다시 읽는다. 이름 기반 주소를 사용하는 이전 외부 북마크는 새 이름으로 갱신해야 한다.
 - 태그 이름 변경은 분류 사전을 편집하지 않는다. 이후 자동 분류가 기존 분류명을 제안하면 그 이름의 태그가 다시 생성될 수 있다.
 
