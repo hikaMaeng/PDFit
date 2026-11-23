@@ -80,9 +80,10 @@ tag folders (`501`) shows neither the button nor the folders.
 
 ## Book clips
 
-The yellow paperclip at the right of a cover card's filename shows the saved clip
-count in Free. It displays **0** through **9**, then **9+** for ten or more. The
-tooltip gives the exact count. Select it to open that book's clips as a grid.
+The paperclip at the right of a cover card's filename shows the saved clip count
+in Free. It shows **0** in blue-gray and uses yellow for books with clips. Ten or
+more clips display **9+**. The tooltip gives the exact count. Select the icon to
+open that book's clips as a grid.
 **Date added** shows the newest captures first. **Page order** shows
 lower page numbers first, with newest captures first within a page.
 Both the book grid and **My clips** use the same [clip card](../src/front/components/clips/ClipCard.tsx#ClipCard)
