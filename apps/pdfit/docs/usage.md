@@ -40,6 +40,8 @@ In the sidebar, select a tag or point at its row, then choose the pencil button.
 
 ## Tag folders
 
+Tags inside a folder use a small indent. The book count sits next to the row actions so longer tag names have more room.
+
 Drag a tag onto the folder title or anywhere in its expanded body, including the empty area and existing tag rows. An ungrouped tag has a **Move to tag folder** button beside **Delete tag**. Open the folder menu and pick a destination. The tag appears inside that folder and leaves the ungrouped list. Use **Remove from tag folder** to remove a membership.
 
 ## Cover view

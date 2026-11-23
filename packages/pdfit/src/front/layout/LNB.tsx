@@ -634,58 +634,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           event.dataTransfer.effectAllowed = 'copyMove';
         }}
         onDragEnd={() => setDragOverTagFolder(null)}
-        secondaryAction={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            {folderName !== undefined && (
-              <Tooltip title={t('removeTagFromFolder')} placement="right" arrow>
-                <IconButton
-                  size="small"
-                  data-testid="lnb-folder-tag-remove"
-                  aria-label={`${tag.name} ${t('removeTagFromFolder')}`}
-                  onClick={(event) => { event.stopPropagation(); void tagFoldersModel.removeTag(folderName, tag.name).catch(() => undefined); }}
-                  sx={folderButtonSx}
-                >
-                  <FolderOffOutlinedIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-            {folderName === undefined && tagFoldersAvailable && (
-              <Tooltip title={t(RSC.SIDEBAR_TAGFOLDER_MOVE_BUTTON)} placement="right" arrow>
-                <IconButton
-                  size="small"
-                  aria-label={t(RSC.SIDEBAR_TAGFOLDER_MOVE_BUTTON)}
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  aria-controls={menuOpen ? tagFolderMenuId : undefined}
-                  onClick={(event) => setTagFolderMenu({ anchor: event.currentTarget, tag: tag.name })}
-                  sx={folderButtonSx}
-                >
-                  <FolderOutlinedIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-            {editId && (
-              <Tooltip title={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })} placement="right" arrow>
-                <IconButton size="small" aria-label={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })}
-                  aria-haspopup="dialog" onClick={() => setEditTag({ ...tag, id: editId })}
-                  sx={{ ...folderButtonSx, opacity: activeTag === tag.name ? 0.8 : 0 }}>
-                  <EditOutlinedIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Tooltip>
-            )}
-            <Tooltip title={t('deleteTag')} placement="right" arrow>
-              <IconButton
-                size="small"
-                aria-label={t('deleteTag')}
-                onClick={(event) => void handleDeleteTag(tag, event)}
-                sx={rowButtonSx}
-              >
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        }
-        sx={{ pr: (tagFoldersAvailable || folderName !== undefined ? 7 : 4) + (editId ? 3 : 0) }}
+        sx={{ px: 1, columnGap: 0.5 }}
         disablePadding
         onDragOver={(event) => {
           if (!isBookDrag(event)) return;
@@ -697,12 +646,12 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         onDrop={(event) => { if (isBookDrag(event)) void handleDropOnTag(tag.name, event); }}
       >
         <ListItemButton
+          disableGutters
           selected={activeTag === tag.name}
           onClick={() => { go(path); onMobileClose(); }}
           sx={{
             borderRadius: 1,
-            mx: 1,
-            pl: folderName === undefined ? 1.5 : 3.5,
+            paddingInlineStart: folderName === undefined ? 1.5 : 2.25,
             py: 0.4,
             outline: dragOver ? '2px solid' : 'none',
             outlineColor: 'secondary.main',
@@ -732,6 +681,55 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             disableTypography
           />
         </ListItemButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
+          {folderName !== undefined && (
+            <Tooltip title={t('removeTagFromFolder')} placement="right" arrow>
+              <IconButton
+                size="small"
+                data-testid="lnb-folder-tag-remove"
+                aria-label={`${tag.name} ${t('removeTagFromFolder')}`}
+                onClick={(event) => { event.stopPropagation(); void tagFoldersModel.removeTag(folderName, tag.name).catch(() => undefined); }}
+                sx={folderButtonSx}
+              >
+                <FolderOffOutlinedIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {folderName === undefined && tagFoldersAvailable && (
+            <Tooltip title={t(RSC.SIDEBAR_TAGFOLDER_MOVE_BUTTON)} placement="right" arrow>
+              <IconButton
+                size="small"
+                aria-label={t(RSC.SIDEBAR_TAGFOLDER_MOVE_BUTTON)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-controls={menuOpen ? tagFolderMenuId : undefined}
+                onClick={(event) => setTagFolderMenu({ anchor: event.currentTarget, tag: tag.name })}
+                sx={folderButtonSx}
+              >
+                <FolderOutlinedIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {editId && (
+            <Tooltip title={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })} placement="right" arrow>
+              <IconButton size="small" aria-label={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })}
+                aria-haspopup="dialog" onClick={() => setEditTag({ ...tag, id: editId })}
+                sx={{ ...folderButtonSx, opacity: activeTag === tag.name ? 0.8 : 0 }}>
+                <EditOutlinedIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title={t('deleteTag')} placement="right" arrow>
+            <IconButton
+              size="small"
+              aria-label={t('deleteTag')}
+              onClick={(event) => void handleDeleteTag(tag, event)}
+              sx={rowButtonSx}
+            >
+              <DeleteIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </ListItem>
     );
   };
@@ -768,30 +766,17 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           component="div"
           className="pdfit-tag-row"
           disablePadding
-          secondaryAction={
-            <Tooltip title={t('deleteTagFolder')} placement="right" arrow>
-              <IconButton
-                size="small"
-                data-testid="lnb-tag-folder-delete"
-                aria-label={`${folder.name} ${t('deleteTagFolder')}`}
-                onClick={(event) => { event.stopPropagation(); setConfirmDelete({ kind: 'tag_folder', name: folder.name }); }}
-                sx={{ p: 0.25, color: sidebarTextSecondary, opacity: 0, transition: 'opacity 120ms ease', '.pdfit-tag-row:hover &, .pdfit-tag-row:focus-within &': { opacity: 0.8 }, '&:focus-visible, &:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover }, '@media (hover: none)': { opacity: 0.8 } }}
-              >
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Tooltip>
-          }
-          sx={{ pr: 4 }}
+          sx={{ px: 1, columnGap: 0.5 }}
         >
           <ListItemButton
+            disableGutters
             data-testid="lnb-tag-folder-toggle"
             aria-expanded={open}
             aria-label={folder.name}
             onClick={() => toggleTagFolder(folder.name)}
             sx={{
               borderRadius: 1,
-              mx: 1,
-              pl: 0.75,
+              paddingInlineStart: 0.75,
               py: 0.4,
               color: sidebarTextPrimary,
               '&:hover': { backgroundColor: sidebarHover },
@@ -815,11 +800,22 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
               disableTypography
             />
           </ListItemButton>
+          <Tooltip title={t('deleteTagFolder')} placement="right" arrow>
+            <IconButton
+              size="small"
+              data-testid="lnb-tag-folder-delete"
+              aria-label={`${folder.name} ${t('deleteTagFolder')}`}
+              onClick={(event) => { event.stopPropagation(); setConfirmDelete({ kind: 'tag_folder', name: folder.name }); }}
+              sx={{ p: 0.25, color: sidebarTextSecondary, opacity: 0, transition: 'opacity 120ms ease', '.pdfit-tag-row:hover &, .pdfit-tag-row:focus-within &': { opacity: 0.8 }, '&:focus-visible, &:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover }, '@media (hover: none)': { opacity: 0.8 } }}
+            >
+              <DeleteIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
         </ListItem>
         {open && (
           <List dense disablePadding data-testid="lnb-tag-folder-tags">
             {members.length === 0
-              ? <Typography component="li" variant="caption" sx={{ color: sidebarTextDisabled, pl: 4.5, pr: 2, display: 'block', py: 0.25 }}>{t('tagFolderEmpty')}</Typography>
+              ? <Typography component="li" variant="caption" sx={{ color: sidebarTextDisabled, paddingInlineStart: 3.25, paddingInlineEnd: 2, display: 'block', py: 0.25 }}>{t('tagFolderEmpty')}</Typography>
               : members.map((tag) => renderTagRow(tag, folder.name))}
           </List>
         )}
