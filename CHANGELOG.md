@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-11-23
+
+- Open a book's clips from its cover card and sort them by date added or page.
+- Edit clip memos below the capture and read recognized text in a separate dialog.
 - The GPU viewer shows low-resolution previews first, renders visible detail after the page settles, and prefetches nearby pages in both directions.
 
 ## [0.4.8] - 2026-11-20
