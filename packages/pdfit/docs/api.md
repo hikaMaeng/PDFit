@@ -223,6 +223,8 @@ moving the file through the folders API deletes or moves its cover.
 | `PUT /api/covers` | `{ folder, filename, imageUrl, source, title, pageUrl? }` | Downloads and applies; `{ folder, filename, version, source, title }`; emits `covers-changed` (not `folders-changed`) |
 | `DELETE /api/covers` | `folder`, `filename` | `{ removed }`; the rendered first page returns; emits `covers-changed` |
 
+[`GET /api/covers/candidates`](../src/server/routes/covers.ts) cancels the external lookup when the client disconnects. A completed lookup still reports unavailable sources in `failedSources`. The [cover dialog](../src/front/components/RealCoverDialog.tsx) uses a separate request for each source and cancels any pending search when the user selects a candidate or closes the dialog.
+
 Sources are the public YES24 book search (`image.yes24.com/goods/<id>/XL`) and Open
 Library `search.json` (`covers.openlibrary.org/b/id/<id>-L.jpg`). A source that fails
 is listed in `failedSources` and does not hide the other. Images are downloaded only

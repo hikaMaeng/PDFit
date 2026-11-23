@@ -69,13 +69,22 @@ export function createCoversRouter(options: CoversRouterOptions): Router {
   router.get('/candidates', async (req: Request, res: Response) => {
     const query = textParam(req.query.q, 200);
     if (!query) { res.status(400).json({ error: 'q is required (at most 200 characters).' }); return; }
+    const source = typeof req.query.source === 'string' ? req.query.source : null;
+    if (source !== null && !SOURCES.has(source as BookCoverSource)) { res.status(400).json({ error: 'source must be YES24 or Open Library.' }); return; }
+    if (res.destroyed) return;
+
+    const controller = new AbortController();
+    // See docs/api.md for the candidate lookup cancellation contract.
+    const cancelLookup = () => controller.abort();
+    res.once('close', cancelLookup);
     try {
       res.setHeader('Cache-Control', 'no-store');
-      const source = typeof req.query.source === 'string' ? req.query.source : null;
-      if (source !== null && !SOURCES.has(source as BookCoverSource)) { res.status(400).json({ error: 'source must be YES24 or Open Library.' }); return; }
-      res.json(await findBookCoverCandidates(query, { request, ...(source ? { sources: [source as BookCoverSource] } : {}) }));
+      const result = await findBookCoverCandidates(query, { request, signal: controller.signal, ...(source ? { sources: [source as BookCoverSource] } : {}) });
+      if (!controller.signal.aborted) res.json(result);
     } catch (error) {
-      res.status(502).json({ error: String(error) });
+      if (!controller.signal.aborted) res.status(502).json({ error: String(error) });
+    } finally {
+      res.off('close', cancelLookup);
     }
   });
 

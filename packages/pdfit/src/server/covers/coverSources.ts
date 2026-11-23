@@ -29,6 +29,7 @@ export interface CoverLookupOptions {
   request?: typeof fetch;
   limitPerSource?: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
   /** Sites to ask; default both. A site left out is neither called nor reported as failed. */
   sources?: BookCoverSource[];
 }
@@ -111,12 +112,15 @@ export async function findBookCoverCandidates(query: string, options: CoverLooku
   const trimmed = query.normalize('NFC').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!trimmed) return { candidates: [], failedSources: [] };
 
+  options.signal?.throwIfAborted();
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
   const wanted = new Set<BookCoverSource>(options.sources ?? ['YES24', 'Open Library']);
   const yes24 = !wanted.has('YES24') ? Promise.resolve([] as BookCoverCandidate[]) : (async () => {
     const url = new URL('https://www.yes24.com/product/search');
     url.searchParams.set('domain', 'BOOK');
     url.searchParams.set('query', trimmed);
-    const response = await request(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await request(url, { headers: { 'User-Agent': USER_AGENT }, signal });
     if (!response.ok) throw new Error(`YES24 ${response.status}`);
     return parseYes24CoverCandidates(await response.text(), trimmed, limit);
   })();
@@ -125,12 +129,13 @@ export async function findBookCoverCandidates(query: string, options: CoverLooku
     url.searchParams.set('q', trimmed);
     url.searchParams.set('limit', String(limit * 2));
     url.searchParams.set('fields', 'title,author_name,cover_i,key');
-    const response = await request(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
+    const response = await request(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal });
     if (!response.ok) throw new Error(`Open Library ${response.status}`);
     return parseOpenLibraryCoverCandidates(await response.json(), trimmed, limit);
   })();
 
   const settled = await Promise.allSettled([yes24, openLibrary]);
+  options.signal?.throwIfAborted();
   const sources: BookCoverSource[] = ['YES24', 'Open Library'];
   const candidates: BookCoverCandidate[] = [];
   const failedSources: BookCoverSource[] = [];
