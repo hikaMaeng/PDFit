@@ -74,6 +74,14 @@ of height fit and spread-width fit; PDFGPU uses its `page` fit and persists that
 user action as `height` for the two-page layout. The displayed percentage is
 the resulting PDF zoom, not a fixed 100% label.
 
+[PDF.js fit layout](../src/front/components/PdfViewer/index.tsx) reserves the
+vertical scrollbar gutter in continuous scroll and the horizontal scrollbar
+gutter during continuous height fit. The fit effect observes the viewport's
+border box and uses the same reference page size throughout a document load.
+Raster updates and background page loads do not recalculate zoom.
+[PDFGPU](../src/front/components/PdfGpuViewer/index.tsx) reserves the vertical
+gutter and keeps its padding constant across fit modes.
+
 ## Reused viewer window contract
 
 `front/viewer/openViewer.ts` assigns a deterministic named browsing context from the

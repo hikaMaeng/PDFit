@@ -49,6 +49,10 @@ Acrobat-compatible zoom coverage runs
 as 1020-by-1320 pixels at 125%, and must still exactly honor fit-width and
 fit-height controls.
 
+[Fit stability](../../../apps/pdfit/tests/plans/viewer-fit-stability-20261123.md)
+samples each frame around both fit actions at classic scrollbar thresholds. It
+also covers active fit during viewport resizing and bookmark sidebar changes.
+
 Folder multi-delete browser coverage selects two uniquely named PDF rows,
 checks the selected-count confirmation, deletes them, and verifies both the UI
 and file API no longer expose either PDF. It also verifies select-all and

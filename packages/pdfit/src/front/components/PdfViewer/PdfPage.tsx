@@ -92,8 +92,6 @@ export default function PdfPage({
 
     canvas.width = Math.round(viewport.width * dpr);
     canvas.height = Math.round(viewport.height * dpr);
-    canvas.style.width = `${Math.round(viewport.width)}px`;
-    canvas.style.height = `${Math.round(viewport.height)}px`;
 
     const ctx = canvas.getContext('2d')!;
     const cached = renderedPageCache.get(page);
@@ -154,6 +152,8 @@ export default function PdfPage({
           ref={canvasRef}
           style={{
             display: 'block',
+            width: '100%',
+            height: '100%',
           }}
         />
       ) : (

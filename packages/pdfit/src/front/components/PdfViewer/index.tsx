@@ -643,53 +643,45 @@ export default function PdfViewer({
     return () => clearTimeout(timer);
   }, [docReady, viewMode, initialScrollTop]);
 
-  // ── fit 스케일 계산 ──────────────────────────────────────────
-  const calcScale = useCallback((fit: FitMode, layout: PageLayout): number => {
+  // Stable scrollbar space keeps the fitted page from resizing its own input.
+  // See docs/internals.md#viewer-zoom-contract.
+  useLayoutEffect(() => {
     const container = containerRef.current;
-    const firstLoaded = pages.find(p => p !== null);
-    if (!container || !firstLoaded) return DEFAULT_VIEWER_ZOOM;
-    const vp = firstLoaded.getViewport({ scale: 1 });
-    if (fit === 'width') {
-      const avail = container.clientWidth - PAGE_HORIZONTAL_PADDING * 2;
-      return layout === 'double'
-        ? fitZoomForCssExtent(avail - 16, 2 * vp.width)
-        : fitZoomForCssExtent(avail, vp.width);
-    }
-    if (fit === 'height') {
-      const avail = container.clientHeight - 48;
-      const heightScale = fitZoomForCssExtent(avail, vp.height);
-      if (layout !== 'double') return heightScale;
-      const widthScale = fitZoomForCssExtent(container.clientWidth - PAGE_HORIZONTAL_PADDING * 2 - 16, 2 * vp.width);
-      return Math.min(heightScale, widthScale);
-    }
-    return scale;
-  }, [pages, scale]);
+    const viewport = baseVpRef.current;
+    if (fitMode === 'none' || !docReady || !container || !viewport) return;
 
-  // fit 모드 또는 뷰 모드 변경 시 스케일 재계산
-  useEffect(() => {
-    if (fitMode === 'none' || pages.length === 0) return;
-    setScale(calcScale(fitMode, pageLayout));
-  }, [fitMode, pageLayout, pages]); // eslint-disable-line
+    let previousZoom: number | undefined;
+    let restorePageFrame = 0;
+    const updateFit = () => {
+      const spread = pageLayout === 'double';
+      const width = container.clientWidth - PAGE_HORIZONTAL_PADDING * 2 - (spread ? 16 : 0);
+      const height = container.clientHeight - 48;
+      if (width <= 0 || height <= 0) return;
 
-  // 창 크기 변경 시 재계산
-  useEffect(() => {
-    if (fitMode === 'none') return;
-    const handler = () => setScale(calcScale(fitMode, pageLayout));
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [fitMode, pageLayout, calcScale]);
+      const widthZoom = fitZoomForCssExtent(width, viewport.width * (spread ? 2 : 1));
+      const heightZoom = fitZoomForCssExtent(height, viewport.height);
+      const zoom = fitMode === 'width' ? widthZoom : spread ? Math.min(heightZoom, widthZoom) : heightZoom;
+      if (zoom === previousZoom) return;
+      previousZoom = zoom;
+      setScale(zoom);
 
-  useEffect(() => {
-    if (fitMode === 'none') return;
-    const page = currentPageRef.current;
-    const timer = requestAnimationFrame(() => {
-      setScale(calcScale(fitMode, pageLayout));
       if (continuousScroll) {
-        requestAnimationFrame(() => pageRefs.current[page - 1]?.scrollIntoView({ block: 'start' }));
+        const page = currentPageRef.current;
+        cancelAnimationFrame(restorePageFrame);
+        restorePageFrame = requestAnimationFrame(() => {
+          const anchor = pageRefs.current[page - 1];
+          if (anchor) container.scrollTop += anchor.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        });
       }
-    });
-    return () => cancelAnimationFrame(timer);
-  }, [bookmarkPanelOpen, calcScale, continuousScroll, fitMode, pageLayout]);
+    };
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(container, { box: 'border-box' });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(restorePageFrame);
+    };
+  }, [continuousScroll, docReady, fitMode, pageLayout]);
 
   // ── 뷰모드 변경 ──────────────────────────────────────────────
   const selectPageLayout = (next: PageLayout) => {
@@ -699,11 +691,6 @@ export default function PdfViewer({
     if (next === 'double') {
       goToPage(currentPageRef.current, interactionMode);
       setFitMode('width');
-      setTimeout(() => setScale(calcScale('width', next)), 0);
-      return;
-    }
-    if (fitMode !== 'none') {
-      setTimeout(() => setScale(calcScale(fitMode, next)), 0);
     }
   };
   useLayoutEffect(() => {
@@ -727,10 +714,6 @@ export default function PdfViewer({
   const zoomOut = () => {
     setFitMode('none');
     setScale((s) => [...ZOOM_LEVELS].reverse().find((z) => z < s) ?? s);
-  };
-  const fitTo = (mode: Exclude<FitMode, 'none'>) => {
-    setFitMode(mode);
-    setTimeout(() => setScale(calcScale(mode, pageLayoutRef.current)), 0);
   };
   const submitZoom = () => {
     const percentage = Number.parseFloat(zoomInput.replace('%', '').trim());
@@ -910,8 +893,8 @@ export default function PdfViewer({
           onPageLayoutChange={selectPageLayout}
           onToggleSpreadCover={() => selectSpreadCover(spreadCover === 'alone' ? 'paired' : 'alone')}
           onToggleContinuousScroll={toggleContinuousScroll}
-          onFitWidth={() => fitTo('width')}
-          onFitHeight={() => fitTo('height')}
+          onFitWidth={() => setFitMode('width')}
+          onFitHeight={() => setFitMode('height')}
           onZoomOut={zoomOut}
           onZoomIn={zoomIn}
           onZoomInputChange={setZoomInput}
@@ -974,7 +957,15 @@ export default function PdfViewer({
 
       {/* ── 스크롤 모드 ── */}
       {(continuousScroll || pageLayout === 'single') && (
-        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`, overflow: continuousScroll ? 'auto' : 'hidden', display: continuousScroll ? 'block' : 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}>
+        <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{
+          height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`,
+          overflow: continuousScroll ? 'auto' : 'hidden',
+          scrollbarGutter: continuousScroll ? 'stable' : undefined,
+          overflowX: continuousScroll && fitMode === 'height' ? 'scroll' : undefined,
+          display: continuousScroll ? 'block' : 'flex', alignItems: 'center', justifyContent: 'center',
+          bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a',
+          py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box',
+        }}>
           {pageLayout === 'single' ? pages.map((page, idx) => {
             const pn = idx + 1;
             return (
