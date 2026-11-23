@@ -59,6 +59,7 @@ import { folderLibraryModel } from '../model/folderLibraryModel';
 import { listAllBookmarks } from '../api/bookmarks';
 import { loadCoverOverrides } from '../api/covers';
 import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
+import { bookClipCountModel } from '../model/bookClipCountModel.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
 import { UNTAGGED_PATH } from '../model/untagged.js';
@@ -311,12 +312,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     window.addEventListener('tags-changed', onTagChange);
     window.addEventListener(TAG_SUMMARY_OPTIMISTIC_EVENT, onOptimisticTagChange);
     const unsubscribeBookmarks = subscribeBookmarkChanges(onBookmarkChange);
+    const disconnectBookClipCounts = bookClipCountModel.connect();
 
     return () => {
       window.removeEventListener('folders-changed', onFolderChange);
       window.removeEventListener('tags-changed', onTagChange);
       window.removeEventListener(TAG_SUMMARY_OPTIMISTIC_EVENT, onOptimisticTagChange);
       unsubscribeBookmarks();
+      disconnectBookClipCounts();
     };
   }, [loadBookmarkCount, loadFolders, loadTags]);
 

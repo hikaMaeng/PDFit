@@ -23,7 +23,7 @@ export interface TagSummary {
   color: string;
 }
 
-export interface BookRecord {
+export interface BookRecord extends Partial<import('../common/protocol/bookmarks/index.js').BookClipCount> {
   folder: string;
   filename: string;
   size: number;
@@ -126,7 +126,7 @@ export interface MetadataStore {
   listBookmarks(folder: string, filename: string, driveFileId?: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;
   createBookmark(folder: string, filename: string, bookmark: import('../common/protocol/bookmarks/index.js').CreateBookmarkRequest, driveFileId?: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord>;
   updateBookmark(id: string, update: import('../common/protocol/bookmarks/index.js').UpdateBookmarkRequest): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
-  deleteBookmark(id: string): Promise<void>;
+  deleteBookmark(id: string): Promise<void | import('../common/protocol/bookmarks/index.js').BookClipCount>;
   /** Clip OCR (local runtime). Optional: a store without them keeps clips without text. */
   getBookmark?(id: string): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord | null>;
   listBookmarksWithOcrStatus?(status: import('../common/protocol/bookmarks/index.js').BookmarkOcr['status'], limit: number): Promise<import('../common/protocol/bookmarks/index.js').BookmarkRecord[]>;

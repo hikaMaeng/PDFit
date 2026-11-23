@@ -14,8 +14,9 @@ import type {
 } from '../../shared/index.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
 import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
-import type { BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
+import { bookClipCountsSchema } from './bookClipCounts.js';
 
 // Invalidate only scan-volume sequences with known automatic provenance.
 // Existing rows without provenance are indistinguishable from manual edits.
@@ -31,6 +32,10 @@ const LEGACY_PLACEHOLDER_OUTLINE = `
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
+
+function bookClipCountFromRow(row: Record<string, unknown>): BookClipCount {
+  return { clipCount: Number(row.clip_count), clipCountRevision: Number(row.clip_count_revision) };
+}
 
 /** TIMESTAMPTZ arrives as a Date; String(date) is not ISO 8601. */
 function isoTimestamp(value: unknown): string | null {
@@ -111,7 +116,7 @@ export class PostgresMetadataStore implements MetadataStore {
 
   async listBooksByTag(tag: string): Promise<TaggedBookRecord[]> {
     const result = await this.db.query(`
-      SELECT b.folder, b.filename, b.size, b.modified_at,
+      SELECT b.folder, b.filename, b.size, b.modified_at, b.clip_count, b.clip_count_revision,
         COALESCE(array_agg(all_tags.name ORDER BY all_tags.name) FILTER (WHERE all_tags.name IS NOT NULL), '{}') AS tags
       FROM book_tags bt
       JOIN tags selected_tag ON selected_tag.id = bt.tag_id AND selected_tag.name = $1
@@ -123,7 +128,7 @@ export class PostgresMetadataStore implements MetadataStore {
     `, [tag]);
     return result.rows.map((row) => ({
       folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
-      modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
+      modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String), ...bookClipCountFromRow(row),
     }));
   }
 
@@ -148,14 +153,14 @@ export class PostgresMetadataStore implements MetadataStore {
 
   async listUntaggedBooks(): Promise<TaggedBookRecord[]> {
     const result = await this.db.query(`
-      SELECT b.folder, b.filename, b.size, b.modified_at
+      SELECT b.folder, b.filename, b.size, b.modified_at, b.clip_count, b.clip_count_revision
       FROM books b
       WHERE NOT EXISTS (SELECT 1 FROM book_tags bt WHERE bt.folder = b.folder AND bt.filename = b.filename)
       ORDER BY b.folder, b.filename
     `);
     return result.rows.map((row) => ({
       folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
-      modified_at: String(row.modified_at), tags: [],
+      modified_at: String(row.modified_at), tags: [], ...bookClipCountFromRow(row),
     }));
   }
 
@@ -181,7 +186,7 @@ export class PostgresMetadataStore implements MetadataStore {
 
   async listFavoriteBooks(): Promise<TaggedBookRecord[]> {
     const result = await this.db.query(`
-      SELECT b.folder, b.filename, b.size, b.modified_at, f.created_at,
+      SELECT b.folder, b.filename, b.size, b.modified_at, b.clip_count, b.clip_count_revision, f.created_at,
         COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
       FROM book_favorites f
       JOIN books b ON b.folder = f.folder AND b.filename = f.filename
@@ -192,7 +197,7 @@ export class PostgresMetadataStore implements MetadataStore {
     `);
     return result.rows.map((row) => ({
       folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
-      modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
+      modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String), ...bookClipCountFromRow(row),
     }));
   }
 
@@ -262,7 +267,7 @@ export class PostgresMetadataStore implements MetadataStore {
     // 제목과 초성 필드(title_choseong)를 동시에 찾는다. 초성 필드는 공백을 뺀 값이라 검색어도 같게 정리해
     // 변환 없이 그대로 비교한다("자바" 같은 완성형 검색어는 초성 필드에 일치하지 않는다).
     const result = await this.db.query(`
-      SELECT b.folder, b.filename, b.size, b.modified_at,
+      SELECT b.folder, b.filename, b.size, b.modified_at, b.clip_count, b.clip_count_revision,
         COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags,
         COUNT(*) OVER ()::int AS total
       FROM books b
@@ -278,21 +283,21 @@ export class PostgresMetadataStore implements MetadataStore {
       total: result.rows[0] ? Number(result.rows[0].total) : 0,
       books: result.rows.map((row) => ({
         folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
-        modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String),
+        modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String), ...bookClipCountFromRow(row),
       })),
     };
   }
 
   async listBooksByFolder(folder: string): Promise<BookRecord[]> {
     const result = await this.db.query(`
-      SELECT folder, filename, size, modified_at
+      SELECT folder, filename, size, modified_at, clip_count, clip_count_revision
       FROM books
       WHERE folder = $1
       ORDER BY filename
     `, [folder]);
     return result.rows.map((row) => ({
       folder: String(row.folder), filename: String(row.filename),
-      size: Number(row.size), modified_at: String(row.modified_at),
+      size: Number(row.size), modified_at: String(row.modified_at), ...bookClipCountFromRow(row),
     }));
   }
 
@@ -563,7 +568,9 @@ export class PostgresMetadataStore implements MetadataStore {
     const output = path.join(bookDir, 'capture.jpg');
     await sharp(input).jpeg({ quality: 90 }).toFile(output);
     const result = await this.db.query('INSERT INTO bookmarks (id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, folder, filename, page_index, x, y, width, height, border_color, fill_color, fill_opacity, comment, image_mime_type, image_path, created_at, updated_at, ocr_status, ocr_text, ocr_source, ocr_error, ocr_updated_at', [id, folder, filename, bookmark.pageIndex, bookmark.rect.x, bookmark.rect.y, bookmark.rect.width, bookmark.rect.height, bookmark.borderColor, bookmark.fillColor ?? null, bookmark.fillOpacity ?? 0.2, bookmark.comment ?? null, 'image/jpeg', `${id}/capture.jpg`]);
-    return this.bookmarkFromRow(result.rows[0]);
+    const record = this.bookmarkFromRow(result.rows[0]);
+    const count = await this.readBookClipCount(folder, filename);
+    return count ? { ...record, bookClipCount: count } : record;
   }
 
   async updateBookmark(id: string, update: UpdateBookmarkRequest): Promise<BookmarkRecord | null> {
@@ -571,19 +578,30 @@ export class PostgresMetadataStore implements MetadataStore {
     return result.rows[0] ? this.bookmarkFromRow(result.rows[0]) : null;
   }
 
-  async deleteBookmark(id: string): Promise<void> {
-    const result = await this.db.query<{ image_path: string }>('DELETE FROM bookmarks WHERE id = $1 RETURNING image_path', [id]);
-    const imagePath = result.rows[0]?.image_path;
-    if (!imagePath) return;
+  async deleteBookmark(id: string): Promise<BookClipCount | undefined> {
+    const result = await this.db.query<{ image_path: string; folder: string; filename: string }>('DELETE FROM bookmarks WHERE id = $1 RETURNING image_path, folder, filename', [id]);
+    const deleted = result.rows[0];
+    if (!deleted) return;
 
     const assetRoot = path.resolve(this.bookmarkAssetRoot);
-    const assetPath = path.resolve(assetRoot, imagePath);
+    const assetPath = path.resolve(assetRoot, deleted.image_path);
     if (assetPath !== assetRoot && !assetPath.startsWith(`${assetRoot}${path.sep}`)) return;
     try {
       await fs.promises.unlink(assetPath);
       await fs.promises.rm(path.dirname(assetPath), { recursive: true, force: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    return this.readBookClipCount(deleted.folder, deleted.filename);
+  }
+
+  private async readBookClipCount(folder: string, filename: string): Promise<BookClipCount | undefined> {
+    try {
+      const result = await this.db.query('SELECT clip_count, clip_count_revision FROM books WHERE folder = $1 AND filename = $2', [folder, filename]);
+      return result.rows[0] ? bookClipCountFromRow(result.rows[0]) : undefined;
+    } catch {
+      // The count hint can be refreshed with book metadata after a committed write.
+      return undefined;
     }
   }
 
@@ -766,6 +784,7 @@ export class PostgresMetadataStore implements MetadataStore {
       ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_error TEXT;
       ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS ocr_updated_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_bookmarks_ocr_pending ON bookmarks (created_at) WHERE ocr_status = 'pending';
+      ${bookClipCountsSchema}
       CREATE TABLE IF NOT EXISTS annotations (
         id UUID PRIMARY KEY,
         document_id TEXT NOT NULL,

@@ -9,7 +9,7 @@ export interface FolderInfo {
   parentFolderId?: string;
 }
 
-export interface PdfInfo {
+export interface PdfInfo extends Partial<import('../../common/protocol/bookmarks/index.js').BookClipCount> {
   name: string;
   size: number;
   modifiedAt: string;

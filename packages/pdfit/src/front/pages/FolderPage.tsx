@@ -790,7 +790,7 @@ function FolderPage({ folderName: requestedFolderName }: {
         </>) : (<><Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
             {renderedFiles.map((file) => {
                 const identity = selectionKey(file);
-                return (<PdfCoverItem key={identity} filename={file.name} url={foldersApi.fileUrl(folderName, file.name, file.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={(() => {
+                return (<PdfCoverItem key={identity} filename={file.name} clipCount={file.clipCount} clipCountRevision={file.clipCountRevision} url={foldersApi.fileUrl(folderName, file.name, file.driveFileId)} serverCover={serverThumbnails} thumbnailUrl={(() => {
                         if (serverThumbnails && !file.driveFileId)
                             return foldersApi.localThumbnailUrl(folderName, file.name, file.modifiedAt, file.size);
                         const thumbnail = serverThumbnails ? foldersApi.thumbnailUrl(file.driveFileId, file.modifiedAt, file.size) : foldersApi.thumbnailUrl(file.driveFileId);

@@ -1,5 +1,5 @@
 import { Router, type Request, type RequestHandler, type Response, type Router as ExpressRouter } from 'express';
-import type { CreateBookmarkRequest, UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
+import { CLIP_COUNT_HEADER, CLIP_COUNT_REVISION_HEADER, type CreateBookmarkRequest, type UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from '../../routes/metadataStoreResolver.js';
 
 /** Clip OCR hook (local runtime). Absent where the runtime does not run OCR. */
@@ -64,6 +64,13 @@ export function createBookmarksRouter(storeResolver: MetadataStoreResolver, ocr?
     const result = await store.updateBookmark(req.params.id, body);
     return result ? res.json(result) : res.status(404).json({ error: 'bookmark not found' });
   }));
-  router.delete('/:id', asyncRoute(async (req, res) => { await (await resolveMetadataStore(storeResolver, req)).deleteBookmark(req.params.id); return res.status(204).end(); }));
+  router.delete('/:id', asyncRoute(async (req, res) => {
+    const count = await (await resolveMetadataStore(storeResolver, req)).deleteBookmark(req.params.id);
+    if (count) {
+      res.set(CLIP_COUNT_HEADER, String(count.clipCount));
+      res.set(CLIP_COUNT_REVISION_HEADER, String(count.clipCountRevision));
+    }
+    return res.status(204).end();
+  }));
   return router;
 }

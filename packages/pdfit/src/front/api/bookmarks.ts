@@ -1,6 +1,6 @@
 import { createBrowserUuid } from '../browserUuid.js';
 import { uiText } from '../i18n/uiText.js';
-import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
+import { CLIP_COUNT_HEADER, CLIP_COUNT_REVISION_HEADER, type BookClipCount, type BookmarkRecord, type CreateBookmarkRequest, type UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { cacheBookmarkRecord, deleteCachedBookmark, listCachedBookmarks } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 
@@ -36,10 +36,13 @@ export async function updateBookmark(id: string, request: UpdateBookmarkRequest)
   const record = await response.json() as BookmarkRecord; await cacheBookmarkRecord(record); return record;
 }
 
-export async function deleteBookmark(id: string): Promise<void> {
+export async function deleteBookmark(id: string): Promise<BookClipCount | undefined> {
   await deleteCachedBookmark(id);
   const response = await requestWithMetadataOutbox({ coalesceKey: `bookmark:delete:${id}`, url: `/api/bookmarks/${encodeURIComponent(id)}`, method: 'DELETE' });
   if (!response.ok) throw new Error(uiText("북마크를 삭제하지 못했습니다."));
+  const count = response.headers.get(CLIP_COUNT_HEADER);
+  const revision = response.headers.get(CLIP_COUNT_REVISION_HEADER);
+  if (count !== null && revision !== null) return { clipCount: Number(count), clipCountRevision: Number(revision) };
 }
 
 /** Queues the clip's text to be read again (local runtime). The record turns `pending`. */

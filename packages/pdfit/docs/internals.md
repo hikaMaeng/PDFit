@@ -1,5 +1,17 @@
 # Internals
 
+## Book clip counts
+
+The [PostgreSQL migration](../src/server/postgres/bookClipCounts.ts#bookClipCountsSchema)
+backfills `books.clip_count` once. Clip inserts and deletes change it in the
+same transaction as the clip. A book indexed later starts with the count of
+its saved clips. Book lists read the count directly from `books`.
+
+[BookClipButton](../src/front/components/clips/BookClipButton.tsx#BookClipButton)
+selects one of eleven complete graphics from the list record. Confirmed
+mutations broadcast the count and revision to other open library windows.
+The newer revision wins when messages arrive out of order.
+
 The PostgreSQL store keeps schema ownership for:
 
 * `reading_progress`

@@ -120,6 +120,7 @@ const rows = {
   bookmarkCapture: ['Bookmark', '클립에 저장', '书签', 'Marcador', 'बुकमार्क', 'إشارة مرجعية', 'Signet', 'Marcador'],
   clipBookTitle: ['Clips in {book}', '{book}의 클립', '{book}中的剪辑', 'Recortes de {book}', '{book} के क्लिप', 'مقتطفات {book}', 'Extraits de {book}', 'Recortes de {book}'],
   clipBookEmpty: ['This book has no clips yet.', '이 책에 저장된 클립이 없습니다.', '此书还没有剪辑。', 'Este libro aún no tiene recortes.', 'इस किताब में अभी कोई क्लिप नहीं है।', 'لا توجد مقتطفات في هذا الكتاب بعد.', 'Ce livre ne contient encore aucun extrait.', 'Este livro ainda não tem recortes.'],
+  bookClipCount: ['Clips: {count}', '클립 {count}개', '剪辑：{count}', 'Recortes: {count}', 'क्लिप: {count}', 'المقتطفات: {count}', 'Extraits : {count}', 'Recortes: {count}'],
   clipSort: ['Sort clips', '클립 정렬', '排序剪辑', 'Ordenar recortes', 'क्लिप क्रमबद्ध करें', 'ترتيب المقتطفات', 'Trier les extraits', 'Ordenar recortes'],
   clipSortCreated: ['Date added', '추가 일시', '添加时间', 'Fecha de adición', 'जोड़ने की तारीख', 'تاريخ الإضافة', 'Date d’ajout', 'Data de adição'],
   clipSortPage: ['Page order', '페이지 순서', '页码顺序', 'Orden de página', 'पृष्ठ क्रम', 'ترتيب الصفحات', 'Ordre des pages', 'Ordem das páginas'],

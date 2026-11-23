@@ -7,7 +7,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const assets = [{ from: 'src/front/i18n/catalog', to: 'dist/front/i18n/catalog' }];
+const assets = [
+  { from: 'src/front/i18n/catalog', to: 'dist/front/i18n/catalog' },
+  { from: 'src/front/components/clips/assets', to: 'dist/front/components/clips/assets' },
+];
 
 for (const asset of assets) {
   const source = path.join(packageDir, asset.from);

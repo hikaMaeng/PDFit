@@ -1,5 +1,13 @@
 export type BookmarkRect = { x: number; y: number; width: number; height: number };
 
+export interface BookClipCount {
+  clipCount: number;
+  clipCountRevision: number;
+}
+
+export const CLIP_COUNT_HEADER = 'x-pdfit-clip-count';
+export const CLIP_COUNT_REVISION_HEADER = 'x-pdfit-clip-count-revision';
+
 /**
  * Text read from a clip. `text-layer` comes from the PDF itself; `vision` from the AI
  * server's vision model when the area has no text layer. `unavailable` means no AI
@@ -29,6 +37,8 @@ export interface BookmarkRecord {
   updatedAt: string;
   /** Absent where the runtime does not run OCR. */
   ocr?: BookmarkOcr | null;
+  /** Book metadata returned after creation when the store tracks clip counts. */
+  bookClipCount?: BookClipCount;
 }
 
 export interface CreateBookmarkRequest {

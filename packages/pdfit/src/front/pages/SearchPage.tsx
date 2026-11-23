@@ -146,6 +146,8 @@ export default function SearchPage() {
             <Box data-testid="pdf-cover-grid" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 2, px: 1, py: 1.5 }}>
               {renderedBooks.map((book, index) => (
                 <PdfCoverItem
+                  clipCount={book.clipCount}
+                  clipCountRevision={book.clipCountRevision}
                   key={bookKey(book, index)}
                   filename={book.filename}
                   folder={book.folder}

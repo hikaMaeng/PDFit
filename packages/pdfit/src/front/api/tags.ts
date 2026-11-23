@@ -1,5 +1,5 @@
 import { uiText } from '../i18n/uiText.js';
-export interface BookRef {
+export interface BookRef extends Partial<import('../../common/protocol/bookmarks/index.js').BookClipCount> {
   folder: string;
   filename: string;
   driveFileId?: string;

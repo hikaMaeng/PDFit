@@ -206,6 +206,7 @@ export function createFoldersRouter(
     if (listBooks) {
       void listBooks(req.params.name).then((books) => res.json(books.map((book) => ({
         name: book.filename, size: book.size, modifiedAt: book.modified_at,
+        clipCount: book.clipCount, clipCountRevision: book.clipCountRevision,
       })))).catch((error) => res.status(404).json({ error: String(error) }));
       return;
     }

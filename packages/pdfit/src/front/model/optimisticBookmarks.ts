@@ -4,6 +4,7 @@ import type { BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } fro
 import { createBookmark, deleteBookmark, updateBookmark } from '../api/bookmarks.js';
 import { cacheBookmarkRecord, deleteCachedBookmark } from '../cache/metadataCache.js';
 import { publishBookmarkChange } from './bookmarkEvents.js';
+import { publishBookClipCount } from './bookClipCountModel.js';
 import { beginMutationPerformance } from './mutationPerformance.js';
 import { backgroundSyncModel } from './backgroundSyncModel.js';
 
@@ -69,6 +70,7 @@ export function createBookmarkOptimistically(
       hooks.upsert(saved);
       publishBookmarkChange({ folder, filename, kind: 'deleted', id: optimistic.id });
       publishBookmarkChange({ folder, filename, kind: 'created', record: saved });
+      if (saved.bookClipCount) publishBookClipCount(saved, saved.bookClipCount);
       timing.mark('sync-complete');
       backgroundSyncModel.complete(syncId);
       return true;
@@ -136,7 +138,8 @@ export function deleteBookmarkOptimistically(record: BookmarkRecord, hooks: Book
       timing.mark('indexeddb');
       timing.mark('request-start');
       backgroundSyncModel.syncing(syncId);
-      await deleteBookmark(record.id);
+      const count = await deleteBookmark(record.id);
+      if (count) publishBookClipCount(record, count);
       timing.mark('server-response');
       timing.mark('sync-complete');
       backgroundSyncModel.complete(syncId);

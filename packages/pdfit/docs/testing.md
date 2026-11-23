@@ -115,11 +115,16 @@ Bookmark library browser contract:
 * `data-testid="lnb-bookmarks"` navigates to `/bookmarks` between folder and tag navigation.
 * `data-testid="bookmark-library-page"` exposes recent and per-book tabs.
 * `pdf-cover-clips` opens `book-clips-dialog` with the selected book and the date/page sort buttons.
+  Its `data-clip-graphic` identifies the displayed artwork. The accessible
+  description gives the exact count in Free.
 * `bookmark-library-card` opens the shared detail dialog from either grid.
 * `bookmark-preview-dialog` contains the labeled memo editor, Reset and Save actions, and the
   `bookmark-preview-open-viewer` page action. The author's capture, border, and color indicator remain visible above the memo.
 * `bookmark-preview-text` opens a separate dialog (`clip-text-pane`) with selectable OCR text.
   [Book clips and memo plan](../../../apps/pdfit/tests/plans/book-clips-memo-20261123.md)
+* `book-clip-counts.test.mjs` uses an isolated PostgreSQL schema for the backfill,
+  concurrent writes, late book indexing and list queries.
+  [Book clip count plan](../../../apps/pdfit/tests/plans/book-clip-counts-20261123.md)
 * A file row remains a native link named by its filename; its ordinary click is intercepted by
   the shared viewer launcher, while modifier-click keeps normal browser-link behavior.
 

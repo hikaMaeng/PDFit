@@ -179,6 +179,12 @@ card dialog use `GET /api/bookmarks/:folder/:filename`. Both return
 creation time, and OCR fields intact.
 See [the bookmark routes](../src/server/api/bookmarks/index.ts#createBookmarksRouter).
 
+Free folder files, title search, tagged, untagged and favorite book records
+include `clipCount` and `clipCountRevision` from the book row. Clip creation
+can return the new values in `bookClipCount`. Deletion preserves HTTP 204 and
+sends the values in `X-PDFit-Clip-Count` and `X-PDFit-Clip-Count-Revision` when
+the book is indexed. [Count storage](internals.md#book-clip-counts)
+
 ## Thumbnail and task endpoints (local runtime)
 
 Mounted only when `backgroundTasks` is configured.
