@@ -56,7 +56,8 @@ try {
   await page.waitForURL(/\/search\?q=SQL$/);
   const expectedSql = await api('SQL');
   const rows = page.locator('.pdfit-pdf-row a[href^="/viewer/"]');
-  await rows.first().waitFor();
+  const waitForMountedResults = () => page.locator('[data-testid="list-mount-sentinel"][data-list-mounted="true"]').waitFor({ state: 'attached' });
+  await waitForMountedResults();
   const names = await rows.evaluateAll((links) => links.map((a) => a.textContent.trim()));
   check('결과 건수가 DB 검색 API와 같음', names.length === Math.min(expectedSql.total, expectedSql.books.length), `${names.length} vs ${expectedSql.total}`);
   check('모든 결과의 제목에 검색어가 부분 문자열로 포함됨', names.every((name) => titleOf(name).toLowerCase().includes('sql')));
@@ -71,6 +72,7 @@ try {
   await page.waitForURL(/\/search\?q=%EC%9E%90%EB%B0%94$/);
   await page.getByTestId('search-result-count').filter({ hasText: '자바' }).waitFor();
   const javaExpected = await api('자바');
+  await waitForMountedResults();
   const javaNames = await rows.evaluateAll((links) => links.map((a) => a.textContent.trim()));
   check('한글 검색 결과 건수가 API와 같음', javaNames.length === javaExpected.books.length);
   check('한글 결과 제목이 모두 검색어를 포함', javaNames.every((name) => titleOf(name).includes('자바')));
@@ -87,6 +89,7 @@ try {
   await page.waitForURL(/\/search\?q=/);
   await page.getByTestId('search-result-count').filter({ hasText: 'ㅇㅂ' }).waitFor();
   const initialsExpected = await api('ㅇㅂ');
+  await waitForMountedResults();
   const initialsNames = await rows.evaluateAll((links) => links.map((a) => a.textContent.trim()));
   check('초성 검색 결과 건수가 API와 같음', initialsNames.length === Math.min(initialsExpected.total, initialsExpected.books.length) && initialsExpected.total > 0, `${initialsNames.length} vs ${initialsExpected.total}`);
   check('초성 결과 제목은 모두 초성에 ㅇㅂ를 포함(독립 계산)', initialsNames.every((name) => initialsOf(titleOf(name)).includes('ㅇㅂ') || titleOf(name).toLowerCase().includes('ㅇㅂ')));
@@ -102,11 +105,15 @@ try {
   const folderQuery = await api('이북');
   check('폴더명만 일치하는 책은 검색되지 않음(API)', folderQuery.books.every((book) => titleOf(book.filename).includes('이북')));
 
-  // 6) 표지 보기 전환 — 읽기 전용(관리 버튼 없음)
+  // 6) 표지 보기 전환 — 결과와 문서 작업 버튼 확인
   await page.getByRole('button', { name: '표지 보기' }).click();
   await page.getByTestId('pdf-cover-grid').waitFor();
+  await waitForMountedResults();
   check('표지 보기 카드 수가 결과 수와 같음', (await page.getByTestId('pdf-cover-title-row').count()) === initialsNames.length);
-  check('표지 카드에 이동·삭제 버튼이 없음', (await page.getByTestId('pdf-cover-file-actions').locator('button').count()) === 0);
+  const firstCoverActions = page.getByTestId('pdf-cover-file-actions').first();
+  check('표지 카드에서 이동·삭제 가능',
+    await firstCoverActions.getByRole('button', { name: '폴더로 이동' }).count() === 1
+      && await firstCoverActions.getByRole('button', { name: '삭제' }).count() === 1);
   await page.screenshot({ path: path.join(output, '03-results-covers.png') });
   await page.evaluate(() => localStorage.setItem('pdfit.library.view', 'list'));
 

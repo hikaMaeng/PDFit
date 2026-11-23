@@ -46,7 +46,7 @@ export default function SearchPage() {
       <Typography component="h1" variant="h5" fontWeight={700}>{t('searchResultsTitle')}</Typography>
     </Box>
     {contentSearch ? <>
-      <Tabs value={selected} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
+      <Tabs value={selected} variant="scrollable" scrollButtons="auto"
         aria-label={t('searchResultsTitle')} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
         onChange={(_, tab: SearchTab) => {
           const next = new URLSearchParams(params);
@@ -55,7 +55,8 @@ export default function SearchPage() {
           setParams(next);
         }}>
         {SEARCH_TABS.map((tab) => <Tab key={tab} value={tab} label={t(TAB_LABELS[tab])}
-          disabled={!query && tab !== 'title'} id={`search-tab-${tab}`} aria-controls={`search-panel-${tab}`} />)}
+          disabled={!query && tab !== 'title'} id={`search-tab-${tab}`} aria-controls={`search-panel-${tab}`}
+          sx={{ minWidth: { xs: 'auto', sm: 90 }, px: { xs: 1.25, sm: 2 } }} />)}
       </Tabs>
       {SEARCH_TABS.map((tab) => <Box key={tab} role="tabpanel" hidden={selected !== tab}
         id={`search-panel-${tab}`} aria-labelledby={`search-tab-${tab}`}>
