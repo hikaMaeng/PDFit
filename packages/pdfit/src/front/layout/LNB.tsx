@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Box,
   Button,
@@ -32,7 +32,6 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -42,6 +41,8 @@ import FolderOffOutlinedIcon from '@mui/icons-material/FolderOffOutlined';
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TagIcon from '../components/HashTagIcon.js';
+import TagEditDialog from '../components/TagEditDialog.js';
+import TagGlyph from '../components/TagGlyph.js';
 import TagNoticeSnackbar from '../components/TagNoticeSnackbar.js';
 import LanguageIcon from '@mui/icons-material/Language';
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined';
@@ -68,6 +69,7 @@ import { favoritesModel } from '../model/favoritesModel.js';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { TAG_INDEX_PATH } from '../model/tagIndex.js';
 import { TAG_SUMMARY_OPTIMISTIC_EVENT, type TagSummaryOptimisticDetail } from '../model/tagSummaryEvents.js';
+import { subscribeTagDetailsChanges, tagNameFromPath, tagPath } from '../model/tagDetailsEvents.js';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
 import { RSC } from './resource.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
@@ -113,6 +115,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const { language, t, ui } = usePdfitI18n();
   const navigate = useNavigate();
   const location = useLocation();
+  const activeTag = tagNameFromPath(location.pathname);
   const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved } = usePdfitFrontConfig();
   const go = (path: string) => navigate(navigationGuard?.(path) ?? path);
   const { languagePreference } = usePdfitFrontConfig();
@@ -142,6 +145,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [tags, setTags] = useState<TagSummary[]>([]);
+  const tagsRequest = useRef(0);
+  const [editTag, setEditTag] = useState<(TagSummary & { id: string }) | null>(null);
   const [untaggedCount, setUntaggedCount] = useState(0);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   // 즐겨찾기 개수와 사용 가능 여부는 모델이 들고 있다. 한 번만 읽고 나서는 모델 변경(토글·서버 이벤트)을 구독한다.
@@ -205,18 +210,31 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   }, []);
 
   const loadTags = useCallback(async () => {
+    const request = ++tagsRequest.current;
     try {
       const data = await tagsApi.listSummary();
-      setTags(data);
+      if (request === tagsRequest.current) setTags(data);
     } catch {
       // keep current tag list on error
     }
     try {
-      setUntaggedCount(await tagsApi.countUntaggedBooks());
+      const count = await tagsApi.countUntaggedBooks();
+      if (request === tagsRequest.current) setUntaggedCount(count);
     } catch {
       // 미분류 개수를 못 구해도 마지막 값을 유지한다
     }
   }, []);
+
+  useEffect(() => subscribeTagDetailsChanges(({ previousName, name }) => {
+    if (previousName !== name) {
+      void tagFoldersModel.load();
+      if (activeTag === previousName) {
+        const path = tagPath(name);
+        navigate(navigationGuard?.(path) ?? path, { replace: true });
+      }
+    }
+    window.dispatchEvent(new Event('tags-changed'));
+  }), [activeTag, navigate, navigationGuard]);
 
   const loadBookmarkCount = useCallback(async () => {
     try {
@@ -596,7 +614,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   };
 
   const renderTagRow = (tag: TagSummary, folderName?: string) => {
-    const tagPath = `/tag/${encodeURIComponent(tag.name)}`;
+    const editId = tag.id;
+    const path = tagPath(tag.name);
     const rowKey = `${folderName ?? ''}\u0000${tag.name}`;
     const dragOver = dragOverTag === rowKey;
     const menuOpen = tagFolderMenu?.tag === tag.name && folderName === undefined;
@@ -645,6 +664,15 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                 </IconButton>
               </Tooltip>
             )}
+            {editId && (
+              <Tooltip title={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })} placement="right" arrow>
+                <IconButton size="small" aria-label={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })}
+                  aria-haspopup="dialog" onClick={() => setEditTag({ ...tag, id: editId })}
+                  sx={{ ...folderButtonSx, opacity: activeTag === tag.name ? 0.8 : 0 }}>
+                  <EditOutlinedIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title={t('deleteTag')} placement="right" arrow>
               <IconButton
                 size="small"
@@ -657,7 +685,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Tooltip>
           </Box>
         }
-        sx={{ pr: tagFoldersAvailable || folderName !== undefined ? 7 : 4 }}
+        sx={{ pr: (tagFoldersAvailable || folderName !== undefined ? 7 : 4) + (editId ? 3 : 0) }}
         disablePadding
         onDragOver={(event) => {
           if (!isBookDrag(event)) return;
@@ -669,8 +697,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         onDrop={(event) => { if (isBookDrag(event)) void handleDropOnTag(tag.name, event); }}
       >
         <ListItemButton
-          selected={location.pathname === tagPath}
-          onClick={() => { go(tagPath); onMobileClose(); }}
+          selected={activeTag === tag.name}
+          onClick={() => { go(path); onMobileClose(); }}
           sx={{
             borderRadius: 1,
             mx: 1,
@@ -692,7 +720,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           <ListItemText
             primary={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <LocalOfferOutlinedIcon aria-hidden data-testid="lnb-tag-icon" sx={{ fontSize: 14, flexShrink: 0, color: tag.color }} />
+                <TagGlyph icon={tag.icon} data-testid="lnb-tag-icon" sx={{ fontSize: 14, flexShrink: 0, color: tag.color }} />
                 <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
                   <DisplayName value={tag.name} />
                 </Typography>
@@ -1271,6 +1299,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           </Box>
         )}
       </Drawer>
+
+      {editTag && <TagEditDialog tag={editTag} onClose={() => setEditTag(null)} />}
 
       <Menu
         anchorEl={tagFolderMenu?.anchor}

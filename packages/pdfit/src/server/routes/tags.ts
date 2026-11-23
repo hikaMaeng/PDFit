@@ -3,6 +3,7 @@ import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStor
 import { AUTOMATIC_TAG_MAX, AUTOMATIC_TAG_MIN, bookTitleFromFilename, normalizeSuggestedTags, selectAutomaticTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, documentTagFromTitle } from '../../shared/tagTaxonomy.js';
 import type { MetadataStore } from '../../shared/index.js';
+import { isEditableTagName, isTagIconName } from '../../shared/tagDetails.js';
 
 const AUTOMATIC_CATEGORY_SET = new Set<string>([...BOOKSTORE_TAG_TAXONOMY, ...DOCUMENT_TAG_TAXONOMY]);
 const LEGACY_AUTOMATIC_CATEGORIES = new Set(['기타', '교양']);
@@ -143,6 +144,36 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
       await metadataStore.updateTagColor(req.params.tag, color.toLowerCase());
       res.json({ ok: true });
+    } catch (error) { res.status(500).json({ error: String(error) }); }
+  });
+
+  router.patch('/:id/details', async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { previousName, name, color, icon } = req.body ?? {};
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!/^[1-9]\d{0,18}$/.test(id) || BigInt(id) > 9223372036854775807n
+      || typeof previousName !== 'string' || !previousName
+      || (name === undefined && color === undefined && icon === undefined)
+      || (name !== undefined && !isEditableTagName(trimmedName))
+      || (color !== undefined && (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)))
+      || (icon !== undefined && !isTagIconName(icon))) {
+      res.status(400).json({ error: 'Invalid tag details.' }); return;
+    }
+    try {
+      const metadataStore = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!metadataStore.updateTagDetails) { res.status(501).json({ error: 'Tag editing is not available for this library.' }); return; }
+      const result = await metadataStore.updateTagDetails(id, {
+        previousName,
+        name: name === undefined ? undefined : trimmedName,
+        color: color?.toLowerCase(),
+        icon,
+      });
+      switch (result.status) {
+        case 'missing': res.status(404).json({ error: 'Tag not found.' }); break;
+        case 'stale': res.status(412).json({ error: 'The tag name has changed.' }); break;
+        case 'duplicate': res.status(409).json({ error: 'A tag with this name already exists.' }); break;
+        case 'updated': res.json(result.tag); break;
+      }
     } catch (error) { res.status(500).json({ error: String(error) }); }
   });
 

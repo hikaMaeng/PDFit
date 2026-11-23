@@ -12,6 +12,7 @@ export { distinctTagColor, withDistinctTagColors } from './tagColor.js';
 export { compareUnicode } from './unicodeOrder.js';
 export { BOOKSTORE_TAG_GROUPS, BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, bookstoreTagGroupFor, documentTagFromTitle } from './tagTaxonomy.js';
 export type { BookstoreTagGroupId } from './tagTaxonomy.js';
+import type { TagDetailsPatch, TagDetailsUpdateResult, TagIconName } from './tagDetails.js';
 
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
@@ -21,6 +22,9 @@ export interface TagSummary {
   name: string;
   bookCount: number;
   color: string;
+  /** Stable edit handle, present only in stores that support tag editing. */
+  id?: string;
+  icon?: TagIconName;
 }
 
 export interface BookRecord extends Partial<import('../common/protocol/bookmarks/index.js').BookClipCount> {
@@ -41,6 +45,7 @@ export interface TagIndexBook {
 export interface TagIndexEntry {
   name: string;
   color: string;
+  icon?: TagIconName;
   books: TagIndexBook[];
 }
 
@@ -108,6 +113,7 @@ export interface MetadataStore {
   deleteTag(tag: string): Promise<void>;
   deleteAllTags(): Promise<void>;
   updateTagColor(tag: string, color: string): Promise<void>;
+  updateTagDetails?(id: string, patch: TagDetailsPatch): Promise<TagDetailsUpdateResult>;
   getViewerState(folder: string, filename: string, driveFileId?: string): Promise<ViewerStateRecord | null>;
   setViewerState(folder: string, filename: string, state: ViewerStateRecord, driveFileId?: string): Promise<void>;
   /**

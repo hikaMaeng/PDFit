@@ -5,8 +5,8 @@ import PdfCoverItem from '../components/PdfCoverItem';
 import ListMountProgress from '../components/ListMountProgress';
 import { useProgressiveItems } from '../components/useProgressiveItems';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
-import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, List, Checkbox, ToggleButton, ToggleButtonGroup,
   CircularProgress, Alert, Chip, IconButton, Tooltip,
@@ -29,11 +29,14 @@ import PdfListHeader from '../components/PdfListHeader';
 import LibraryFixedControls from '../components/LibraryFixedControls';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from '../components/TagColorPicker';
 import TagChip from '../components/TagChip';
+import TagGlyph from '../components/TagGlyph.js';
+import { DEFAULT_TAG_ICON, type TagIconName } from '../../shared/tagDetails.js';
 import HashTagIcon from '../components/HashTagIcon';
 import { useTagMutationLocks } from '../components/useTagMutationLocks';
 import { folderLibraryModel } from '../model/folderLibraryModel';
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
+import { subscribeTagDetailsChanges, tagNameFromPath } from '../model/tagDetailsEvents.js';
 import TagNoticeSnackbar, { type TagNotice } from '../components/TagNoticeSnackbar';
 import SelectedDocumentActions, { type SelectedDocument } from '../components/SelectedDocumentActions';
 import BookMetadataDialog, { type BookMetadataTarget } from '../components/BookMetadataDialog';
@@ -62,10 +65,10 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   const { t, ui } = usePdfitI18n();
   const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved, serverThumbnails } = usePdfitFrontConfig();
   const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
-  const { name } = useParams<{ name: string }>();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const tagName = untagged || favorites ? '' : decodeURIComponent(name ?? '');
+  const tagName = untagged || favorites ? '' : tagNameFromPath(pathname) ?? '';
 
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [refreshing, setRefreshing] = useState(false);
@@ -74,7 +77,9 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tagColor, setTagColor] = useState('#22c55e');
+  const [tagIcon, setTagIcon] = useState<TagIconName>();
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
+  const booksRequest = useRef(0);
   // 태그에 문서가 아무리 많아도 위에서부터 조금씩 붙여 첫 화면이 멈추지 않게 한다.
   const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${favorites ? '__favorites__' : untagged ? '__untagged__' : tagName}\u0000${libraryView}`);
 
@@ -128,24 +133,38 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   // ─── 초기 로드 ────────────────────────────────────────────
   const loadBooks = useCallback(async (background = false) => {
     if (!tagName && !untagged && !favorites) return;
+    const request = ++booksRequest.current;
     if (!background) setLoading(true);
     setError(null);
     try {
       const [data, summaries] = await Promise.all([favorites ? favoritesApi.listBooks() : untagged ? tagsApi.listUntaggedBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
-      setTagColor(summaries.find((item) => item.name === tagName)?.color ?? '#22c55e');
+      if (request !== booksRequest.current) return;
+      const summary = summaries.find((item) => item.name === tagName);
+      setTagColor(summary?.color ?? '#22c55e');
+      setTagIcon(summary?.icon);
       setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       setBooks(data);
       setBookTags(Object.fromEntries(data.map((book) => [
         bookIdentity(book), book.tags,
       ])));
     } catch (e) {
-      setError(e instanceof Error ? e.message : ui("로드 실패"));
+      if (request === booksRequest.current) setError(e instanceof Error ? e.message : ui("로드 실패"));
     } finally {
-      setLoading(false);
+      if (request === booksRequest.current) setLoading(false);
     }
   }, [tagName, untagged, favorites]);
 
-  useEffect(() => { void loadBooks(); }, [loadBooks]);
+  useEffect(() => {
+    void loadBooks();
+    return () => { booksRequest.current += 1; };
+  }, [loadBooks]);
+
+  useEffect(() => subscribeTagDetailsChanges(({ previousName, name }) => {
+    if (previousName === name || previousName === tagName) return;
+    void loadBooks(true);
+    setTagDialog((current) => current && { ...current, currentTags: current.currentTags.map((tag) => tag === previousName ? name : tag) });
+    setAllTags((current) => current.map((tag) => tag === previousName ? name : tag));
+  }), [loadBooks, tagName]);
 
   useEffect(() => { setSelectedBooks(new Set()); }, [tagName, untagged, favorites]);
 
@@ -177,13 +196,19 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   }, [books]);
 
   useEffect(() => {
-    const refreshColor = () => void tagsApi.listSummary().then((items) => {
-      setTagColors(Object.fromEntries(items.map((item) => [item.name, item.color])));
-      const color = items.find((item) => item.name === tagName)?.color;
-      if (color) setTagColor(color);
-    });
+    let active = true;
+    let request = 0;
+    const refreshColor = () => {
+      const current = ++request;
+      void tagsApi.listSummary().then((items) => {
+        if (!active || current !== request) return;
+        setTagColors(Object.fromEntries(items.map((item) => [item.name, item.color])));
+        const summary = items.find((item) => item.name === tagName);
+        if (summary) { setTagColor(summary.color); setTagIcon(summary.icon); }
+      }).catch(() => undefined);
+    };
     window.addEventListener('tags-changed', refreshColor);
-    return () => window.removeEventListener('tags-changed', refreshColor);
+    return () => { active = false; window.removeEventListener('tags-changed', refreshColor); };
   }, [tagName]);
 
   // ─── 삭제 ─────────────────────────────────────────────────
@@ -428,7 +453,10 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
             ? <StarIcon aria-hidden data-testid="favorites-title-icon" sx={{ fontSize: 28, color: FAVORITE_COLOR }} />
             : untagged
             ? <LabelOffOutlinedIcon aria-hidden data-testid="untagged-title-icon" sx={{ fontSize: 28, color: 'text.secondary' }} />
-            : <TagColorPicker icon={<Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>} color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
+            : <TagColorPicker icon={tagIcon && tagIcon !== DEFAULT_TAG_ICON
+              ? <TagGlyph icon={tagIcon} sx={{ fontSize: 25, color: tagColor }} />
+              : <Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>}
+              color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h5" fontWeight={700} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />

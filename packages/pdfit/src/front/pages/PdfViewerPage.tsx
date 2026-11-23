@@ -31,6 +31,7 @@ import { tagsApi } from '../api/tags.js';
 import TagChip from '../components/TagChip.js';
 import { recordDocumentOpened } from '../model/documentOpenHistory.js';
 import { folderLibraryModel } from '../model/folderLibraryModel.js';
+import { subscribeTagDetailsChanges } from '../model/tagDetailsEvents.js';
 import { outlinesApi } from '../api/outlines.js';
 import type { PdfOutlineStorage } from '../viewer/storedOutline.js';
 
@@ -216,7 +217,9 @@ export default function PdfViewerPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let request = 0;
     const reload = () => {
+      const current = ++request;
       if (sample) {
         setViewerTags([]);
         setViewerTagColors({});
@@ -226,17 +229,19 @@ export default function PdfViewerPage() {
         tagsApi.listForBook(folderName, fileName, driveFileId),
         tagsApi.listSummary(),
       ]).then(([tags, summaries]) => {
-        if (cancelled) return;
+        if (cancelled || current !== request) return;
         setViewerTags(tags);
         setViewerTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
       }).catch(() => {
-        if (!cancelled) setViewerTags([]);
+        if (!cancelled && current === request) setViewerTags([]);
       });
     };
     reload();
     window.addEventListener('tags-changed', reload);
+    const unsubscribe = subscribeTagDetailsChanges(reload);
     return () => {
       cancelled = true;
+      unsubscribe();
       window.removeEventListener('tags-changed', reload);
     };
   }, [driveFileId, fileName, folderName, sample]);

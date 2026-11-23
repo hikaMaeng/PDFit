@@ -13,6 +13,7 @@ import type {
   ViewerStateRecord,
 } from '../../shared/index.js';
 import { distinctTagColor, withDistinctTagColors } from '../../shared/index.js';
+import { DEFAULT_TAG_ICON, isTagIconName, type TagDetailsPatch, type TagDetailsUpdateResult } from '../../shared/tagDetails.js';
 import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
@@ -102,14 +103,15 @@ export class PostgresMetadataStore implements MetadataStore {
 
   async listTagSummaries(): Promise<TagSummary[]> {
     const result = await this.db.query(`
-      SELECT t.name, t.color, COUNT(DISTINCT (bt.folder, bt.filename))::int AS book_count
+      SELECT t.id, t.name, t.color, t.icon, COUNT(DISTINCT (bt.folder, bt.filename))::int AS book_count
       FROM tags t
       JOIN book_tags bt ON bt.tag_id = t.id
       GROUP BY t.id, t.name
       ORDER BY t.name
     `);
     return withDistinctTagColors(result.rows.map((row) => ({
-      name: String(row.name), color: String(row.color),
+      id: String(row.id), name: String(row.name), color: String(row.color),
+      icon: isTagIconName(row.icon) ? row.icon : DEFAULT_TAG_ICON,
       bookCount: Number(row.book_count),
     })));
   }
@@ -135,7 +137,7 @@ export class PostgresMetadataStore implements MetadataStore {
   async listTagIndex(): Promise<TagIndexEntry[]> {
     // `listBooksByTag`와 같은 규칙: `books`에 실제로 있는 책만 센다. 태그마다 쿼리하지 않고 한 번에 읽는다.
     const result = await this.db.query(`
-      SELECT t.name, t.color, b.folder, b.filename
+      SELECT t.name, t.color, t.icon, b.folder, b.filename
       FROM tags t
       JOIN book_tags bt ON bt.tag_id = t.id
       JOIN books b ON b.folder = bt.folder AND b.filename = bt.filename
@@ -145,7 +147,10 @@ export class PostgresMetadataStore implements MetadataStore {
     for (const row of result.rows) {
       const name = String(row.name);
       let entry = byName.get(name);
-      if (!entry) { entry = { name, color: String(row.color), books: [] }; byName.set(name, entry); }
+      if (!entry) {
+        entry = { name, color: String(row.color), icon: isTagIconName(row.icon) ? row.icon : DEFAULT_TAG_ICON, books: [] };
+        byName.set(name, entry);
+      }
       entry.books.push({ folder: String(row.folder), filename: String(row.filename) });
     }
     return withDistinctTagColors([...byName.values()]);
@@ -430,6 +435,33 @@ export class PostgresMetadataStore implements MetadataStore {
     await this.db.query('UPDATE tags SET color = $2 WHERE name = $1', [tag, color]);
   }
 
+  async updateTagDetails(id: string, patch: TagDetailsPatch): Promise<TagDetailsUpdateResult> {
+    // The books and tag folders reference this ID. See docs/internals.md#태그-편집.
+    try {
+      const { rows } = await this.db.query(`
+        WITH updated AS (
+          UPDATE tags
+          SET name = COALESCE($3, name), color = COALESCE($4, color), icon = COALESCE($5, icon)
+          WHERE id = $1 AND name = $2
+          RETURNING name, color, icon
+        )
+        SELECT name, color, icon, true AS updated FROM updated
+        UNION ALL
+        SELECT name, color, icon, false FROM tags WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM updated)
+      `, [id, patch.previousName, patch.name ?? null, patch.color ?? null, patch.icon ?? null]);
+      const row = rows[0];
+      if (!row) return { status: 'missing' };
+      if (!row.updated) return { status: 'stale' };
+      const [tag] = withDistinctTagColors([{
+        name: String(row.name), color: String(row.color), icon: isTagIconName(row.icon) ? row.icon : DEFAULT_TAG_ICON,
+      }]);
+      return { status: 'updated', tag };
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return { status: 'duplicate' };
+      throw error;
+    }
+  }
+
   async getViewerState(folder: string, filename: string): Promise<ViewerStateRecord | null> {
     const result = await this.db.query(`
       SELECT page, scale, fit_mode, view_mode, inverted, ui_hidden, scroll_top
@@ -688,8 +720,8 @@ export class PostgresMetadataStore implements MetadataStore {
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE id = 'remove-bookmarks-v1') THEN
-          DROP TABLE IF EXISTS bookmarks;
-          DROP SEQUENCE IF EXISTS bookmarks_id_seq;
+          EXECUTE format('DROP TABLE IF EXISTS %I.bookmarks', current_schema());
+          EXECUTE format('DROP SEQUENCE IF EXISTS %I.bookmarks_id_seq', current_schema());
           INSERT INTO schema_migrations (id) VALUES ('remove-bookmarks-v1');
         END IF;
       END $$;
@@ -699,6 +731,7 @@ export class PostgresMetadataStore implements MetadataStore {
         color TEXT NOT NULL DEFAULT '#22c55e'
       );
       ALTER TABLE tags ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#22c55e';
+      ALTER TABLE tags ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '${DEFAULT_TAG_ICON}';
       CREATE TABLE IF NOT EXISTS folders (
         name TEXT PRIMARY KEY,
         color TEXT NOT NULL DEFAULT '#3b82f6'

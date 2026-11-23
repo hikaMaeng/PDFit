@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Box, Chip, CircularProgress, Typography } from '@mui/material';
-import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
+import TagGlyph from '../components/TagGlyph.js';
 import LabelOutlinedIcon from '@mui/icons-material/LabelOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import { tagsApi, type TagIndexEntry } from '../api/tags';
@@ -15,9 +15,7 @@ function TagName({ value }: { value: string }) {
   return <>{useTranslatedDisplayText(value)}</>;
 }
 
-interface IndexCard {
-  name: string;
-  color: string;
+interface IndexCard extends Omit<TagIndexEntry, 'books'> {
   books: Array<{ folder: string; filename: string; driveFileId?: string; title: string }>;
 }
 
@@ -78,6 +76,7 @@ export default function TagIndexPage() {
     .map((entry) => ({
       name: entry.name,
       color: entry.color,
+      icon: entry.icon,
       books: entry.books
         .map((book) => ({ ...book, title: bookTitle(book.filename) }))
         .sort((left, right) => left.title.localeCompare(right.title, 'ko', { numeric: true }) || left.folder.localeCompare(right.folder, 'ko')),
@@ -204,7 +203,7 @@ export default function TagIndexPage() {
                   '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
                 }}
               >
-                <LocalOfferOutlinedIcon aria-hidden sx={{ fontSize: 16, flexShrink: 0, color: card.color }} />
+                <TagGlyph icon={card.icon} sx={{ fontSize: 16, flexShrink: 0, color: card.color }} />
                 <Typography component="h2" variant="subtitle2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.3 }}>
                   <TagName value={card.name} />
                 </Typography>

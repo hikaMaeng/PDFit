@@ -1,4 +1,7 @@
 import { uiText } from '../i18n/uiText.js';
+import type { TagIndexEntry, TagSummary } from '../../shared/index.js';
+import type { TagDetails, TagDetailsPatch } from '../../shared/tagDetails.js';
+export type { TagIndexEntry, TagSummary } from '../../shared/index.js';
 export interface BookRef extends Partial<import('../../common/protocol/bookmarks/index.js').BookClipCount> {
   folder: string;
   filename: string;
@@ -6,19 +9,6 @@ export interface BookRef extends Partial<import('../../common/protocol/bookmarks
   size: number;
   modified_at: string;
   tags: string[];
-}
-
-export interface TagSummary {
-  name: string;
-  bookCount: number;
-  color: string;
-}
-
-/** 인덱스 카드 한 장: 태그와 그 태그가 붙은 모든 책. */
-export interface TagIndexEntry {
-  name: string;
-  color: string;
-  books: Array<{ folder: string; filename: string; driveFileId?: string }>;
 }
 
 export interface AutomaticTagResult {
@@ -43,7 +33,7 @@ import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch('/api' + url, options);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? uiText("요청 실패"));
+  if (!res.ok) throw Object.assign(new Error(data.error ?? uiText("요청 실패")), { status: res.status });
   return data as T;
 }
 
@@ -57,7 +47,7 @@ export const tagsApi = {
   list: async () => (await listCachedTagSummaries())?.map((row) => row.name) ?? request<string[]>('/tags'),
 
   /** 태그별 소속 PDF 수 */
-  listSummary: async () => (await listCachedTagSummaries()) ?? request<TagSummary[]>('/tags/summary'),
+  listSummary: async (): Promise<TagSummary[]> => (await listCachedTagSummaries()) ?? request<TagSummary[]>('/tags/summary'),
 
   /** 태그와 해당 태그가 붙은 모든 PDF의 연결을 삭제 */
   delete: async (tag: string) => {
@@ -85,6 +75,9 @@ export const tagsApi = {
       throw error;
     }
   },
+  updateDetails: (id: string, patch: TagDetailsPatch) => request<TagDetails>(`/tags/${encodeURIComponent(id)}/details`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  }),
 
   /** 특정 태그의 PDF 목록 */
   listBooks: async (tag: string) =>

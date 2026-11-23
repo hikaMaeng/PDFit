@@ -23,14 +23,14 @@ export function rememberTagInputColor(color: string): void {
   try { localStorage.setItem('pdfit.tag-input-color', color); } catch { /* See docs/internals.md. */ }
 }
 
-interface Props { color: string; onChange: (color: string) => void; size?: 'small' | 'medium'; label?: string; icon?: ReactNode; variant?: 'tag' | 'swatch'; }
+interface Props { color: string; onChange: (color: string) => void; size?: 'small' | 'medium'; label?: string; icon?: ReactNode; variant?: 'tag' | 'swatch'; disabled?: boolean; }
 
-export default function TagColorPicker({ color, onChange, size = 'small', label = '태그 색상 변경', icon, variant = 'tag' }: Props) {
+export default function TagColorPicker({ color, onChange, size = 'small', label = '태그 색상 변경', icon, variant = 'tag', disabled = false }: Props) {
   const { ui } = usePdfitI18n();
   const displayedLabel = ui(label);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return <>
-    <Tooltip title={displayedLabel} arrow><IconButton size={size} aria-label={displayedLabel} aria-haspopup="dialog" aria-expanded={!!anchor} onClick={(event) => { event.stopPropagation(); setAnchor(event.currentTarget); }}>
+    <Tooltip title={disabled ? '' : displayedLabel} arrow><IconButton size={size} disabled={disabled} aria-label={displayedLabel} aria-haspopup="dialog" aria-expanded={!!anchor} onClick={(event) => { event.stopPropagation(); setAnchor(event.currentTarget); }}>
       {icon ?? (variant === 'swatch'
         ? <Box component="span" data-testid="tag-color-swatch" sx={{ width: size === 'small' ? 22 : 32, height: size === 'small' ? 22 : 32, borderRadius: '50%', bgcolor: color, border: '2px solid', borderColor: 'background.paper', boxShadow: (theme) => `0 0 0 1px ${theme.palette.divider}` }} />
         : <HashTagIcon sx={{ fontSize: size === 'small' ? 17 : 32, color }} />)}

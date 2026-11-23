@@ -3,6 +3,7 @@ import type { FolderInfo, PdfInfo } from '../api/folders.js';
 import { foldersApi } from '../api/folders.js';
 import { tagsApi } from '../api/tags.js';
 import { subscribeLibraryFileMutations } from './libraryMutationEvents.js';
+import { subscribeTagDetailsChanges } from './tagDetailsEvents.js';
 
 export interface FolderLibraryState {
   files: PdfInfo[];
@@ -25,6 +26,7 @@ class FolderModel {
   private readonly listeners = new Set<Listener>();
   private filesRequest: Promise<void> | null = null;
   private tagsRequest: Promise<void> | null = null;
+  private tagRevision = 0;
 
   readonly state: FolderLibraryState = {
     files: [],
@@ -77,6 +79,7 @@ class FolderModel {
   }
 
   invalidateTags(): void {
+    this.tagRevision += 1;
     this.state.tagsLoaded = false;
     this.emit();
   }
@@ -132,17 +135,20 @@ class FolderModel {
   }
 
   private async loadTags(): Promise<void> {
+    const revision = this.tagRevision;
     try {
       const [tagMap, folders] = await Promise.all([
         tagsApi.listForFolder(this.folderName),
         foldersApi.list(),
       ]);
+      if (revision !== this.tagRevision) return;
       this.state.fileTags = tagMap;
       this.state.isRootFolder = folders.some((folder: FolderInfo) => folder.name === this.folderName && folder.isRoot);
       this.state.tagsLoaded = true;
       this.emit();
     } finally {
       this.tagsRequest = null;
+      if (revision !== this.tagRevision) this.emit();
     }
   }
 }
@@ -151,6 +157,9 @@ class FolderLibraryModel {
   private readonly folders = new Map<string, FolderModel>();
 
   constructor() {
+    if (typeof window !== 'undefined') subscribeTagDetailsChanges(({ previousName, name }) => {
+      if (previousName !== name) this.invalidateTags();
+    });
     subscribeLibraryFileMutations((mutation) => {
       const model = this.folders.get(mutation.folder);
       if (!model) return;
