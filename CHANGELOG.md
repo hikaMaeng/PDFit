@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-11-23
+
+- Yellow cover-card clip graphics display counts from 0 through 9 and 9+ for ten or more.
+- Free backfills PostgreSQL book counts, updates them on clip changes, and includes them in book lists.
+
 ## [0.4.10] - 2026-11-23
 
 - Open a book's clips from its cover card and sort them by date added or page.
