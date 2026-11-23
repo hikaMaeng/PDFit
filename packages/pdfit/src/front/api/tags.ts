@@ -27,8 +27,9 @@ export interface AutomaticFolderTagResult {
   /** `retryable: false`는 다시 분류해도 같은 결과가 나올 실패라 단건 재시도를 건너뛴다. */
   errors: Array<{ filename: string; driveFileId?: string; error: string; retryable?: boolean }>;
 }
-import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
+import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, pdfitMetadataScope, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
+import { recentTagsForScope } from '../model/recentTags.js';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch('/api' + url, options);
@@ -108,7 +109,10 @@ export const tagsApi = {
     ),
 
   /** PDF에 태그 추가 */
-  addTag: async (folder: string, filename: string, tag: string, driveFileId?: string | null) => { await mutateCachedTag(folder, filename, tag, false, driveFileId); return mutate<{ ok: boolean }>(
+  addTag: async (folder: string, filename: string, tag: string, driveFileId?: string | null) => {
+    const history = recentTagsForScope(pdfitMetadataScope());
+    await mutateCachedTag(folder, filename, tag, false, driveFileId);
+    const result = await mutate<{ ok: boolean }>(
       `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`,
       {
         method: 'POST',
@@ -116,7 +120,10 @@ export const tagsApi = {
         body: JSON.stringify({ tag, ...(driveFileId ? { driveFileId } : {}) }),
       },
       `tag:relation:${folder}:${filename}:${tag}`,
-    ); },
+    );
+    if (result.ok) history.record(tag);
+    return result;
+  },
 
   /** 책 제목을 AI로 분류하고 추천 태그를 서버에서 바로 저장 */
   autoTag: async (folder: string, filename: string, driveFileId?: string | null) => {

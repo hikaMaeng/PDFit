@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import { tagsApi } from '../api/tags.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
+import ManualTagInput from './ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from './TagColorPicker.js';
 
 type Document = { folder: string; filename: string; driveFileId?: string };
@@ -15,8 +16,8 @@ export default function BulkManualTagDialog({ documents, onClose, onAdded }: { d
   const [notice, setNotice] = useState('');
   const [failed, setFailed] = useState(false);
   useEffect(() => { if (documents) { setInput(''); setNotice(''); void tagsApi.list().then(setOptions).catch(() => setOptions([])); } }, [documents]);
-  const add = async () => {
-    const tag = input.trim();
+  const add = async (value: string) => {
+    const tag = value.trim();
     if (!tag || !documents || busy) return;
     setBusy(true); setNotice(''); setFailed(false);
     let added = 0;
@@ -45,11 +46,11 @@ export default function BulkManualTagDialog({ documents, onClose, onAdded }: { d
     <DialogContent>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{ui('선택한 {p0}개 파일에 태그를 일괄 추가합니다.', { p0: String(documents?.length ?? 0) })}</Typography>
       {notice && <Alert severity={failed ? 'error' : 'success'} sx={{ mb: 2 }}>{notice}</Alert>}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Autocomplete freeSolo options={options} slotProps={{ paper: { translate: 'no' } }} inputValue={input} onInputChange={(_, value) => setInput(value)} disabled={busy} sx={{ flex: 1 }} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { (event as typeof event & { defaultMuiPrevented: boolean }).defaultMuiPrevented = true; event.preventDefault(); void add(); } }} renderInput={params => <TextField {...params} size="small" label={t('addTag')} InputLabelProps={{ shrink: true }} placeholder={ui('태그 추가 또는 목록에서 선택')} sx={{ '& .MuiInputLabel-root': { color: 'text.secondary' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'text.secondary' }, '&:hover .MuiInputLabel-root, &:hover .MuiOutlinedInput-notchedOutline': { color: 'primary.main', borderColor: 'primary.main' } }} />} />
+      <ManualTagInput tags={options} value={input} disabled={busy} onInputChange={setInput}
+        onAdd={(tag) => void add(tag)} onSelect={setInput}>
         <TagColorPicker color={color} onChange={value => { setColor(value); rememberTagInputColor(value); }} />
-        <Button variant="contained" disabled={busy || !input.trim()} onClick={() => void add()}>{busy ? ui('추가 중') : ui('추가')}</Button>
-      </Box>
+        <Button variant="contained" disabled={busy || !input.trim()} onClick={() => void add(input)}>{busy ? ui('추가 중') : ui('추가')}</Button>
+      </ManualTagInput>
     </DialogContent>
     <DialogActions><Button disabled={busy} onClick={onClose}>{t('close')}</Button></DialogActions>
   </Dialog>;

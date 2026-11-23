@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography,
+  Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Typography,
 } from '@mui/material';
 import FolderDestinationPicker from './FolderDestinationPicker.js';
 import HashTagIcon from './HashTagIcon.js';
 import TagChip from './TagChip.js';
+import ManualTagInput from './ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from './TagColorPicker.js';
 import TagNoticeSnackbar, { type TagNotice } from './TagNoticeSnackbar.js';
 import BookMetadataDialog, { type BookMetadataTarget } from './BookMetadataDialog.js';
@@ -345,39 +346,11 @@ export function useBookLibraryActions(options: {
                   ))
                 )}
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Autocomplete
-                  freeSolo
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-                    event.preventDefault();
-                    (event as typeof event & { defaultMuiPrevented?: boolean }).defaultMuiPrevented = true;
-                    const input = (event.target as HTMLInputElement).value ?? tagInput;
-                    if (input.trim()) void handleAddTag(input);
-                  }}
-                  fullWidth
-                  value={null}
-                  disabled={dialogBusy}
-                  options={allTags.filter((item) => !tagDialog?.currentTags.includes(item))}
-                  slotProps={{ paper: { translate: 'no' } }}
-                  inputValue={tagInput}
-                  onInputChange={(_event, value, reason) => { if (reason === 'input' || reason === 'clear') setTagInput(value); }}
-                  onChange={(_event, value) => { if (value) void handleAddTag(value); }}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label={t('addTag')}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ ...params.inputProps, 'aria-label': t('addTag') }}
-                      size="small"
-                      placeholder={t('addTagPlaceholder')}
-                      sx={{ '& .MuiOutlinedInput-root fieldset': { borderColor: 'text.secondary' }, '& .MuiInputLabel-root': { color: 'text.secondary' }, '& input::placeholder': { color: 'text.secondary', opacity: 1 }, '&:hover .MuiOutlinedInput-root:not(.Mui-disabled) fieldset, & .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#3b82f6' }, '&:hover .MuiInputLabel-root:not(.Mui-disabled), & .MuiInputLabel-root.Mui-focused': { color: '#3b82f6' } }}
-                    />
-                  )}
-                />
+              <ManualTagInput tags={allTags} assignedTags={tagDialog?.currentTags} value={tagInput}
+                disabled={dialogBusy} onInputChange={setTagInput} onAdd={(tag) => void handleAddTag(tag)}>
                 <TagColorPicker color={tagInputColor} onChange={(color) => { setTagInputColor(color); rememberTagInputColor(color); }} label={ui("새 태그 색상")} variant="swatch" />
                 <Button data-testid="add-tag-button" variant="contained" size="small" disabled={dialogBusy} onClick={(event) => { if (tagInput.trim()) void handleAddTag(tagInput); else event.currentTarget.parentElement?.querySelector('input')?.focus(); }} sx={{ flexShrink: 0, bgcolor: '#3b82f6', color: '#ffffff', '&:hover': { bgcolor: '#2563eb' } }}>{ui("추가")}</Button>
-              </Box>
+              </ManualTagInput>
               {!canUseAiAutoTag && <Typography data-testid="pdf-auto-classify-access-guide" variant="body2" color="text.secondary" sx={{ mt: 2, fontSize: 14, lineHeight: 1.6 }}>{ui('유료 이용권 결제 시 AI 자동태그를 사용할 수 있습니다.')}</Typography>}
             </>
           )}

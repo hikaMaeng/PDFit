@@ -3,7 +3,7 @@ import { compareUnicode } from '../../shared/unicodeOrder.js';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Typography, List, IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, FormControl, InputLabel, Chip, Checkbox, ToggleButton, ToggleButtonGroup, Autocomplete, TextField, useTheme, InputAdornment, } from '@mui/material';
+import { Box, Typography, List, IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, FormControl, InputLabel, Chip, Checkbox, ToggleButton, ToggleButtonGroup, TextField, useTheme, InputAdornment, } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
@@ -38,6 +38,7 @@ import { isPendingUploadDriveFileId } from '../viewer/openViewer';
 import { usePdfitFrontConfig } from '../context';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
 import TagNoticeSnackbar, { type TagNotice } from '../components/TagNoticeSnackbar';
+import ManualTagInput from '../components/ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from '../components/TagColorPicker';
 import TagChip from '../components/TagChip';
 import HashTagIcon from '../components/HashTagIcon';
@@ -897,24 +898,8 @@ function FolderPage({ folderName: requestedFolderName }: {
         {tagDialog?.currentTags.length === 0 ? (<Typography variant="caption" color="text.disabled">{t('noTags')}</Typography>) : (tagDialog?.currentTags.map((tag) => (<TagChip hashLabel key={tag} tag={tag} color={tagColors[tag]} disabled={dialogBusy} onDelete={() => void handleRemoveTag(tag)}/>)))}
         </Box>
         {/* 태그 추가 (자동완성 + 자유입력) */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Autocomplete freeSolo onKeyDown={(event) => {
-                if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)
-                    return;
-                event.preventDefault();
-                (event as typeof event & {
-                    defaultMuiPrevented?: boolean;
-                }).defaultMuiPrevented = true;
-                const input = (event.target as HTMLInputElement).value ?? tagInput;
-                if (input.trim())
-                    void handleAddTag(input);
-            }} fullWidth value={null} disabled={dialogBusy} options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))} slotProps={{ paper: { translate: 'no' } }} inputValue={tagInput} onInputChange={(_e, val, reason) => {
-                if (reason === 'input' || reason === 'clear')
-                    setTagInput(val);
-            }} onChange={(_e, val) => {
-                if (val)
-                    void handleAddTag(val);
-            }} renderInput={(params) => (<TextField {...params} label={t('addTag')} InputLabelProps={{ shrink: true }} inputProps={{ ...params.inputProps, 'aria-label': t('addTag') }} size="small" placeholder={t('addTagPlaceholder')} sx={{ '& .MuiOutlinedInput-root fieldset': { borderColor: 'text.secondary' }, '& .MuiInputLabel-root': { color: 'text.secondary' }, '& input::placeholder': { color: 'text.secondary', opacity: 1 }, '&:hover .MuiOutlinedInput-root:not(.Mui-disabled) fieldset, & .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#3b82f6' }, '&:hover .MuiInputLabel-root:not(.Mui-disabled), & .MuiInputLabel-root.Mui-focused': { color: '#3b82f6' } }}/>)}/>
+        <ManualTagInput tags={allTags} assignedTags={tagDialog?.currentTags} value={tagInput}
+          disabled={dialogBusy} onInputChange={setTagInput} onAdd={(tag) => void handleAddTag(tag)}>
         <TagColorPicker color={tagInputColor} onChange={(color) => { setTagInputColor(color); rememberTagInputColor(color); }} label={ui("새 태그 색상")} variant="swatch"/>
         <Button data-testid="add-tag-button" variant="contained" size="small" disabled={dialogBusy} onClick={(event) => {
                 if (tagInput.trim())
@@ -922,7 +907,7 @@ function FolderPage({ folderName: requestedFolderName }: {
                 else
                     event.currentTarget.parentElement?.querySelector('input')?.focus();
             }} sx={{ flexShrink: 0, bgcolor: '#3b82f6', color: '#ffffff', '&:hover': { bgcolor: '#2563eb' } }}>{ui("추가")}</Button>
-        </Box>
+        </ManualTagInput>
         {!canUseAiAutoTag && <Typography data-testid="pdf-auto-classify-access-guide" variant="body2" color="text.secondary" sx={{ mt: 2, fontSize: 14, lineHeight: 1.6 }}>{ui('유료 이용권 결제 시 AI 자동태그를 사용할 수 있습니다.')}</Typography>}
         </>)}
     </DialogContent>

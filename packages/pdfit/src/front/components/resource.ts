@@ -1,4 +1,5 @@
 export enum RSC {
+  TAG_MANAGE_RECENT_LABEL = 'tag.manage.recent.label',
   TAG_EDITOR_TITLE_TEXT = 'tag.editor.title.text',
   TAG_EDITOR_NAME_LABEL = 'tag.editor.name.label',
   TAG_EDITOR_COLOR_LABEL = 'tag.editor.color.label',

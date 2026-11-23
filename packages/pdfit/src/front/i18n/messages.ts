@@ -37,6 +37,7 @@ const rows = {
   'sidebar.tagFolder.assignFailed.alert': ['Could not add the tag to the folder.', '태그를 폴더에 넣지 못했습니다.', '无法将标签添加到文件夹。', 'No se pudo añadir la etiqueta a la carpeta.', 'टैग को फ़ोल्डर में नहीं जोड़ सके।', 'تعذرت إضافة الوسم إلى المجلد.', 'Impossible d’ajouter l’étiquette au dossier.', 'Não foi possível adicionar a tag à pasta.'],
   'sidebar.tag.edit.button': ['Edit tag {name}', '태그 {name} 수정', '编辑标签 {name}', 'Editar etiqueta {name}', 'टैग {name} संपादित करें', 'تعديل الوسم {name}', 'Modifier l’étiquette {name}', 'Editar tag {name}'],
   'tag.editor.title.text': ['Edit tag', '태그 수정', '编辑标签', 'Editar etiqueta', 'टैग संपादित करें', 'تعديل الوسم', 'Modifier l’étiquette', 'Editar tag'],
+  'tag.manage.recent.label': ['Recent tags', '최근 추가한 태그', '最近添加的标签', 'Etiquetas recientes', 'हाल के टैग', 'الوسوم الأخيرة', 'Étiquettes récentes', 'Tags recentes', 'Недавние теги', 'Tag terkini', 'সাম্প্রতিক ট্যাগ', '最近追加したタグ'],
   'tag.editor.name.label': ['Tag name', '태그 이름', '标签名称', 'Nombre de la etiqueta', 'टैग का नाम', 'اسم الوسم', 'Nom de l’étiquette', 'Nome da tag'],
   'tag.editor.color.label': ['Tag color', '태그 색상', '标签颜色', 'Color de la etiqueta', 'टैग का रंग', 'لون الوسم', 'Couleur de l’étiquette', 'Cor da tag'],
   'tag.editor.icon.label': ['Tag icon', '태그 아이콘', '标签图标', 'Icono de la etiqueta', 'टैग आइकन', 'أيقونة الوسم', 'Icône de l’étiquette', 'Ícone da tag'],

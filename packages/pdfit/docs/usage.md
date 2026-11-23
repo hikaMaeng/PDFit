@@ -64,6 +64,12 @@ handling, file deletion and folder deletion call `purgeFile`/`purgeFolder`, whic
 Moving a file to another folder purges the old location, so a favorite does not follow a moved file (the same as
 its tags). A runtime whose metadata store has no favorites (`501`) shows neither the star nor the sidebar entry.
 
+## Manage tags
+
+[ManualTagInput](../src/front/components/ManualTagInput.tsx#ManualTagInput) shows four autocomplete options per row, ordered left to right. The popup leaves the recent-tag buttons accessible. Selecting a recent tag submits the same add action as typing a tag and pressing Enter. In bulk mode, choosing an autocomplete option fills the input, and choosing a recent tag applies it to the selected files.
+
+[Tag history](../src/front/model/recentTags.ts#recentTagsForScope) saves up to three distinct names after successful manual additions. It is stored per browser origin and library account. The input offers only names present in the available tag list, so a removed name becomes unavailable the next time the list is loaded.
+
 ## Tag folders
 
 The folder-plus icon in the sidebar **태그** header (left of the index icon) asks for a name and creates a tag folder.

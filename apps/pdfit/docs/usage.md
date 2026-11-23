@@ -34,6 +34,14 @@ Open `http://127.0.0.1:15203` (or `PDFIT_STANDALONE_PORT`). The selected host fo
 
 Use `/settings` for AI server configuration; the database is embedded in the image and has no settings. The URL is the OpenAI-compatible base that ends before `/chat/completions`, so an LM Studio or apibond server on port 18180 is entered as `http://<host>:18180/v1`. The server calls it from inside the container, so a server running on the Docker host is reachable as `host.docker.internal` or the LAN address, never `127.0.0.1`. Display-name translation waits up to 300 s for a reply, because a local reasoning model can take minutes. The browser translates library folder display names. Tags, tag folder names, and PDF filenames appear as saved. The browser merges identical folder names and sends at most 50 labels per request, one request at a time. It skips labels already written in the target language's script (Hangul for Korean, plain ASCII for English). Automatic tag classification uses the same first server with an LLM model, also with a 300 s limit. It gives the model the matched YES24 book's description, table of contents and genre path, and falls back to the YES24 genre rule when the model is unavailable or answers outside the category list. The globe icon at the upper left opens the language and light/dark dialog. Use `/viewer` for the dedicated viewer entry.
 
+## Manage a document's tags
+
+Open **Manage tags** from a PDF card or list row. Pick an autocomplete option to
+add it, or enter a new name and press Enter. The options fill four columns from
+left to right before continuing on the next row. The three most recently added
+tags appear under the input, newest first. Click one to apply it to the current
+document. A recent tag you already applied to the document appears disabled.
+
 ## Edit a tag
 
 In the sidebar, select a tag or point at its row, then choose the pencil button. The same button is available inside tag folders and on touch screens. Edit the name, choose a color or icon, and save. The tag keeps its PDF links and folder memberships. An existing tag name produces a conflict so you can choose a different name.
