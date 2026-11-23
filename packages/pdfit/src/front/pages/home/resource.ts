@@ -7,6 +7,7 @@ export const RSC = {
   heroDescription: 'homeHeroDescription',
   heroCommonDescription: 'homeHeroCommonDescription',
   openLibrary: 'homeOpenLibrary',
+  retryLibrary: 'retry',
   openTagIndex: 'tagIndexOpen',
   libraryTitle: 'homeLibraryTitle',
   organizeTitle: 'homeOrganizeTitle',

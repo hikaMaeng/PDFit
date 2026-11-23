@@ -11,6 +11,7 @@ npm run verify:pdfit
 On the [home page](../../../packages/pdfit/src/front/pages/HomePage.tsx), open
 the library or browse by topic through the tag index. Use **Untagged** to review
 documents that still need classification, and **Favorites** for frequent reads.
+If the library list fails to load, use **Retry** on the home page to load it again.
 The **Set up AI servers** link opens Settings for the language and vision
 models used by auto-tagging, display-name translation, and scan OCR. **View
 bookmarks** opens the library-wide clip collection.
@@ -45,6 +46,10 @@ document. A recent tag you already applied to the document appears disabled.
 ## Edit a tag
 
 In the sidebar, select a tag or point at its row, then choose the pencil button. The same button is available inside tag folders and on touch screens. Edit the name, choose a color or icon, and save. The tag keeps its PDF links and folder memberships. An existing tag name produces a conflict so you can choose a different name.
+
+## Delete a tag
+
+Use **Delete tag** on the [sidebar tag row](../../../packages/pdfit/src/front/layout/LNB.tsx#confirmDeleteItem) and confirm. If you are still viewing that tag when deletion succeeds, PDFit opens Home. If you have already switched pages, PDFit keeps that page. Documents without tags move into **Untagged**, and its sidebar count refreshes immediately.
 
 ## Tag folders
 

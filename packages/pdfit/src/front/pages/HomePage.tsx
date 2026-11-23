@@ -104,16 +104,23 @@ export default function HomePage() {
   const isLight = theme.palette.mode === 'light';
   const { t } = usePdfitI18n();
   const { extraRoutes, navigationGuard, displayTranslation } = usePdfitFrontConfig();
-  const [rootFolderName, setRootFolderName] = useState<string | null>(null);
+  const [library, setLibrary] = useState<{ rootFolderName: string | null; loadFailed: boolean }>({ rootFolderName: null, loadFailed: false });
+  const [libraryRetry, setLibraryRetry] = useState(0);
+  const { rootFolderName, loadFailed } = library;
 
   useEffect(() => {
     let active = true;
+    let latestRequest = 0;
     const loadRootFolder = async () => {
+      const request = ++latestRequest;
       try {
         const folders = await foldersApi.list();
-        if (active) setRootFolderName(folders.find((folder) => folder.isRoot)?.name ?? folders[0]?.name ?? null);
+        if (active && request === latestRequest) {
+          const folder = folders.find((item) => item.isRoot) ?? folders[0];
+          setLibrary({ rootFolderName: folder?.name ?? null, loadFailed: false });
+        }
       } catch {
-        if (active) setRootFolderName(null);
+        if (active && request === latestRequest) setLibrary((current) => ({ ...current, loadFailed: true }));
       }
     };
     void loadRootFolder();
@@ -122,7 +129,7 @@ export default function HomePage() {
       active = false;
       window.removeEventListener('folders-changed', loadRootFolder);
     };
-  }, []);
+  }, [libraryRetry]);
 
   const destination = (path: string) => navigationGuard?.(path) ?? path;
   const libraryPath = rootFolderName ? `/folder/${encodeURIComponent(rootFolderName)}` : '/';
@@ -169,9 +176,18 @@ export default function HomePage() {
             {t(aiSettings ? RSC.heroDescription : RSC.heroCommonDescription)}
           </Typography>
           <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 2.5 }}>
-            <Button component={Link} to={destination(libraryPath)} disabled={!rootFolderName} variant="contained" startIcon={<FolderOpenOutlined />} sx={{ ...buttonLayout, bgcolor: '#a4ceff', color: '#102746', boxShadow: 'none', '&:hover': { bgcolor: '#c4e0ff', boxShadow: 'none' }, '&.Mui-disabled': { bgcolor: '#2a3b53', color: '#b5c2d6' } }}>
-              {t(RSC.openLibrary)}
-            </Button>
+            {!rootFolderName && loadFailed ? (
+              <Button variant="outlined" onClick={() => {
+                setLibrary((current) => ({ ...current, loadFailed: false }));
+                setLibraryRetry((attempt) => attempt + 1);
+              }} startIcon={<FolderOpenOutlined />} sx={{ ...buttonLayout, color: '#dbeaff', borderColor: '#7897bf' }}>
+                {t(RSC.retryLibrary)}
+              </Button>
+            ) : (
+              <Button component={Link} to={destination(libraryPath)} disabled={!rootFolderName} variant="contained" startIcon={<FolderOpenOutlined />} sx={{ ...buttonLayout, bgcolor: '#a4ceff', color: '#102746', boxShadow: 'none', '&:hover': { bgcolor: '#c4e0ff', boxShadow: 'none' }, '&.Mui-disabled': { bgcolor: '#2a3b53', color: '#b5c2d6' } }}>
+                {t(RSC.openLibrary)}
+              </Button>
+            )}
             <Button component={Link} to={destination(TAG_INDEX_PATH)} variant="outlined" startIcon={<GridViewOutlined />} sx={{ ...buttonLayout, color: '#dbeaff', borderColor: '#7897bf', '&:hover': { borderColor: '#c1dbff', bgcolor: '#ffffff14' } }}>
               {t(RSC.openTagIndex)}
             </Button>

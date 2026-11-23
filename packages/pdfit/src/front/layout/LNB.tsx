@@ -161,7 +161,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const [dragOverTagFolder, setDragOverTagFolder] = useState<string | null>(null);
   const tagFolderMenuId = useId();
   const [tagFolderMenu, setTagFolderMenu] = useState<{ anchor: HTMLElement; tag: string } | null>(null);
-  const [tagFolderAssignmentFailed, setTagFolderAssignmentFailed] = useState(false);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
   const [tagFolderDialogOpen, setTagFolderDialogOpen] = useState(false);
   const [newTagFolderName, setNewTagFolderName] = useState('');
   const [creatingTagFolder, setCreatingTagFolder] = useState(false);
@@ -471,6 +471,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     if (!confirmDelete) return;
     const target = confirmDelete;
     setConfirmDelete(null);
+    setSidebarError(null);
 
     try {
       if (target.kind === 'folder') {
@@ -479,9 +480,10 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         await loadFolders();
       } else if (target.kind === 'tag') {
         setTags((current) => current.filter((item) => item.name !== target.name));
-        folderLibraryModel.invalidateTags();
         await tagsApi.delete(target.name);
+        folderLibraryModel.invalidateTags();
         void tagFoldersModel.load();
+        window.dispatchEvent(new Event('tags-changed'));
         await onAiTagRemoved?.({ tag: target.name });
       } else if (target.kind === 'tag_folder') {
         await tagFoldersModel.remove(target.name);
@@ -493,18 +495,21 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         void tagFoldersModel.load();
         window.dispatchEvent(new Event('tags-changed'));
       }
-      if (target.kind === 'folder' && location.pathname === `/folder/${encodeURIComponent(target.name)}`) {
+      // BrowserRouter updates history before a lazy destination can finish rendering.
+      const pathname = window.location.pathname;
+      if (target.kind === 'folder' && pathname === `/folder/${encodeURIComponent(target.name)}`) {
         go('/');
         onMobileClose();
       }
-      if ((target.kind === 'all_tags' && location.pathname.startsWith('/tag/'))
-        || (target.kind === 'tag' && location.pathname === `/tag/${encodeURIComponent(target.name)}`)) {
+      // A successful delete only redirects an active route for a removed tag. See apps/pdfit/docs/usage.md#delete-a-tag.
+      const tagOnScreen = tagNameFromPath(pathname);
+      if (tagOnScreen !== undefined && (target.kind === 'all_tags' || (target.kind === 'tag' && tagOnScreen === target.name))) {
         navigate(navigationGuard?.('/') ?? '/', { replace: true });
         onMobileClose();
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : ui("요청에 실패했습니다."));
-      await Promise.all([loadFolders(), loadTags(), tagFoldersModel.load()]);
+      setSidebarError(caught instanceof Error ? caught.message : ui("요청에 실패했습니다."));
+      await Promise.allSettled([loadFolders(), loadTags(), tagFoldersModel.load()]);
     }
   };
 
@@ -598,8 +603,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   };
 
   const addTagToFolder = (folderName: string, tag: string) => {
-    setTagFolderAssignmentFailed(false);
-    void tagFoldersModel.addTag(folderName, tag).catch(() => setTagFolderAssignmentFailed(true));
+    setSidebarError(null);
+    void tagFoldersModel.addTag(folderName, tag).catch(() => setSidebarError(t(RSC.SIDEBAR_TAGFOLDER_ASSIGNFAILED_ALERT)));
   };
 
   const handleDropOnTagFolder = (folderName: string, event: React.DragEvent) => {
@@ -1322,8 +1327,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           ))}
       </Menu>
       <TagNoticeSnackbar
-        notice={tagFolderAssignmentFailed ? { severity: 'error', message: t(RSC.SIDEBAR_TAGFOLDER_ASSIGNFAILED_ALERT) } : null}
-        onClose={() => setTagFolderAssignmentFailed(false)}
+        notice={sidebarError ? { severity: 'error', message: sidebarError } : null}
+        onClose={() => setSidebarError(null)}
       />
 
       <Dialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} maxWidth="xs" fullWidth aria-labelledby="pdfit-preferences-title" data-testid="preferences-dialog">

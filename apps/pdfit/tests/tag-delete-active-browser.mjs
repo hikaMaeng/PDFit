@@ -1,49 +1,173 @@
 import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
-const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15201';
-const now = new Date().toISOString();
-const singleTag = process.argv.includes('--single');
-const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ locale: 'ko-KR', viewport: { width: 1280, height: 800 } });
-const page = await context.newPage();
-let deleted = false;
-const json = (route, value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
-await page.route(`${origin}/api/**`, async (route) => {
-  const path = new URL(route.request().url()).pathname;
-  if (path === '/api/auth/me') return json(route, { authenticated: true, user: { id: 'tag-test', email: 'tag@example.com', name: 'Tag Test', picture: null }, subscription: { status: 'active', access: true, priceKrw: 12000, trialEndsAt: now, currentPeriodEndsAt: '2027-10-02T00:00:00.000Z', cancelAtPeriodEnd: false, nextBillingAt: null, trialDaysRemaining: 0, earlyPurchaseBonusDays: 0 } });
-  if (path === '/api/folders/cache') return json(route, { libraryInstanceId: 'tag-delete-test', schemaVersion: '1', hydratedAt: now, snapshot: {
-    system: [], folders: [{ driveFolderId: 'folder-1', parentFolderId: 'root', name: 'PDFit Library', color: '#3b82f6', isRoot: true, trashed: false }],
-    pdfs: [{ driveFileId: 'file-1', parentFolderId: 'folder-1', name: 'sample.pdf', mimeType: 'application/pdf', size: 1024, modifiedTime: now, trashed: false }],
-    tags: [{ tagId: 'tag-1', name: 'UI·UX', color: '#22c55e', createdAt: now, updatedAt: now, deletedAt: '' }],
-    pdf_tags: [{ relationId: 'relation-1', driveFileId: 'file-1', tagId: 'tag-1', createdAt: now, updatedAt: now, deletedAt: '' }],
-    bookmarks: [], reading_progress: [], viewer_state: [], sync_state: [],
-  } });
-  if (route.request().method() === 'DELETE' && (path === '/api/tags' || path === '/api/tags/UI%C2%B7UX')) { deleted = true; return json(route, { ok: true }); }
-  if (path === '/api/tags/summary') return json(route, deleted ? [] : [{ name: 'UI·UX', bookCount: 1, color: '#22c55e' }]);
-  if (path === '/api/tags/UI%C2%B7UX/books') return json(route, deleted ? [] : [{ folder: 'PDFit Library', filename: 'sample.pdf', driveFileId: 'file-1', size: 1024, modified_at: now, tags: ['UI·UX'] }]);
-  if (path === '/api/folders') return json(route, [{ name: 'PDFit Library', pdfCount: 1, isRoot: true, color: '#3b82f6' }]);
-  if (path === '/api/bookmarks') return json(route, []);
-  if (path === '/api/settings/translations') return json(route, { translations: [] });
-  return json(route, []);
-});
+const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15203';
+const output = resolve(process.env.PDFIT_TEST_ARTIFACT_DIR ?? 'test/tag-delete-active');
+const tag = { id: 'tag-1', name: 'UI·UX', bookCount: 1, color: '#22c55e', icon: 'tag' };
+const tagPath = '/tag/' + encodeURIComponent(tag.name);
+const folder = { name: 'Test Library', pdfCount: 1, isRoot: true, color: '#3b82f6' };
+const folderPath = '/folder/' + encodeURIComponent(folder.name);
+const book = { folder: folder.name, filename: 'sample.pdf', size: 1024, modified_at: '2026-11-23T00:00:00Z', tags: [tag.name] };
+const scenarios = [
+  { id: 'desktop', trailingSlash: true },
+  { id: 'mobile-grouped', mobile: true },
+  { id: 'delayed-delete', delayed: true },
+  { id: 'folders-retry', failHomeFolders: true },
+  { id: 'rejected-delete', rejectDelete: true },
+];
+const results = [];
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true, channel: process.env.PDFIT_TEST_CHANNEL || undefined });
+
+async function exercise(scenario) {
+  const { id, trailingSlash, mobile, delayed, failHomeFolders, rejectDelete } = scenario;
+  const result = { id, pageErrors: [], consoleErrors: [], deleteCalls: 0, folderFailures: 0 };
+  results.push(result);
+  const context = await browser.newContext({
+    locale: 'ko-KR',
+    viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    isMobile: mobile,
+    hasTouch: mobile,
+  });
+  const page = await context.newPage();
+  page.setDefaultTimeout(8000);
+  page.on('pageerror', (error) => result.pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') result.consoleErrors.push(message.text());
+  });
+
+  let deleted = false;
+  let foldersAvailable = !failHomeFolders;
+  const started = Promise.withResolvers();
+  const reply = Promise.withResolvers();
+  await context.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    const path = decodeURIComponent(url.pathname);
+    const method = route.request().method();
+    if (url.origin !== origin) return route.abort();
+    if (method === 'DELETE' && path === '/api/tags/' + tag.name) {
+      result.deleteCalls++;
+      started.resolve();
+      if (delayed) await reply.promise;
+      if (rejectDelete) return route.fulfill({ status: 500, json: { error: 'fixture delete failed' } });
+      deleted = true;
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (method !== 'GET' && method !== 'HEAD') return route.fulfill({ status: 405, json: {} });
+    if (path === '/api/events') return route.fulfill({ contentType: 'text/event-stream', body: ': fixture\n\n' });
+    if (path === '/api/folders') {
+      if (deleted && !foldersAvailable) {
+        result.folderFailures++;
+        return route.fulfill({ status: 503, json: { error: 'fixture folders unavailable' } });
+      }
+      return route.fulfill({ json: [folder] });
+    }
+    if (path === '/api/tags/summary') return route.fulfill({ json: deleted ? [] : [tag] });
+    if (path === '/api/tags/' + tag.name + '/books') return route.fulfill({ json: deleted ? [] : [book] });
+    if (path === '/api/tags/untagged-count') return route.fulfill({ json: { count: Number(deleted) } });
+    if (path === '/api/tags/untagged-books') return route.fulfill({ json: deleted ? [{ ...book, tags: [] }] : [] });
+    if (path === '/api/tag-folders') return route.fulfill({ json: mobile ? [{ name: 'Fixture Group', tags: deleted ? [] : [tag.name] }] : [] });
+    if (path === '/api/settings/translations') return route.fulfill({ json: { translations: [] } });
+    return route.fulfill({ json: [] });
+  });
+
+  const main = page.getByRole('main');
+  const sidebarUntagged = page.getByTestId('lnb-untagged');
+  const count = page.getByTestId('lnb-untagged-count');
+  const openMenu = () => page.getByRole('button', { name: '메뉴 열기', exact: true }).click();
+  const screenshot = async (name) => {
+    const path = resolve(output, id + '-' + name + '.png');
+    await page.screenshot({ path, timeout: 6000 });
+    (result.screenshots ??= []).push(path);
+  };
+
+  try {
+    const initialUrl = origin + tagPath + (trailingSlash ? '/' : '');
+    await page.goto(initialUrl, { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('tag-title-row').getByText(tag.name, { exact: true }).waitFor();
+    if (mobile) await openMenu();
+    const row = page.getByTestId(mobile ? 'lnb-folder-tag-row' : 'lnb-tag-row').filter({ hasText: tag.name });
+    assert.equal((await count.textContent()).trim(), '0');
+    if (!mobile) await row.hover();
+    await row.getByRole('button', { name: '태그 삭제', exact: true }).click();
+    const dialog = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '삭제', exact: true }) });
+    await dialog.getByRole('button', { name: '삭제', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+
+    if (rejectDelete) {
+      await page.getByRole('alert').getByText('fixture delete failed', { exact: true }).waitFor();
+      await row.waitFor();
+      assert.equal(page.url(), initialUrl);
+      assert.equal((await count.textContent()).trim(), '0');
+      await screenshot('restored');
+    } else if (delayed) {
+      const timeout = AbortSignal.timeout(8000);
+      await Promise.race([
+        started.promise,
+        new Promise((_, reject) => timeout.addEventListener('abort', () => reject(timeout.reason), { once: true })),
+      ]);
+      await page.getByRole('button', { name: '태그 인덱스 열기', exact: true }).click();
+      await page.waitForURL(origin + '/tag-index');
+      reply.resolve();
+      await count.filter({ hasText: /^1$/ }).waitFor();
+      assert.equal(page.url(), origin + '/tag-index');
+      await row.waitFor({ state: 'hidden' });
+      await screenshot('kept-route');
+    } else {
+      await page.waitForURL(origin + '/');
+      await main.getByRole('heading', { level: 1 }).waitFor();
+      await row.waitFor({ state: 'hidden' });
+      const tagIndex = main.getByRole('link', { name: '태그 인덱스 열기', exact: true });
+      const library = main.getByRole('link', { name: '라이브러리 열기', exact: true });
+      if (failHomeFolders) {
+        const retry = main.getByRole('button', { name: '다시 시도', exact: true });
+        await retry.waitFor();
+        await tagIndex.click({ trial: true });
+        await screenshot('retry');
+        assert.equal(result.folderFailures, 1);
+        foldersAvailable = true;
+        await retry.click();
+      }
+      await library.waitFor();
+      await screenshot('home');
+      await library.click();
+      await page.waitForURL(origin + folderPath);
+      await page.goBack();
+      await page.waitForURL(origin + '/');
+      await tagIndex.click();
+      await page.waitForURL(origin + '/tag-index');
+      if (mobile) await openMenu();
+      await count.filter({ hasText: /^1$/ }).waitFor();
+      await sidebarUntagged.click();
+      await page.waitForURL(origin + '/untagged');
+      await page.getByTestId('tag-document-count').getByText('1개', { exact: true }).waitFor();
+      await screenshot('untagged');
+    }
+
+    assert.equal(result.deleteCalls, 1);
+    assert.deepEqual(result.pageErrors, []);
+    const expectedHttpError = rejectDelete ? 500 : failHomeFolders ? 503 : undefined;
+    assert.equal(result.consoleErrors.length, Number(expectedHttpError !== undefined));
+    if (expectedHttpError) assert.match(result.consoleErrors[0], new RegExp(String(expectedHttpError)));
+    result.status = 'passed';
+  } catch (error) {
+    result.status = 'failed';
+    result.failure = error.message;
+    await screenshot('failed').catch(() => {});
+  } finally {
+    result.finalPath = new URL(page.url()).pathname;
+    reply.resolve();
+    await context.close();
+    console.log(result.status.toUpperCase() + ' ' + id + (result.failure ? '\n' + result.failure : ''));
+  }
+}
 
 try {
-  await page.goto(`${origin}/tag/${encodeURIComponent('UI·UX')}`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('tag-title-row').getByText('UI·UX').waitFor();
-  if (singleTag) {
-    await page.locator('.pdfit-tag-row').hover();
-    await page.getByRole('button', { name: '태그 삭제' }).click();
-  } else await page.getByRole('button', { name: '태그 전체 초기화' }).click();
-  const dialog = page.getByRole('dialog');
-  if (!singleTag) await dialog.getByText('모든 문서의 태그 연결 1개를 초기화할까요? 문서와 보관함 항목은 유지됩니다.', { exact: true }).waitFor();
-  await dialog.getByRole('button', { name: '삭제' }).click();
-  await page.waitForURL(`${origin}/`);
-  await page.getByTestId('tag-title-row').waitFor({ state: 'hidden' });
-  assert.equal(deleted, true);
-  assert.equal(await page.getByTestId('tag-title-row').count(), 0, 'deleted tag page must not remain visible');
-  console.log(`PASS deleting ${singleTag ? 'one active tag' : 'every tag'} exits the removed tag page`);
+  for (const scenario of scenarios) await exercise(scenario);
 } finally {
-  await context.close();
   await browser.close();
+  await writeFile(resolve(output, 'report.json'), JSON.stringify({ origin, results }, null, 2));
 }
+assert.equal(results.filter((result) => result.status === 'failed').length, 0, 'One or more tag deletion scenarios failed.');
