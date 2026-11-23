@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
+import { Alert, Button, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import { tagsApi } from '../api/tags.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import ManualTagInput from './ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from './TagColorPicker.js';
+import TagManagementDialog from './TagManagementDialog.js';
 
 type Document = { folder: string; filename: string; driveFileId?: string };
 /** 전체 선택한 문서의 태그 추가는 docs/internals.md를 따른다. */
@@ -41,7 +42,7 @@ export default function BulkManualTagDialog({ documents, onClose, onAdded }: { d
       setNotice(ui('{p0}개 파일까지 추가했습니다. 나머지 파일은 다시 시도해 주세요.', { p0: String(added) }));
     } finally { setBusy(false); window.dispatchEvent(new Event('tags-changed')); }
   };
-  return <Dialog open={documents !== null} disableAutoFocus onClose={() => { if (!busy) onClose(); }} maxWidth="xs" fullWidth>
+  return <TagManagementDialog open={documents !== null} onClose={() => { if (!busy) onClose(); }}>
     <DialogTitle>{t('manageTags')}</DialogTitle>
     <DialogContent>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{ui('선택한 {p0}개 파일에 태그를 일괄 추가합니다.', { p0: String(documents?.length ?? 0) })}</Typography>
@@ -53,5 +54,5 @@ export default function BulkManualTagDialog({ documents, onClose, onAdded }: { d
       </ManualTagInput>
     </DialogContent>
     <DialogActions><Button disabled={busy} onClick={onClose}>{t('close')}</Button></DialogActions>
-  </Dialog>;
+  </TagManagementDialog>;
 }

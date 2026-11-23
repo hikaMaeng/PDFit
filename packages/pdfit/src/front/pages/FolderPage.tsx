@@ -40,6 +40,7 @@ import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
 import TagNoticeSnackbar, { type TagNotice } from '../components/TagNoticeSnackbar';
 import ManualTagInput from '../components/ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from '../components/TagColorPicker';
+import TagManagementDialog from '../components/TagManagementDialog.js';
 import TagChip from '../components/TagChip';
 import HashTagIcon from '../components/HashTagIcon';
 import { useTagMutationLocks } from '../components/useTagMutationLocks';
@@ -879,7 +880,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     </DialogActions>
     </Dialog>
     {/* 태그 관리 다이얼로그 */}
-    <Dialog open={!!tagDialog} disableAutoFocus onClose={() => void handleCloseTagDialog()} maxWidth="xs" fullWidth>
+    <TagManagementDialog open={!!tagDialog} onClose={() => void handleCloseTagDialog()}>
     <DialogTitle sx={{ pb: 1 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
     <HashTagIcon color="primary" fontSize="small"/>
@@ -919,7 +920,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     </Box>}
     <Button disabled={dialogBusy} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>
     </DialogActions>
-    </Dialog>
+    </TagManagementDialog>
     <BulkManualTagDialog documents={bulkManualDocuments} onClose={() => setBulkManualDocuments(null)} onAdded={(document, tag, color) => {
             folderModel.addTag(document.filename, tag, document.driveFileId);
             if (color)

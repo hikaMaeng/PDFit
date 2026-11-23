@@ -66,7 +66,7 @@ its tags). A runtime whose metadata store has no favorites (`501`) shows neither
 
 ## Manage tags
 
-[ManualTagInput](../src/front/components/ManualTagInput.tsx#ManualTagInput) shows four autocomplete options per row, ordered left to right. The popup leaves the recent-tag buttons accessible. Selecting a recent tag submits the same add action as typing a tag and pressing Enter. In bulk mode, choosing an autocomplete option fills the input, and choosing a recent tag applies it to the selected files.
+[TagManagementDialog](../src/front/components/TagManagementDialog.tsx#TagManagementDialog) is up to 720px wide and fits within narrow viewports. The [autocomplete popup](../src/front/components/ManualTagInput.tsx#ManualTagInput) uses the dialog body width and shows four options per row, ordered left to right. Long option labels wrap to two lines. The popup leaves the recent-tag buttons accessible. Selecting a recent tag submits the same add action as typing a tag and pressing Enter. In bulk mode, choosing an autocomplete option fills the input, and choosing a recent tag applies it to the selected files.
 
 [Tag history](../src/front/model/recentTags.ts#recentTagsForScope) saves up to three distinct names after successful manual additions. It is stored per browser origin and library account. The input offers only names present in the available tag list, so a removed name becomes unavailable the next time the list is loaded.
 

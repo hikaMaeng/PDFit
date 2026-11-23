@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Autocomplete, Box, Button, TextField, Typography } from '@mui/material';
 import { pdfitMetadataScope } from '../cache/metadataCache.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
@@ -19,10 +19,20 @@ interface Props {
 export default function ManualTagInput({ tags, assignedTags, value, disabled, onInputChange, onAdd, onSelect = onAdd, children }: Props) {
   const { t } = usePdfitI18n();
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  const [popupWidth, setPopupWidth] = useState<number>();
   const history = recentTagsForScope(pdfitMetadataScope());
   const recent = useSyncExternalStore(history.subscribe, history.getSnapshot, history.getSnapshot)
     .filter((tag) => tags.includes(tag));
   const recentLabel = t(RSC.TAG_MANAGE_RECENT_LABEL);
+
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const updateWidth = () => setPopupWidth(anchor.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(anchor);
+    return () => observer.disconnect();
+  }, [anchor]);
 
   return (
     <Box ref={setAnchor}>
@@ -56,8 +66,7 @@ export default function ManualTagInput({ tags, assignedTags, value, disabled, on
               anchorEl: anchor,
               placement: 'bottom-start',
               modifiers: [{ name: 'offset', options: { offset: [0, 4] } }],
-              // Matches the xs dialog body after its horizontal margins and padding.
-              style: { width: 'min(396px, calc(100vw - 112px))' },
+              style: { width: popupWidth },
             },
             paper: {
               translate: 'no',
@@ -73,7 +82,10 @@ export default function ManualTagInput({ tags, assignedTags, value, disabled, on
           }}
           renderOption={({ key, ...props }, tag) => (
             <li key={key} {...props} title={tag}>
-              <Box component="span" dir="auto" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tag}</Box>
+              <Box component="span" dir="auto" sx={{
+                display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+                overflow: 'hidden', overflowWrap: 'anywhere', lineHeight: 1.3,
+              }}>{tag}</Box>
             </li>
           )}
           renderInput={(params) => (

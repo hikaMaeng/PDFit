@@ -29,6 +29,7 @@ import PdfListHeader from '../components/PdfListHeader';
 import LibraryFixedControls from '../components/LibraryFixedControls';
 import ManualTagInput from '../components/ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from '../components/TagColorPicker';
+import TagManagementDialog from '../components/TagManagementDialog.js';
 import TagChip from '../components/TagChip';
 import TagGlyph from '../components/TagGlyph.js';
 import { DEFAULT_TAG_ICON, type TagIconName } from '../../shared/tagDetails.js';
@@ -552,13 +553,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
       </Dialog>
 
       {/* 태그 관리 다이얼로그 */}
-      <Dialog
-        open={!!tagDialog}
-        disableAutoFocus
-        onClose={() => void handleCloseTagDialog()}
-        maxWidth="xs"
-        fullWidth
-      >
+      <TagManagementDialog open={!!tagDialog} onClose={() => void handleCloseTagDialog()}>
         <DialogTitle sx={{ pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <HashTagIcon color="primary" fontSize="small" />
@@ -596,7 +591,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
         <DialogActions>
           <Button disabled={dialogBusy} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>
         </DialogActions>
-      </Dialog>
+      </TagManagementDialog>
       <TagNoticeSnackbar notice={tagNotice} onClose={() => setTagNotice(null)} />
     </Box>
   );

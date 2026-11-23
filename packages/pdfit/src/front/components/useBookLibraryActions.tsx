@@ -8,6 +8,7 @@ import HashTagIcon from './HashTagIcon.js';
 import TagChip from './TagChip.js';
 import ManualTagInput from './ManualTagInput.js';
 import TagColorPicker, { lastTagInputColor, rememberTagInputColor } from './TagColorPicker.js';
+import TagManagementDialog from './TagManagementDialog.js';
 import TagNoticeSnackbar, { type TagNotice } from './TagNoticeSnackbar.js';
 import BookMetadataDialog, { type BookMetadataTarget } from './BookMetadataDialog.js';
 import { foldersApi, type FolderInfo } from '../api/folders.js';
@@ -322,7 +323,7 @@ export function useBookLibraryActions(options: {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={!!tagDialog} disableAutoFocus onClose={handleCloseTagDialog} maxWidth="xs" fullWidth>
+      <TagManagementDialog open={!!tagDialog} onClose={handleCloseTagDialog}>
         <DialogTitle sx={{ pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <HashTagIcon color="primary" fontSize="small" />
@@ -358,7 +359,7 @@ export function useBookLibraryActions(options: {
         <DialogActions>
           <Button disabled={dialogBusy} onClick={handleCloseTagDialog}>{t('close')}</Button>
         </DialogActions>
-      </Dialog>
+      </TagManagementDialog>
 
       <TagNoticeSnackbar notice={tagNotice} onClose={() => setTagNotice(null)} />
     </>

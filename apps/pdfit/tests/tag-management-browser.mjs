@@ -6,6 +6,7 @@ import { chromium } from 'playwright';
 const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15203';
 const output = resolve(process.env.PDFIT_TEST_ARTIFACT_DIR ?? 'test/20261123/tag-management');
 const fixtures = Array.from({ length: 12 }, (_, index) => `배치 ${String(index + 1).padStart(2, '0')}`);
+const longTags = ['함수형프로그래밍', '함수형프로그래밍언어', '함수형프로그래밍설계', '함수형프로그래밍패턴'];
 const [first, second, third, fourth] = fixtures;
 const typedTag = '직접 입력한 검증 태그';
 const failedTag = '저장 실패 검증 태그';
@@ -15,6 +16,7 @@ const encode = encodeURIComponent;
 const checks = [];
 const errors = [];
 const mutations = [];
+const widths = [];
 
 async function read(path) {
   const response = await fetch(`${origin}/api${path}`);
@@ -30,7 +32,7 @@ const folderPath = `/folder/${encode(book.folder)}`;
 const bookPath = `/tags/book/${encode(book.folder)}/${encode(book.filename)}`;
 const originalTags = await read(bookPath);
 const globalTags = await read('/tags');
-const knownTags = new Set([...fixtures, ...globalTags]);
+const knownTags = new Set([...fixtures, ...longTags, ...globalTags]);
 const applied = new Map();
 const browser = await chromium.launch({ headless: true, channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome' });
 await mkdir(output, { recursive: true });
@@ -124,6 +126,40 @@ async function expectGrid(page, input, recent) {
   }
 }
 
+async function expectWideDialog(page, { dialog, recent }, minimumWidth) {
+  const list = page.getByRole('listbox');
+  await list.waitFor();
+  const dialogBox = await dialog.boundingBox();
+  const bodyBox = await recent.boundingBox();
+  const viewport = page.viewportSize().width;
+  await page.waitForFunction((width) => {
+    const listbox = document.querySelector('[role="listbox"]');
+    return listbox && Math.abs(listbox.getBoundingClientRect().width - width) <= 2;
+  }, bodyBox.width);
+  const listBox = await list.boundingBox();
+  assert.ok(dialogBox.width >= minimumWidth, `Dialog width at ${viewport}px: ${dialogBox.width}px`);
+  assert.ok(dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= viewport);
+  assert.ok(listBox.x >= dialogBox.x && listBox.x + listBox.width <= dialogBox.x + dialogBox.width);
+  widths.push({ viewport, dialog: dialogBox.width, autocomplete: listBox.width });
+}
+
+async function expectLongLabels({ input, option }) {
+  await input.fill('함수형프로그래밍');
+  for (const tag of longTags) {
+    await option(tag).waitFor();
+    const fits = await option(tag).evaluate((element) => {
+      const label = element.querySelector('span');
+      const bounds = label.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const lines = [...range.getClientRects()];
+      return lines.length > 0 && lines.length <= 2 && lines.every((line) =>
+        line.left >= bounds.left - 1 && line.right <= bounds.right + 1 && line.bottom <= bounds.bottom + 1);
+    });
+    assert.ok(fits, `Tag text clipped: ${tag}`);
+  }
+}
+
 try {
   const desktop = await session({ width: 1024, height: 850 });
   let ui = await openBook(desktop, folderPath);
@@ -157,7 +193,13 @@ try {
   ui = await openBook(desktop, tagPath);
   await expectRecent(ui, [typedTag, fourth, third]);
   await expectGrid(desktop, ui.input, ui.recent);
+  await expectWideDialog(desktop, ui, 700);
   await desktop.screenshot({ path: resolve(output, 'desktop.png'), animations: 'disabled' });
+  await desktop.setViewportSize({ width: 571, height: 800 });
+  await expectWideDialog(desktop, ui, 540);
+  await expectLongLabels(ui);
+  await desktop.screenshot({ path: resolve(output, 'narrow-desktop.png'), animations: 'disabled' });
+  await desktop.setViewportSize({ width: 1024, height: 850 });
   ui = await openBook(desktop, `/search?q=${encode(book.filename.replace(/\.pdf$/i, ''))}`);
   await expectRecent(ui, [typedTag, fourth, third]);
   checks.push('History persists across page loads, tag and search entry points');
@@ -173,12 +215,15 @@ try {
   ui = await openBook(touch, `/folder/${encode(other.folder)}`, other.filename, true);
   await expectRecent(ui, [fixtures[5]]);
   await expectGrid(touch, ui.input, ui.recent);
+  await expectWideDialog(touch, ui, 360);
+  await expectLongLabels(ui);
   await touch.screenshot({ path: resolve(output, 'touch.png'), animations: 'disabled' });
   await ui.recent.getByRole('button', { name: fixtures[5], exact: true }).tap();
   await ui.chip(fixtures[5]).waitFor();
   await expectRecent(ui, [fixtures[5]]);
   assert.equal(mutations.filter((tag) => tag === fixtures[5]).length, 2);
   checks.push('390px touch cover, 4 columns, direct reuse while popup open, deduplication and isolated browser history');
+  checks.push('Responsive 720px dialog, popup fills the body after viewport resize, long Korean labels fit at 571px and 390px');
 
   await desktop.goto(`${origin}${folderPath}`, { waitUntil: 'domcontentloaded' });
   const toolbar = desktop.getByTestId('folder-list-toolbar');
@@ -187,6 +232,7 @@ try {
   ui = controls(desktop);
   await expectRecent(ui, [typedTag, fourth, third]);
   await expectGrid(desktop, ui.input, ui.recent);
+  await expectWideDialog(desktop, ui, 700);
   await ui.option(first).click();
   assert.equal(await ui.input.inputValue(), first);
   checks.push('Bulk dialog shares history and four-column autocomplete');
@@ -195,6 +241,6 @@ try {
   assert.deepEqual(await read(bookPath), originalTags);
   for (const check of checks) console.log(`PASS ${check}`);
 } finally {
-  await writeFile(resolve(output, 'report.json'), JSON.stringify({ origin, checks, errors, mutations }, null, 2));
+  await writeFile(resolve(output, 'report.json'), JSON.stringify({ origin, checks, widths, errors, mutations }, null, 2));
   await browser.close();
 }
