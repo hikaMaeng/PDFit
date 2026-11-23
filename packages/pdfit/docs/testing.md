@@ -53,9 +53,13 @@ checks the selected-count confirmation, deletes them, and verifies both the UI
 and file API no longer expose either PDF. It also verifies select-all and
 selection clearing without deleting the library's existing files.
 
-Home navigation coverage must compare the **라이브러리 열기** href with the
-folder API row marked `isRoot`, then activate it and verify the matching folder
-page. Root folder names are runtime data and must never be hard-coded.
+[Home introduction coverage](../../../apps/pdfit/tests/plans/home-introduction-20261123.md)
+uses the shell's `main` landmark, the named library, AI and reading sections,
+and their visible link names. The **라이브러리 열기** href must use the
+folder API row marked `isRoot` (or the first folder if no row is marked).
+Verify the destination along with the tag index, untagged, favorites, clips,
+and AI settings routes. The AI settings link and standalone feature copy
+depend on the app registering `/settings`.
 
 Folder selection layout coverage verifies that each row checkbox is horizontally
 after the row delete button and that toggling it still updates the selected-delete

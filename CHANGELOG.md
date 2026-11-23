@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- The home page introduces large-library organization, AI-assisted tagging, OCR and label translation, and links directly to the tools used in the library.
+
 ## [0.4.11] - 2026-11-23
 
 - Yellow cover-card clip graphics display counts from 0 through 9 and 9+ for ten or more.

@@ -33,8 +33,8 @@ try {
  await page.waitForURL(origin + '/');
  assert.equal(await page.getByTestId('lnb-preferences').count(), 1);
  await page.getByRole('link', { name: '라이브러리 열기', exact: true }).waitFor();
- await page.getByRole('heading').filter({ hasText: '수천 개의 PDF도' }).waitFor();
- assert.equal(await page.getByRole('heading', { name: 'PDFit의 핵심 가치' }).count(), 1);
+ await page.getByRole('heading', { level: 1, name: /수천 개의 PDF를/ }).waitFor();
+ await page.getByRole('heading', { level: 2, name: '대규모 PDF 서재 관리' }).waitFor();
  assert.equal(await page.getByRole('link', { name: '클립 보기', exact: true }).count(), 1);
  const library = page.getByRole('link', { name: '라이브러리 열기', exact: true });
  for (let attempt = 0; attempt < 40 && await library.getAttribute('aria-disabled') === 'true'; attempt++) await new Promise(resolve => setTimeout(resolve, 50));

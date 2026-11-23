@@ -1,9 +1,11 @@
 import type { PdfitLanguage } from '../model/languagePreference.js';
+import { homeMessages } from './homeMessages.js';
 import { translateEnglishUi } from './uiText.js';
 
-const LANGUAGE_INDEX: Partial<Record<PdfitLanguage, number>> = { en: 0, ko: 1, zh: 2, es: 3, hi: 4, ar: 5, fr: 6, pt: 7 };
+const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es: 3, hi: 4, ar: 5, fr: 6, pt: 7, ru: 8, ms: 9, bn: 10, ja: 11 };
 
 const rows = {
+  ...homeMessages,
   backgroundSaving: ['Saving {count} changes…', '{count}개 변경사항 저장 중…', '正在保存 {count} 项更改…', 'Guardando {count} cambios…', '{count} बदलाव सहेजे जा रहे हैं…', 'جارٍ حفظ {count} تغييرات…', 'Enregistrement de {count} modifications…', 'Salvando {count} alterações…'],
   backgroundFailed: ['{count} changes failed', '{count}개 변경사항 저장 실패', '{count} 项更改失败', '{count} cambios fallidos', '{count} बदलाव विफल रहे', 'فشل حفظ {count} تغييرات', '{count} modifications ont échoué', '{count} alterações falharam'],
   language: ['Language', '언어', '语言', 'Idioma', 'भाषा', 'اللغة', 'Langue', 'Idioma'],
@@ -116,25 +118,7 @@ const rows = {
   reloadAndRetry: ['Reload the page and try again.', '페이지를 새로고침한 뒤 다시 시도해 주세요.', '请刷新页面后重试。', 'Recarga la página e inténtalo de nuevo.', 'पेज रीफ़्रेश करके फिर प्रयास करें।', 'أعد تحميل الصفحة وحاول مرة أخرى.', 'Rechargez la page puis réessayez.', 'Recarregue a página e tente novamente.'],
   loadingScreen: ['Loading screen...', '화면을 불러오는 중입니다.', '正在加载页面…', 'Cargando pantalla...', 'स्क्रीन लोड हो रही है...', 'جارٍ تحميل الشاشة...', 'Chargement de l’écran...', 'Carregando tela...'],
   workspace: ['READING WORKSPACE', '독서 작업 공간', '阅读工作区', 'ESPACIO DE LECTURA', 'रीडिंग वर्कस्पेस', 'مساحة عمل للقراءة', 'ESPACE DE LECTURE', 'ESPAÇO DE LEITURA'],
-  homeHeroLead: ['Thousands of PDFs', '수천 개의 PDF도', '数千个 PDF', 'Miles de PDF', 'हज़ारों PDF', 'آلاف ملفات PDF', 'Des milliers de PDF', 'Milhares de PDFs'],
-  homeHeroAccent: ['Read faster. Find them easily.', '빠르게 읽고, 쉽게 찾는 서재', '快速阅读，轻松查找。', 'Lee más rápido y encuentra fácilmente.', 'तेज़ पढ़ें, आसानी से खोजें।', 'اقرأ أسرع واعثر عليها بسهولة.', 'Lisez plus vite, trouvez facilement.', 'Leia mais rápido, encontre facilmente.'],
-  homeHeroCopy: ['PDFit combines fast WebGPU and PDFium WebAssembly rendering with an intuitive, tag-first document library.', 'PDFit은 빠른 렌더링과 태그 중심의 직관적인 문서 관리 경험을 제공합니다.', 'PDFit 将快速的 WebGPU 与 PDFium WebAssembly 渲染和直观的标签式文档库融为一体。', 'PDFit combina renderizado rápido WebGPU y PDFium WebAssembly con una biblioteca intuitiva basada en etiquetas.', 'PDFit तेज़ WebGPU और PDFium WebAssembly रेंडरिंग को सहज टैग-आधारित लाइब्रेरी से जोड़ता है।', 'يجمع PDFit بين العرض السريع عبر WebGPU وPDFium WebAssembly ومكتبة مستندات سهلة تعتمد على الوسوم.', 'PDFit associe le rendu rapide WebGPU et PDFium WebAssembly à une bibliothèque intuitive axée sur les étiquettes.', 'O PDFit combina renderização rápida WebGPU e PDFium WebAssembly com uma biblioteca intuitiva baseada em tags.'],
-  openLibrary: ['Open library', '폴더 열기', '打开资料库', 'Abrir biblioteca', 'लाइब्रेरी खोलें', 'فتح المكتبة', 'Ouvrir la bibliothèque', 'Abrir biblioteca'],
   viewBookmarks: ['View bookmarks', '클립 보기', '查看书签', 'Ver marcadores', 'बुकमार्क देखें', 'عرض الإشارات', 'Voir les signets', 'Ver marcadores'],
-  coreValues: ['PDFit core values', 'PDFit의 핵심 가치', 'PDFit 核心价值', 'Valores clave de PDFit', 'PDFit के मूल मूल्य', 'قيم PDFit الأساسية', 'Valeurs clés de PDFit', 'Valores centrais do PDFit'],
-  coreValuesCopy: ['When reading and organizing improve, documents become knowledge.', '읽는 속도와 정리하는 방식이 달라지면, 문서가 지식이 됩니다.', '当阅读和整理方式得到改善，文档就会成为知识。', 'Cuando mejora la lectura y la organización, los documentos se convierten en conocimiento.', 'पढ़ने और व्यवस्थित करने का तरीका बेहतर हो तो दस्तावेज़ ज्ञान बनते हैं।', 'عندما تتحسن القراءة والتنظيم، تتحول المستندات إلى معرفة.', 'Quand lecture et organisation progressent, les documents deviennent du savoir.', 'Quando leitura e organização melhoram, documentos viram conhecimento.'],
-  fastViewer: ['A PDF viewer without the wait', '기다림이 사라지는 PDF 뷰어', '无需等待的 PDF 查看器', 'Un visor PDF sin esperas', 'बिना इंतज़ार का PDF व्यूअर', 'عارض PDF بلا انتظار', 'Un lecteur PDF sans attente', 'Um leitor de PDF sem espera'],
-  fastViewerCopy: ['WebGPU and PDFium WebAssembly render pages quickly, keeping large documents smooth while scrolling and zooming.', 'WebGPU와 PDFium WebAssembly 렌더링으로 페이지를 빠르게 표시합니다. 대용량 문서도 스크롤과 확대가 부드럽습니다.', 'WebGPU 与 PDFium WebAssembly 可快速呈现页面，让大型文档的滚动和缩放保持流畅。', 'WebGPU y PDFium WebAssembly muestran las páginas rápidamente y mantienen fluidos el desplazamiento y el zoom.', 'WebGPU और PDFium WebAssembly पेज तेज़ दिखाते हैं और बड़े दस्तावेज़ों में स्क्रॉल व ज़ूम सहज रखते हैं।', 'يعرض WebGPU وPDFium WebAssembly الصفحات بسرعة ويحافظان على سلاسة التمرير والتكبير.', 'WebGPU et PDFium WebAssembly affichent vite les pages et gardent défilement et zoom fluides.', 'WebGPU e PDFium WebAssembly exibem páginas rapidamente e mantêm rolagem e zoom suaves.'],
-  tagMap: ['Your document map, built with tags', '태그로 만드는 나만의 문서 지도', '用标签构建你的文档地图', 'Tu mapa de documentos con etiquetas', 'टैग से बना आपका दस्तावेज़ मानचित्र', 'خريطة مستنداتك المبنية بالوسوم', 'Votre carte de documents par étiquettes', 'Seu mapa de documentos com tags'],
-  tagMapCopy: ['Combine tags to find the right PDF without digging through folders.', '폴더를 뒤지는 대신 여러 태그를 조합해 필요한 PDF를 빠르게 찾습니다.', '组合标签即可找到所需 PDF，无需逐个翻找文件夹。', 'Combina etiquetas para encontrar el PDF correcto sin recorrer carpetas.', 'फ़ोल्डर खोजे बिना सही PDF पाने के लिए टैग मिलाएँ।', 'ادمج الوسوم للعثور على ملف PDF المناسب دون البحث في المجلدات.', 'Combinez les étiquettes pour trouver le bon PDF sans fouiller les dossiers.', 'Combine tags para encontrar o PDF certo sem procurar em pastas.'],
-  visualBookmarks: ['Visual bookmarks', '페이지 클립', '可视化书签', 'Marcadores visuales', 'विज़ुअल बुकमार्क', 'إشارات مرئية', 'Signets visuels', 'Marcadores visuais'],
-  visualBookmarksCopy: ['Capture page regions with coordinates, colors, opacity, and comments.', '페이지 영역을 좌표, 색상, 투명도, 코멘트와 함께 저장합니다.', '保存带坐标、颜色、透明度和评论的页面区域。', 'Guarda áreas de página con coordenadas, colores, opacidad y comentarios.', 'पेज क्षेत्र को निर्देशांक, रंग, अपारदर्शिता और टिप्पणी के साथ सहेजें।', 'احفظ مناطق الصفحة مع الإحداثيات والألوان والشفافية والتعليقات.', 'Enregistrez des zones avec coordonnées, couleurs, opacité et commentaires.', 'Salve áreas com coordenadas, cores, opacidade e comentários.'],
-  readingFlow: ['Keep your reading flow', '독서 흐름 유지', '保持阅读进度', 'Mantén el flujo de lectura', 'पढ़ने का प्रवाह बनाए रखें', 'حافظ على تدفق القراءة', 'Gardez le fil de lecture', 'Mantenha o fluxo de leitura'],
-  readingFlowCopy: ['Remember the last position and progress to continue in any session.', '읽던 위치와 진행률을 기억해 어떤 세션에서도 바로 이어 읽습니다.', '记住阅读位置和进度，以便随时继续。', 'Recuerda la posición y el progreso para continuar en cualquier sesión.', 'स्थिति और प्रगति याद रखकर किसी भी सत्र में वहीं से जारी रखें।', 'تذكّر الموضع والتقدم للمتابعة في أي جلسة.', 'Mémorisez position et progression pour reprendre à tout moment.', 'Lembre a posição e o progresso para continuar em qualquer sessão.'],
-  aiMetadata: ['Metadata ready for AI', 'AI를 위한 메타데이터', '面向 AI 的元数据', 'Metadatos preparados para IA', 'AI के लिए तैयार मेटाडेटा', 'بيانات وصفية جاهزة للذكاء الاصطناعي', 'Métadonnées prêtes pour l’IA', 'Metadados prontos para IA'],
-  aiMetadataCopy: ['PostgreSQL and pgvector prepare scalable search and AI server integration.', 'PostgreSQL과 pgvector를 기반으로 확장 가능한 검색과 AI 서버 연동을 준비합니다.', '基于 PostgreSQL 和 pgvector 实现可扩展搜索与 AI 服务器集成。', 'PostgreSQL y pgvector preparan búsquedas escalables e integración con servidores de IA.', 'PostgreSQL और pgvector स्केलेबल खोज व AI सर्वर एकीकरण तैयार करते हैं।', 'يهيئ PostgreSQL وpgvector بحثًا قابلاً للتوسع وتكامل خوادم الذكاء الاصطناعي.', 'PostgreSQL et pgvector préparent une recherche évolutive et l’intégration IA.', 'PostgreSQL e pgvector preparam busca escalável e integração com servidores de IA.'],
-  sourceAndReleases: ['Source and releases', '소스와 릴리스 확인', '源代码与发行版', 'Código y versiones', 'स्रोत और रिलीज़', 'المصدر والإصدارات', 'Source et versions', 'Código e versões'],
-  sourceAndReleasesCopy: ['Review PDFit code, documentation, and the latest release.', 'PDFit의 코드, 문서, 최신 릴리스를 확인하세요.', '查看 PDFit 的代码、文档和最新版本。', 'Consulta el código, la documentación y la última versión de PDFit.', 'PDFit कोड, दस्तावेज़ और नवीनतम रिलीज़ देखें।', 'راجع كود PDFit ووثائقه وأحدث إصدار.', 'Consultez le code, la documentation et la dernière version de PDFit.', 'Confira o código, a documentação e a versão mais recente do PDFit.'],
   recent: ['Recent', '최근', '最近', 'Recientes', 'हाल के', 'الأحدث', 'Récents', 'Recentes'],
   byBook: ['By book', '문서별', '按书籍', 'Por libro', 'पुस्तक के अनुसार', 'حسب الكتاب', 'Par livre', 'Por livro'],
   noBookmarks: ['No saved bookmarks.', '보관한 페이지가 없습니다.', '没有已保存的书签。', 'No hay marcadores guardados.', 'कोई सहेजा हुआ बुकमार्क नहीं है।', 'لا توجد إشارات محفوظة.', 'Aucun signet enregistré.', 'Nenhum marcador salvo.'],
@@ -380,8 +364,7 @@ export type PdfitMessageKey = keyof typeof rows;
 export type PdfitMessageParams = Record<string, string | number>;
 
 export function pdfitMessage(language: PdfitLanguage, key: PdfitMessageKey, params: PdfitMessageParams = {}): string {
-  const index = LANGUAGE_INDEX[language];
-  let value: string = index === undefined ? translateEnglishUi(language, rows[key][0]) : rows[key][index];
+  let value: string = rows[key][LANGUAGE_INDEX[language]] ?? translateEnglishUi(language, rows[key][0]);
   for (const [name, replacement] of Object.entries(params)) value = value.split(`{${name}}`).join(String(replacement));
   return value;
 }
