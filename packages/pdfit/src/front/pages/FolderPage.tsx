@@ -908,7 +908,7 @@ function FolderPage({ folderName: requestedFolderName }: {
                 const input = (event.target as HTMLInputElement).value ?? tagInput;
                 if (input.trim())
                     void handleAddTag(input);
-            }} fullWidth value={null} disabled={dialogBusy} options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))} inputValue={tagInput} onInputChange={(_e, val, reason) => {
+            }} fullWidth value={null} disabled={dialogBusy} options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))} slotProps={{ paper: { translate: 'no' } }} inputValue={tagInput} onInputChange={(_e, val, reason) => {
                 if (reason === 'input' || reason === 'clear')
                     setTagInput(val);
             }} onChange={(_e, val) => {

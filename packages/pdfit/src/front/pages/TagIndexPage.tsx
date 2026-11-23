@@ -5,15 +5,11 @@ import TagGlyph from '../components/TagGlyph.js';
 import LabelOutlinedIcon from '@mui/icons-material/LabelOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import { tagsApi, type TagIndexEntry } from '../api/tags';
-import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
+import { usePdfitI18n } from '../i18n/usePdfitI18n';
 import { openViewer, viewerUrl } from '../viewer/openViewer';
 
 /** 카드 안에서 보여 줄 책 제목은 파일명에서 `.pdf`를 뺀 값이다(검색 기능의 "제목"과 같은 규칙). */
 const bookTitle = (filename: string) => filename.replace(/\.pdf$/i, '');
-
-function TagName({ value }: { value: string }) {
-  return <>{useTranslatedDisplayText(value)}</>;
-}
 
 interface IndexCard extends Omit<TagIndexEntry, 'books'> {
   books: Array<{ folder: string; filename: string; driveFileId?: string; title: string }>;
@@ -118,7 +114,7 @@ export default function TagIndexPage() {
 
   useLayoutEffect(() => { place(); }, [place]);
 
-  // 태그 이름 번역이나 글꼴 로딩으로 카드 높이가 바뀌면 다시 놓는다.
+  // 글꼴 로딩 등으로 카드 높이가 바뀌면 다시 놓는다.
   useEffect(() => {
     const observer = new ResizeObserver(() => place());
     for (const element of cardRefs.current) if (element) observer.observe(element);
@@ -204,8 +200,8 @@ export default function TagIndexPage() {
                 }}
               >
                 <TagGlyph icon={card.icon} sx={{ fontSize: 16, flexShrink: 0, color: card.color }} />
-                <Typography component="h2" variant="subtitle2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.3 }}>
-                  <TagName value={card.name} />
+                <Typography component="h2" variant="subtitle2" fontWeight={700} translate="no" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.3 }}>
+                  {card.name}
                 </Typography>
                 <Typography data-testid="tag-index-card-count" variant="caption" sx={{ color: 'text.secondary', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
                   {card.books.length}

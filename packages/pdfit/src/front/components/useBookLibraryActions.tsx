@@ -359,6 +359,7 @@ export function useBookLibraryActions(options: {
                   value={null}
                   disabled={dialogBusy}
                   options={allTags.filter((item) => !tagDialog?.currentTags.includes(item))}
+                  slotProps={{ paper: { translate: 'no' } }}
                   inputValue={tagInput}
                   onInputChange={(_event, value, reason) => { if (reason === 'input' || reason === 'clear') setTagInput(value); }}
                   onChange={(_event, value) => { if (value) void handleAddTag(value); }}

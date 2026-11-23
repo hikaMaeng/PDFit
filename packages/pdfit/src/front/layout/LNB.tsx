@@ -670,8 +670,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             primary={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <TagGlyph icon={tag.icon} data-testid="lnb-tag-icon" sx={{ fontSize: 14, flexShrink: 0, color: tag.color }} />
-                <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                  <DisplayName value={tag.name} />
+                <Typography noWrap variant="body2" translate="no" sx={{ fontSize: '0.8rem', flex: 1 }}>
+                  {tag.name}
                 </Typography>
                 <Typography variant="caption" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0 }}>
                   {tag.bookCount}
@@ -711,7 +711,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Tooltip>
           )}
           {editId && (
-            <Tooltip title={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })} placement="right" arrow>
+            <Tooltip title={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })} slotProps={{ tooltip: { translate: 'no' } }} placement="right" arrow>
               <IconButton size="small" aria-label={t(RSC.SIDEBAR_TAG_EDIT_BUTTON, { name: tag.name })}
                 aria-haspopup="dialog" onClick={() => setEditTag({ ...tag, id: editId })}
                 sx={{ ...folderButtonSx, opacity: activeTag === tag.name ? 0.8 : 0 }}>
@@ -789,8 +789,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                     ? <ExpandMoreIcon aria-hidden sx={{ fontSize: 16, flexShrink: 0, color: sidebarTextSecondary }} />
                     : <ChevronRightIcon aria-hidden sx={{ fontSize: 16, flexShrink: 0, color: sidebarTextSecondary }} />}
                   <FolderOutlinedIcon aria-hidden sx={{ fontSize: 15, flexShrink: 0, color: sidebarAccent }} />
-                  <Typography noWrap variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                    <DisplayName value={folder.name} />
+                  <Typography noWrap variant="body2" translate="no" sx={{ fontSize: '0.8rem', flex: 1 }}>
+                    {folder.name}
                   </Typography>
                   <Typography data-testid="lnb-tag-folder-count" variant="caption" sx={{ color: sidebarTextDisabled, fontSize: '0.68rem', flexShrink: 0 }}>
                     {members.length}
@@ -1317,7 +1317,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                 addTagToFolder(folder.name, tagFolderMenu.tag);
               }}
             >
-              <Typography noWrap variant="body2"><DisplayName value={folder.name} /></Typography>
+              <Typography noWrap variant="body2" translate="no">{folder.name}</Typography>
             </MenuItem>
           ))}
       </Menu>
@@ -1466,7 +1466,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('deleteConfirmation')}</DialogTitle>
         <DialogContent>
-          <Typography sx={{ whiteSpace: confirmDelete?.kind === 'all_tags' ? 'pre-line' : 'normal' }}>
+          <Typography translate="no" sx={{ whiteSpace: confirmDelete?.kind === 'all_tags' ? 'pre-line' : 'normal' }}>
             {confirmDelete?.kind === 'folder'
               ? t('deleteFolderQuestion', { name: confirmDelete.name })
               : confirmDelete?.kind === 'tag_folder'

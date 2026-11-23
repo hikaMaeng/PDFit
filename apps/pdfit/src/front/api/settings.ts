@@ -74,8 +74,7 @@ async function hasDisplayTranslationServer(): Promise<boolean> {
 }
 
 /**
- * Display-name translation requests, batched. Every tag chip asks for its own label,
- * so a cover grid of hundreds of books asks for thousands at once. Requests are merged
+ * Batch library folder labels requested by the visible views. Requests are merged
  * per text, gathered for a short moment, and sent at most BATCH_SIZE texts per request
  * with one request in flight, because one AI server answers them one at a time.
  *

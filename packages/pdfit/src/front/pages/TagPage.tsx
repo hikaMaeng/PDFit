@@ -34,7 +34,7 @@ import { DEFAULT_TAG_ICON, type TagIconName } from '../../shared/tagDetails.js';
 import HashTagIcon from '../components/HashTagIcon';
 import { useTagMutationLocks } from '../components/useTagMutationLocks';
 import { folderLibraryModel } from '../model/folderLibraryModel';
-import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
+import { usePdfitI18n } from '../i18n/usePdfitI18n';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
 import { subscribeTagDetailsChanges, tagNameFromPath } from '../model/tagDetailsEvents.js';
 import TagNoticeSnackbar, { type TagNotice } from '../components/TagNoticeSnackbar';
@@ -42,10 +42,6 @@ import SelectedDocumentActions, { type SelectedDocument } from '../components/Se
 import BookMetadataDialog, { type BookMetadataTarget } from '../components/BookMetadataDialog';
 import { usePdfitFrontConfig } from '../context';
 import { isPendingUploadDriveFileId } from '../viewer/openViewer';
-
-function DisplayText({ value }: { value: string }) {
-  return <>{useTranslatedDisplayText(value)}</>;
-}
 
 interface TagDialogState {
   folder: string;
@@ -458,7 +454,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
               : <Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>}
               color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, minWidth: 0 }}>
-            <Typography variant="h5" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : <DisplayText value={tagName} />}</Typography>
+            <Typography variant="h5" fontWeight={700} translate={favorites || untagged ? undefined : 'no'} sx={{ minWidth: 0, overflowWrap: 'anywhere' }} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : tagName}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />
           </Box>
           <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>{t('refresh')}</Button>
@@ -601,6 +597,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
                   value={null}
                   disabled={dialogBusy}
                   options={allTags.filter((t) => !tagDialog?.currentTags.includes(t))}
+                  slotProps={{ paper: { translate: 'no' } }}
                   inputValue={tagInput}
                   onInputChange={(_e, val, reason) => {
                     if (reason === 'input' || reason === 'clear') setTagInput(val);

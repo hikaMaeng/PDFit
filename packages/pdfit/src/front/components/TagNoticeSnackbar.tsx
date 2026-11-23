@@ -27,6 +27,7 @@ export default function TagNoticeSnackbar({ notice, onClose }: TagNoticeSnackbar
     >
       <Alert
         severity={severity}
+        translate="no"
         variant="outlined"
         onClose={onClose}
         sx={{

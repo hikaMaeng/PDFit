@@ -3,7 +3,6 @@ import { Chip, useTheme, type ChipProps } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import TagIcon from './HashTagIcon.js';
 import { tagColorForMode } from '../../shared/tagColor.js';
-import { useTranslatedDisplayText } from '../i18n/usePdfitI18n.js';
 
 interface TagChipProps {
   tag: string;
@@ -20,14 +19,13 @@ interface TagChipProps {
 /** 목록, 표지, 관리창, 뷰어에서 동일한 태그 형식을 사용한다. */
 export default function TagChip({ tag, color, onDelete, onClick, disabled, size = 'small', compact = false, plain = false, hashLabel = false }: TagChipProps) {
   const theme = useTheme();
-  const label = useTranslatedDisplayText(tag);
   const displayColor = tagColorForMode(color, theme.palette.mode);
 
   return (
     <Chip
       data-testid="pdf-tag-chip"
-      label={hashLabel ? `# ${label}` : plain ? `#${label}` : label}
-      title={label}
+      label={hashLabel ? `# ${tag}` : plain ? `#${tag}` : tag}
+      title={tag}
       translate="no"
       icon={plain || hashLabel ? undefined : <TagIcon />}
       size={size}
