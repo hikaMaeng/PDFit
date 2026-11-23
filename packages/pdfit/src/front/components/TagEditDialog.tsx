@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, ToggleButton, Tooltip, Typography } from '@mui/material';
-import { DEFAULT_TAG_ICON, isEditableTagName, TAG_ICONS, type TagDetailsPatch, type TagIconName } from '../../shared/tagDetails.js';
+import { DEFAULT_TAG_ICON, isEditableTagName, TAG_ICON_GROUPS, type TagDetailsPatch, type TagIconGroup, type TagIconName } from '../../shared/tagDetails.js';
 import { tagsApi, type TagSummary } from '../api/tags.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { publishTagDetailsChange } from '../model/tagDetailsEvents.js';
@@ -57,7 +57,60 @@ const iconLabels = {
   food: RSC.TAG_ICON_FOOD_LABEL,
   home: RSC.TAG_ICON_HOME_LABEL,
   space: RSC.TAG_ICON_SPACE_LABEL,
+  generative: RSC.TAG_ICON_GENERATIVE_LABEL,
+  model: RSC.TAG_ICON_MODEL_LABEL,
+  neural: RSC.TAG_ICON_NEURAL_LABEL,
+  prompt: RSC.TAG_ICON_PROMPT_LABEL,
+  agent: RSC.TAG_ICON_AGENT_LABEL,
+  rag: RSC.TAG_ICON_RAG_LABEL,
+  vision: RSC.TAG_ICON_VISION_LABEL,
+  speech: RSC.TAG_ICON_SPEECH_LABEL,
+  training: RSC.TAG_ICON_TRAINING_LABEL,
+  evaluation: RSC.TAG_ICON_EVALUATION_LABEL,
+  automation: RSC.TAG_ICON_AUTOMATION_LABEL,
+  ocr: RSC.TAG_ICON_OCR_LABEL,
+  relational: RSC.TAG_ICON_RELATIONAL_LABEL,
+  query: RSC.TAG_ICON_QUERY_LABEL,
+  schema: RSC.TAG_ICON_SCHEMA_LABEL,
+  tables: RSC.TAG_ICON_TABLES_LABEL,
+  index: RSC.TAG_ICON_INDEX_LABEL,
+  vector: RSC.TAG_ICON_VECTOR_LABEL,
+  warehouse: RSC.TAG_ICON_WAREHOUSE_LABEL,
+  pipeline: RSC.TAG_ICON_PIPELINE_LABEL,
+  cache: RSC.TAG_ICON_CACHE_LABEL,
+  backup: RSC.TAG_ICON_BACKUP_LABEL,
+  container: RSC.TAG_ICON_CONTAINER_LABEL,
+  cluster: RSC.TAG_ICON_CLUSTER_LABEL,
+  server: RSC.TAG_ICON_SERVER_LABEL,
+  virtualization: RSC.TAG_ICON_VIRTUALIZATION_LABEL,
+  deployment: RSC.TAG_ICON_DEPLOYMENT_LABEL,
+  monitoring: RSC.TAG_ICON_MONITORING_LABEL,
+  logs: RSC.TAG_ICON_LOGS_LABEL,
+  key: RSC.TAG_ICON_KEY_LABEL,
+  firewall: RSC.TAG_ICON_FIREWALL_LABEL,
+  loadbalancer: RSC.TAG_ICON_LOADBALANCER_LABEL,
+  gpu: RSC.TAG_ICON_GPU_LABEL,
+  orchestration: RSC.TAG_ICON_ORCHESTRATION_LABEL,
+  api: RSC.TAG_ICON_API_LABEL,
+  git: RSC.TAG_ICON_GIT_LABEL,
+  test: RSC.TAG_ICON_TEST_LABEL,
+  debug: RSC.TAG_ICON_DEBUG_LABEL,
+  cicd: RSC.TAG_ICON_CICD_LABEL,
+  package: RSC.TAG_ICON_PACKAGE_LABEL,
+  web: RSC.TAG_ICON_WEB_LABEL,
+  frontend: RSC.TAG_ICON_FRONTEND_LABEL,
+  backend: RSC.TAG_ICON_BACKEND_LABEL,
+  ide: RSC.TAG_ICON_IDE_LABEL,
+  review: RSC.TAG_ICON_REVIEW_LABEL,
 } satisfies Record<TagIconName, RSC>;
+
+const groupLabels = {
+  ai: RSC.TAG_ICON_GROUP_AI_LABEL,
+  data: RSC.TAG_ICON_GROUP_DATA_LABEL,
+  infra: RSC.TAG_ICON_GROUP_INFRA_LABEL,
+  development: RSC.TAG_ICON_GROUP_DEVELOPMENT_LABEL,
+  general: RSC.TAG_ICON_GROUP_GENERAL_LABEL,
+} satisfies Record<TagIconGroup, RSC>;
 
 export default function TagEditDialog({ tag, onClose }: { tag: TagSummary & { id: string }; onClose: () => void }) {
   const { t } = usePdfitI18n();
@@ -99,7 +152,7 @@ export default function TagEditDialog({ tag, onClose }: { tag: TagSummary & { id
   };
 
   return (
-    <Dialog open onClose={saving ? undefined : onClose} aria-labelledby={titleId} maxWidth="xs" fullWidth>
+    <Dialog open onClose={saving ? undefined : onClose} aria-labelledby={titleId} maxWidth="sm" fullWidth>
       <DialogTitle id={titleId}>{t(RSC.TAG_EDITOR_TITLE_TEXT)}</DialogTitle>
       <DialogContent>
         <Box id={formId} component="form" onSubmit={save} aria-busy={saving} sx={{ display: 'grid', gap: 2, pt: 1 }}>
@@ -114,14 +167,23 @@ export default function TagEditDialog({ tag, onClose }: { tag: TagSummary & { id
           </Box>
           <Box component="fieldset" disabled={saving} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
             <Typography component="legend" variant="body2" sx={{ mb: 0.75, p: 0 }}>{t(RSC.TAG_EDITOR_ICON_LABEL)}</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(38px, 1fr))', gap: 0.5 }}>
-              {TAG_ICONS.map((option) => (
-                <Tooltip key={option} title={t(iconLabels[option])}>
-                  <ToggleButton type="button" value={option} selected={option === icon} aria-label={t(iconLabels[option])}
-                    size="small" onClick={() => setIcon(option)} sx={{ minHeight: 38 }}>
-                    <TagGlyph icon={option} fontSize="small" sx={{ color: option === icon ? color : undefined }} />
-                  </ToggleButton>
-                </Tooltip>
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              {TAG_ICON_GROUPS.map((group) => (
+                <Box key={group.id} role="group" aria-labelledby={`${formId}-${group.id}`}>
+                  <Typography id={`${formId}-${group.id}`} variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    {t(groupLabels[group.id])}
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))', gap: 0.5 }}>
+                    {group.icons.map((option) => (
+                      <Tooltip key={option} title={t(iconLabels[option])}>
+                        <ToggleButton type="button" value={option} selected={option === icon} aria-label={t(iconLabels[option])}
+                          size="small" onClick={() => setIcon(option)} sx={{ minHeight: 40 }}>
+                          <TagGlyph icon={option} fontSize="small" sx={{ color: option === icon ? color : undefined }} />
+                        </ToggleButton>
+                      </Tooltip>
+                    ))}
+                  </Box>
+                </Box>
               ))}
             </Box>
           </Box>

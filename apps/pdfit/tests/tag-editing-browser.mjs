@@ -59,7 +59,11 @@ try {
   const edit = (row, name) => row.getByRole('button', { name: `태그 ${name} 수정`, exact: true });
   const nameInput = editor.getByRole('textbox', { name: '태그 이름' });
   const save = editor.getByRole('button', { name: '저장', exact: true });
-  const iconChoices = editor.getByRole('group', { name: '태그 아이콘' }).getByRole('button');
+  const iconPicker = editor.getByRole('group', { name: '태그 아이콘', exact: true });
+  const iconChoices = iconPicker.getByRole('button');
+  const aiIcons = iconPicker.getByRole('group', { name: 'AI·머신러닝', exact: true });
+  const dataIcons = iconPicker.getByRole('group', { name: '데이터·데이터베이스', exact: true });
+  const agentIcon = aiIcons.getByRole('button', { name: 'AI 에이전트', exact: true });
 
   await page.goto(tagUrl(original), { waitUntil: 'domcontentloaded' });
   const originalRow = page.getByTestId('lnb-tag-row').filter({ hasText: original });
@@ -72,11 +76,14 @@ try {
     label: button.getAttribute('aria-label'),
     shape: button.querySelector('svg')?.innerHTML,
   })));
-  assert.equal(icons.length, 48);
+  assert.equal(icons.length, 93);
   assert.ok(icons.every(({ label, shape }) => label && shape));
   assert.equal(new Set(icons.map(({ label }) => label)).size, icons.length);
   assert.equal(new Set(icons.map(({ shape }) => shape)).size, icons.length);
   assert.equal(await editor.getByRole('button', { name: '기본 태그', exact: true }).getAttribute('aria-pressed'), 'true');
+  const vectorIcon = dataIcons.getByRole('button', { name: '벡터 데이터베이스', exact: true });
+  await vectorIcon.click();
+  assert.equal(await vectorIcon.getAttribute('aria-pressed'), 'true');
   await nameInput.fill(`${original} 취소`);
   await editor.getByRole('button', { name: '취소' }).click();
   await editor.waitFor({ state: 'hidden' });
@@ -104,11 +111,11 @@ try {
   await viewerTags.getByTestId('pdf-tag-chip').filter({ hasText: original }).waitFor();
   await edit(member(original), original).click();
   await nameInput.fill(duplicate);
-  await editor.getByRole('button', { name: '로봇', exact: true }).press('Enter');
+  await agentIcon.press('Enter');
   await editor.getByRole('button', { name: '태그 색상', exact: true }).click();
   await page.getByRole('dialog', { name: '태그 색상' }).getByRole('button', { name: '#a855f7', exact: true }).click();
   await page.getByRole('dialog', { name: '태그 색상' }).waitFor({ state: 'hidden' });
-  assert.equal(await editor.getByRole('button', { name: '로봇', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await agentIcon.getAttribute('aria-pressed'), 'true');
   const conflict = page.waitForResponse((response) => response.request().method() === 'PATCH' && response.url().endsWith('/details'));
   await save.click();
   assert.equal((await conflict).status(), 409);
@@ -124,27 +131,27 @@ try {
   await Promise.all([page.waitForURL(tagUrl(updated)), second.waitForURL(tagUrl(updated))]);
   await second.getByRole('heading', { name: updated, exact: true }).waitFor();
   await page.getByRole('heading', { name: updated, exact: true }).waitFor();
-  await page.getByTestId('tag-title-row').locator('[data-tag-icon="robot"]').waitFor();
-  await member(updated).locator('[data-tag-icon="robot"]').waitFor();
+  await page.getByTestId('tag-title-row').locator('[data-tag-icon="agent"]').waitFor();
+  await member(updated).locator('[data-tag-icon="agent"]').waitFor();
   assert.equal(await member(updated).getByTestId('lnb-tag-icon').evaluate((icon) => getComputedStyle(icon).color), 'rgb(168, 85, 247)');
   await documents.getByTestId('pdf-tag-chip').filter({ hasText: updated }).waitFor();
   await currentChip.waitFor({ state: 'hidden' });
   await viewerTags.getByTestId('pdf-tag-chip').filter({ hasText: updated }).waitFor();
   assert.equal(await page.getByTestId('tag-document-count').textContent(), '1개');
-  assert.deepEqual((await tags()).find(({ id }) => id === initial.id), { ...initial, name: updated, icon: 'robot', color: '#a855f7' });
+  assert.deepEqual((await tags()).find(({ id }) => id === initial.id), { ...initial, name: updated, icon: 'agent', color: '#a855f7' });
   assert.deepEqual((await folders()).filter(({ name }) => folderNames.includes(name)).map(({ tags }) => tags), [[updated], [updated]]);
   assert.deepEqual((await read(`/tags/${encode(updated)}/books`)).map(({ filename }) => filename), [example.filename]);
   assert.deepEqual(await read(`/tags/${encode(original)}/books`), []);
   assert.deepEqual(await read('/tags/untagged-count'), beforeUntagged);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('tag-title-row').locator('[data-tag-icon="robot"]').waitFor();
-  await member(updated).locator('[data-tag-icon="robot"]').waitFor();
+  await page.getByTestId('tag-title-row').locator('[data-tag-icon="agent"]').waitFor();
+  await member(updated).locator('[data-tag-icon="agent"]').waitFor();
   await member(updated).scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(output, 'tag-renamed.png'), animations: 'disabled' });
   await page.getByRole('button', { name: '태그 인덱스 열기' }).click();
   const card = page.getByTestId('tag-index-card').filter({ has: page.getByRole('link', { name: `태그 ${updated} 열기`, exact: true }) });
-  await card.locator('[data-tag-icon="robot"]').waitFor();
-  console.log('PASS 48 unique labelled glyphs, keyboard selection, duplicate rollback, two tabs, PDF viewer, reload, and index');
+  await card.locator('[data-tag-icon="agent"]').waitFor();
+  console.log('PASS 93 unique labelled glyphs, data and AI groups, keyboard selection, duplicate rollback, two tabs, PDF viewer, reload, and index');
 
   const touch = await browser.newContext({ locale: 'ko-KR', colorScheme: 'light', viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
   const mobile = await touch.newPage();
@@ -166,16 +173,17 @@ try {
   await mobileEditor.getByRole('button', { name: '취소' }).tap();
   await mobileEditor.waitFor({ state: 'hidden' });
   await touchEdit.tap();
-  const lastIcon = mobileEditor.getByRole('button', { name: '우주', exact: true });
-  await lastIcon.tap();
-  assert.equal(await lastIcon.getAttribute('aria-pressed'), 'true');
-  await mobile.screenshot({ path: resolve(output, 'touch-tag-dialog-last-icon.png'), animations: 'disabled' });
+  const containerIcon = mobileEditor.getByRole('group', { name: '인프라·보안', exact: true })
+    .getByRole('button', { name: '컨테이너', exact: true });
+  await containerIcon.tap();
+  assert.equal(await containerIcon.getAttribute('aria-pressed'), 'true');
+  await mobile.screenshot({ path: resolve(output, 'touch-tag-dialog-container.png'), animations: 'disabled' });
   const touchResponse = mobile.waitForResponse((result) => result.request().method() === 'PATCH' && result.url().endsWith('/details'));
   await mobileEditor.getByRole('button', { name: '저장', exact: true }).tap();
   assert.equal((await touchResponse).status(), 200);
   await mobileEditor.waitFor({ state: 'hidden' });
-  await mobileRow.locator('[data-tag-icon="space"]').waitFor();
-  assert.deepEqual((await tags()).find(({ id }) => id === initial.id), { ...initial, name: updated, icon: 'space', color: '#a855f7' });
+  await mobileRow.locator('[data-tag-icon="container"]').waitFor();
+  assert.deepEqual((await tags()).find(({ id }) => id === initial.id), { ...initial, name: updated, icon: 'container', color: '#a855f7' });
   assert.deepEqual(errors, []);
   console.log('PASS Touch editor, cancel, and icon-only save, no page errors');
 } finally {

@@ -91,8 +91,9 @@ test('PostgreSQL migrates legacy tags and preserves tag IDs, document links, and
       assert.equal(await store.countUntaggedBooks(), 1);
 
       await store.updateTagColor(update.name, '#123456');
-      const iconOnly = await patch(original.id, { previousName: update.name, icon: 'science' });
-      assert.deepEqual(await iconOnly.json(), { name: update.name, color: '#123456', icon: 'science' });
+      const iconOnly = await patch(original.id, { previousName: update.name, icon: 'vector' });
+      assert.deepEqual(await iconOnly.json(), { name: update.name, color: '#123456', icon: 'vector' });
+      assert.equal((await store.listTagSummaries()).find(({ id }) => id === original.id).icon, 'vector');
       const other = (await store.listTagSummaries()).find(({ name }) => name === '함께');
       const race = await Promise.all([
         patch(renamed.id, { previousName: renamed.name, name: '동시 요청' }),
