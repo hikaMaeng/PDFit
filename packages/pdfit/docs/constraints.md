@@ -30,6 +30,10 @@
   exactly `(folder, filename)`; at most one named viewer is reused for that key; an explicit
   bookmark page is delivered as a message rather than by reloading the existing viewer; and
   a command received before PDFGPU is ready remains the adapter's pending initial page.
+* Consumer: shared cover cards and My clips. `pdf-cover-clips` opens the book-scoped
+  `book-clips-dialog`. Both book and library grids use `bookmark-library-card`
+  and `bookmark-preview-dialog`. `clip-text-pane` is the separate OCR dialog.
+  The memo editor writes the existing clip comment field on Save.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`
   source tree during the build and must

@@ -172,11 +172,12 @@ PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, fi
 
 ## Bookmark endpoints
 
-`GET /api/bookmarks` returns every persisted bookmark newest-first for the
-library route. `GET /api/bookmarks/:folder/:filename` remains the viewer's
-book-local query. Both return `BookmarkRecord`; `POST`, `PATCH`, and `DELETE`
-remain the capture/edit lifecycle endpoints in
-[`src/server/api/bookmarks/index.ts`](../src/server/api/bookmarks/index.ts).
+`GET /api/bookmarks` lists persisted clips for **My clips**. The viewer and book
+card dialog use `GET /api/bookmarks/:folder/:filename`. Both return
+`BookmarkRecord[]`. The detail editor sends `PATCH /api/bookmarks/:id` with
+`comment` as a string or `null` to clear it. A memo update leaves the capture,
+creation time, and OCR fields intact.
+See [the bookmark routes](../src/server/api/bookmarks/index.ts#createBookmarksRouter).
 
 ## Thumbnail and task endpoints (local runtime)
 

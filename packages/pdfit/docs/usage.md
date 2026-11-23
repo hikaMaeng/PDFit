@@ -78,6 +78,18 @@ a folder takes it out of that folder only; a tag that is in no folder shows in t
 Deleting a tag removes it from every folder. Dragging needs a mouse or trackpad. A runtime whose metadata store has no
 tag folders (`501`) shows neither the button nor the folders.
 
+## Book clips
+
+The paperclip at the right of a cover card's filename opens that book's clips
+as a grid. **Date added** shows the newest captures first. **Page order** shows
+lower page numbers first, with newest captures first within a page.
+Both the book grid and **My clips** use the same [clip card](../src/front/components/clips/ClipCard.tsx#ClipCard)
+and [detail dialog](../src/front/components/clips/ClipDetailDialog.tsx#ClipDetailDialog).
+
+Edit the memo below the capture, then select **Save**. **Reset** restores the last
+saved text, and saving an empty memo clears it. The header opens OCR in its own
+dialog, deletes the clip, or opens the captured page in the viewer.
+
 ## Viewer toolbar
 
 The viewer toolbar orders page navigation before single-page and two-page layout,

@@ -114,9 +114,12 @@ Bookmark library browser contract:
 
 * `data-testid="lnb-bookmarks"` navigates to `/bookmarks` between folder and tag navigation.
 * `data-testid="bookmark-library-page"` exposes recent and per-book tabs.
-* `data-testid="bookmark-library-card"` opens the original-capture preview dialog.
-* `bookmark-preview-dialog` renders the unfilled capture, border, optional color indicator,
-  metadata footer, and `bookmark-preview-open-viewer` new-window action.
+* `pdf-cover-clips` opens `book-clips-dialog` with the selected book and the date/page sort buttons.
+* `bookmark-library-card` opens the shared detail dialog from either grid.
+* `bookmark-preview-dialog` contains the labeled memo editor, Reset and Save actions, and the
+  `bookmark-preview-open-viewer` page action. The author's capture, border, and color indicator remain visible above the memo.
+* `bookmark-preview-text` opens a separate dialog (`clip-text-pane`) with selectable OCR text.
+  [Book clips and memo plan](../../../apps/pdfit/tests/plans/book-clips-memo-20261123.md)
 * A file row remains a native link named by its filename; its ordinary click is intercepted by
   the shared viewer launcher, while modifier-click keeps normal browser-link behavior.
 

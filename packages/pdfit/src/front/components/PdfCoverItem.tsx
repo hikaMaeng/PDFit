@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStor
 import { useNavigate } from 'react-router-dom';
 import { Box, Button, Checkbox, CircularProgress, IconButton, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -21,6 +22,8 @@ import { useThumbnailSlot } from './thumbnailLoadQueue.js';
 import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
 import FavoriteToggle from './FavoriteToggle.js';
+
+const BookClipsDialog = React.lazy(() => import('./clips/BookClipsDialog.js'));
 
 type Props = {
   filename: string;
@@ -424,6 +427,7 @@ function PdfCoverItem(props: Props) {
   const coverThumbnailUrl = localServerCover && props.thumbnailUrl ? withCoverVersion(props.thumbnailUrl, props.folder, props.filename) : props.thumbnailUrl;
   const canReplaceCover = localServerCover && !pending && Boolean(props.onManageTags) && coversAvailable();
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
+  const [clipsOpen, setClipsOpen] = useState(false);
 
   // The last page is the page the viewer saved in its viewer state (the same value that reopening
   // the book restores). It is read only once the overlay is first shown, so a grid of cards does
@@ -482,6 +486,10 @@ function PdfCoverItem(props: Props) {
         <Box data-testid="pdf-cover-title-row" sx={{ flexShrink: 0, minHeight: TITLE_BAND_MIN_HEIGHT, display: 'flex', alignItems: 'center', gap: .5, px: 1, py: '6px', fontSize: '.85rem', lineHeight: 1.35, bgcolor: 'rgba(0,0,0,.62)', color: '#fff', pointerEvents: 'none' }}>
           {!props.hideSelection && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0, color: 'rgba(255,255,255,.8)', pointerEvents: 'auto' }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange(props.folder, props.filename, checked)} />}
           <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
+          <IconButton data-testid="pdf-cover-clips" aria-label={t('viewBookmarks')} aria-haspopup="dialog" title={t('viewBookmarks')} disabled={pending} size="small"
+            onClick={() => setClipsOpen(true)} sx={{ flexShrink: 0, p: .5, color: 'inherit', pointerEvents: 'auto', '&:hover, &.Mui-focusVisible': { bgcolor: 'rgba(255,255,255,.18)' } }}>
+            <AttachFileIcon sx={{ fontSize: 18 }} />
+          </IconButton>
         </Box>
       </Box>
       <FavoriteToggle folder={props.folder} filename={props.filename} variant="card" disabled={pending} />
@@ -509,6 +517,7 @@ function PdfCoverItem(props: Props) {
       </Box>}
     </Box>}
     {canReplaceCover ? <RealCoverDialog open={coverDialogOpen} folder={props.folder} filename={props.filename} onClose={() => setCoverDialogOpen(false)} /> : null}
+    {clipsOpen && <React.Suspense fallback={null}><BookClipsDialog book={props} onClose={() => setClipsOpen(false)} /></React.Suspense>}
   </Box>;
 }
 

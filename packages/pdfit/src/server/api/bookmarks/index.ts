@@ -55,9 +55,11 @@ export function createBookmarksRouter(storeResolver: MetadataStoreResolver, ocr?
   }));
   router.patch('/:id', asyncRoute(async (req, res) => {
     const body = req.body as UpdateBookmarkRequest;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'invalid bookmark update' });
     if (body.borderColor !== undefined && !validColor(body.borderColor)) return res.status(400).json({ error: 'invalid border color' });
     if (body.fillColor !== undefined && body.fillColor !== null && !validColor(body.fillColor)) return res.status(400).json({ error: 'invalid fill color' });
     if (body.fillOpacity !== undefined && (body.fillOpacity < 0 || body.fillOpacity > 1)) return res.status(400).json({ error: 'invalid opacity' });
+    if (body.comment != null && typeof body.comment !== 'string') return res.status(400).json({ error: 'invalid comment' });
     const store = await resolveMetadataStore(storeResolver, req);
     const result = await store.updateBookmark(req.params.id, body);
     return result ? res.json(result) : res.status(404).json({ error: 'bookmark not found' });

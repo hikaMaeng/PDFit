@@ -389,6 +389,8 @@ try {
     const retryServer = (await listBookmarks()).find((item) => item.id === capture.id);
     const retryPolls = polls.filter((at) => at >= retryClickAt);
     await clipsPage.keyboard.press('Escape');
+    await clipsPage.getByTestId('clip-text-pane').waitFor({ state: 'hidden' });
+    await clipsPage.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
     const partial = {
       filename: digitalFile, page: digitalPage, capture,
@@ -577,6 +579,8 @@ try {
     await clipsPage.getByTestId('clip-ocr').waitFor({ timeout: 10_000 });
     const ui = await readPanel(clipsPage, 'clip-ocr');
     await snap(clipsPage, 'clip-dialog-scanned-light.png');
+    await clipsPage.keyboard.press('Escape');
+    await clipsPage.getByTestId('clip-text-pane').waitFor({ state: 'hidden' });
     await clipsPage.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
     const pollsAfterOpen = polls;
