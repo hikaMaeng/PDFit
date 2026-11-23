@@ -294,6 +294,7 @@ function FirstPageThumbnail({ url, thumbnailUrl, title, modifiedAt, driveFileId,
       component="img"
       src={thumbnailUrl}
       alt=""
+      draggable={false}
       onLoad={() => setState('ready')}
       onError={() => { if (thumbnailUrl) missingDriveThumbnails.add(thumbnailUrl); setState((current) => current === 'ready' ? current : 'queued'); setDriveThumbnailFailed(true); }}
       sx={{ display: 'block', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#fff', opacity: state === 'ready' ? 1 : 0 }}
@@ -385,6 +386,7 @@ function ServerCoverThumbnail({ thumbnailUrl, title }: { thumbnailUrl: string; t
       component="img"
       src={source}
       alt=""
+      draggable={false}
       decoding="async"
       onLoad={() => setState('ready')}
       onError={() => { void explainMiss(); }}
@@ -446,6 +448,12 @@ function PdfCoverItem(props: Props) {
     <Box
       data-testid="pdf-cover-media"
       data-info-open={infoPinned ? 'true' : 'false'}
+      draggable={!pending}
+      onDragStart={(event) => {
+        if (pending || event.target !== event.currentTarget) return;
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }));
+      }}
       onMouseEnter={requestInfo}
       sx={{
         position: 'relative',
@@ -454,7 +462,7 @@ function PdfCoverItem(props: Props) {
         '@media (hover: hover)': { '&:hover [data-cover-info]': { opacity: 1, visibility: 'visible' } },
       }}
     >
-      <Box component="a" href={viewerHref} draggable={!pending} onDragStart={(event) => { if (pending) return; event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId })); }} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
+      <Box component="a" href={viewerHref} draggable={false} onClick={(event) => { event.preventDefault(); open(); }} sx={{ display: 'block', color: 'inherit', textDecoration: 'none', cursor: pending ? 'wait' : 'pointer', opacity: pending ? .65 : 1 }}>
         {pending
           ? <Box data-testid="pending-cover-placeholder" sx={{ display: 'grid', placeItems: 'center', aspectRatio: '3 / 4', bgcolor: 'action.hover' }}><PictureAsPdfIcon color="disabled" sx={{ fontSize: 48 }} /></Box>
           : props.serverCover && props.thumbnailUrl
@@ -483,7 +491,7 @@ function PdfCoverItem(props: Props) {
         </ThemeProvider>
         <Box data-testid="pdf-cover-title-row" sx={{ flexShrink: 0, minHeight: TITLE_BAND_MIN_HEIGHT, display: 'flex', alignItems: 'center', gap: .5, px: 1, py: '6px', fontSize: '.85rem', lineHeight: 1.35, bgcolor: 'rgba(0,0,0,.62)', color: '#fff', pointerEvents: 'none' }}>
           {!props.hideSelection && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0, color: 'rgba(255,255,255,.8)', pointerEvents: 'auto' }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange(props.folder, props.filename, checked)} />}
-          <Typography component="a" href={viewerHref} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
+          <Typography component="a" href={viewerHref} draggable={false} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
           <BookClipButton book={props} disabled={pending} />
         </Box>
       </Box>
