@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Box, Chip, CircularProgress, List, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Chip, CircularProgress, List, Tab, Tabs, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import FindInPageOutlinedIcon from '@mui/icons-material/FindInPageOutlined';
 import GridViewIcon from '@mui/icons-material/GridView';
 import SearchIcon from '@mui/icons-material/Search';
@@ -17,15 +17,58 @@ import { searchApi, type BookSearchResult } from '../api/search';
 import { tagsApi, type BookRef } from '../api/tags';
 import { usePdfitFrontConfig } from '../context';
 import { usePdfitI18n } from '../i18n/usePdfitI18n';
+import { CONTENT_SEARCH_SCOPES, isContentSearchScope, type ContentSearchScope } from '../../common/protocol/search/index.js';
+import ContentSearchResults from './ContentSearchResults.js';
 
 const bookKey = (book: BookRef, index: number) => `${book.driveFileId ?? `${book.folder}/${book.filename}`}\u0000${index}`;
 
-/** `/search?q=` — 책 제목 부분 문자열 검색 결과. 데이터는 파일 시스템이 아니라 DB에서 온다. */
+type SearchTab = 'title' | ContentSearchScope;
+const TAB_LABELS = {
+  title: 'searchScopeTitle',
+  outline: 'searchScopeOutline',
+  'page-ocr': 'searchScopePageOcr',
+  'clip-ocr': 'searchScopeClipOcr',
+  'clip-memo': 'searchScopeClipMemo',
+} as const;
+const SEARCH_TABS: SearchTab[] = ['title', ...CONTENT_SEARCH_SCOPES];
+
+/** See docs/content-search.md#tabs for the lazy request contract. */
 export default function SearchPage() {
+  const { t } = usePdfitI18n();
+  const { contentSearch } = usePdfitFrontConfig();
+  const [params, setParams] = useSearchParams();
+  const query = (params.get('q') ?? '').trim();
+  const requestedTab = params.get('scope');
+  const selected = query && contentSearch && isContentSearchScope(requestedTab) ? requestedTab : 'title';
+  return <Box data-testid="search-results-page" sx={{ py: 0.5 }}>
+    <Box sx={{ px: 1, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <SearchIcon sx={{ fontSize: 30, color: 'primary.main' }} />
+      <Typography component="h1" variant="h5" fontWeight={700}>{t('searchResultsTitle')}</Typography>
+    </Box>
+    {contentSearch ? <>
+      <Tabs value={selected} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile
+        aria-label={t('searchResultsTitle')} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
+        onChange={(_, tab: SearchTab) => {
+          const next = new URLSearchParams(params);
+          if (tab === 'title') next.delete('scope');
+          else next.set('scope', tab);
+          setParams(next);
+        }}>
+        {SEARCH_TABS.map((tab) => <Tab key={tab} value={tab} label={t(TAB_LABELS[tab])}
+          disabled={!query && tab !== 'title'} id={`search-tab-${tab}`} aria-controls={`search-panel-${tab}`} />)}
+      </Tabs>
+      {SEARCH_TABS.map((tab) => <Box key={tab} role="tabpanel" hidden={selected !== tab}
+        id={`search-panel-${tab}`} aria-labelledby={`search-tab-${tab}`}>
+        {selected === tab && (tab === 'title' ? <TitleSearchResults query={query} />
+          : <ContentSearchResults key={JSON.stringify([query, tab])} scope={tab} query={query} />)}
+      </Box>)}
+    </> : <TitleSearchResults query={query} />}
+  </Box>;
+}
+
+function TitleSearchResults({ query }: { query: string }) {
   const { t, ui } = usePdfitI18n();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const query = (params.get('q') ?? '').trim();
   const { aiAutoTagAccess, serverThumbnails } = usePdfitFrontConfig();
   const compactTagActions = !(aiAutoTagAccess?.() ?? true);
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
@@ -37,33 +80,32 @@ export default function SearchPage() {
   // 결과가 많아도 한 번에 다 붙이지 않고 위에서부터 조금씩 그린다.
   const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${query}\u0000${libraryView}`);
 
-  const load = useCallback(async (isCurrent: () => boolean, background: boolean) => {
+  const load = useCallback(async (signal: AbortSignal, background: boolean) => {
     if (!query) { setResult(null); setBooks([]); setLoading(false); setError(null); return; }
     if (!background) setLoading(true);
     setError(null);
     try {
-      const [found, summaries] = await Promise.all([searchApi.booksByTitle(query), tagsApi.listSummary().catch(() => [])]);
-      if (!isCurrent()) return;
+      const [found, summaries] = await Promise.all([searchApi.booksByTitle(query, signal), tagsApi.listSummary().catch(() => [])]);
+      if (signal.aborted) return;
       setResult(found);
       setBooks(found.books);
       setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
     } catch (caught) {
-      if (isCurrent()) setError(caught instanceof Error ? caught.message : ui("로드 실패"));
+      if (!signal.aborted) setError(caught instanceof Error ? caught.message : ui("로드 실패"));
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
-  }, [query]);
+  }, [query, ui]);
 
   useEffect(() => {
-    let current = true;
-    const isCurrent = () => current;
-    void load(isCurrent, false);
+    const controller = new AbortController();
+    void load(controller.signal, false);
     // 폴더·태그가 바뀌면 같은 검색어로 조용히 다시 조회한다.
-    const refresh = () => void load(isCurrent, true);
+    const refresh = () => void load(controller.signal, true);
     window.addEventListener('folders-changed', refresh);
     window.addEventListener('tags-changed', refresh);
     return () => {
-      current = false;
+      controller.abort();
       window.removeEventListener('folders-changed', refresh);
       window.removeEventListener('tags-changed', refresh);
     };
@@ -77,12 +119,10 @@ export default function SearchPage() {
   }, [navigate]);
 
   return (
-    <Box data-testid="search-results-page" sx={{ py: 0.5 }}>
-      <Box sx={{ px: 1, mb: 0.5, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-        <SearchIcon sx={{ fontSize: 30, color: 'primary.main' }} />
-        <Typography component="h1" variant="h5" fontWeight={700}>{t('searchResultsTitle')}</Typography>
-        {query && result && <Chip data-testid="search-result-count" label={t('searchResultsSummary', { count: result.total, query })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600, maxWidth: '100%' }} />}
-      </Box>
+    <Box sx={{ py: 0.5 }}>
+      {query && result?.query === query && <Box sx={{ px: 1, pb: 0.5 }}>
+        <Chip data-testid="search-result-count" label={t('searchResultsSummary', { count: result.total, query })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600, maxWidth: '100%' }} />
+      </Box>}
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 

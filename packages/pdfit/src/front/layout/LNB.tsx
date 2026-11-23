@@ -116,7 +116,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTag = tagNameFromPath(location.pathname);
-  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved } = usePdfitFrontConfig();
+  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved, contentSearch } = usePdfitFrontConfig();
   const go = (path: string) => navigate(navigationGuard?.(path) ?? path);
   const { languagePreference } = usePdfitFrontConfig();
   const sidebarLabel = (item: { path: string; label: string; localizedLabels?: Partial<Record<PdfitLanguage, string>> }) => item.path === '/settings'
@@ -908,7 +908,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           component="form"
           role="search"
           data-testid="lnb-search"
-          aria-label={t('searchBooksPlaceholder')}
+          aria-label={t(contentSearch ? 'searchLibraryPlaceholder' : 'searchBooksPlaceholder')}
           onSubmit={submitSearch}
           sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 1, flexShrink: 0, borderBottom: '1px solid', borderColor: sidebarDivider }}
         >
@@ -918,8 +918,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             type="search"
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
-            placeholder={t('searchBooksPlaceholder')}
-            inputProps={{ 'aria-label': t('searchBooksPlaceholder'), 'data-testid': 'lnb-search-input', maxLength: 200, enterKeyHint: 'search' }}
+            placeholder={t(contentSearch ? 'searchLibraryPlaceholder' : 'searchBooksPlaceholder')}
+            inputProps={{ 'aria-label': t(contentSearch ? 'searchLibraryPlaceholder' : 'searchBooksPlaceholder'), 'data-testid': 'lnb-search-input', maxLength: 200, enterKeyHint: 'search' }}
             InputProps={{
               endAdornment: searchText ? (
                 <IconButton size="small" edge="end" data-testid="lnb-search-clear" aria-label={t('clearPdfSearch')} onClick={() => setSearchText('')} sx={{ color: sidebarTextSecondary }}>

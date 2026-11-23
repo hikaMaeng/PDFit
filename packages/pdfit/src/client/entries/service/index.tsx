@@ -36,6 +36,7 @@ export function createPdfitServiceApp(extension: PdfitServiceExtension = {}) {
     onAiTagRemoved: extension.onAiTagRemoved,
     bookMetadataEnabled: extension.bookMetadataEnabled,
     serverThumbnails: extension.serverThumbnails,
+    contentSearch: extension.contentSearch,
     bookResearchAccess: extension.bookResearchAccess,
     languagePreference: extension.languagePreference ?? defaultLanguagePreference,
     displayTranslation: extension.displayTranslation,

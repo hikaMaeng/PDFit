@@ -18,18 +18,8 @@ import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 import { bookClipCountsSchema } from './bookClipCounts.js';
-
-// Invalidate only scan-volume sequences with known automatic provenance.
-// Existing rows without provenance are indistinguishable from manual edits.
-const LEGACY_PLACEHOLDER_OUTLINE = `
-  o.is_manually_edited IS FALSE
-  AND CASE WHEN jsonb_typeof(o.entries) = 'array' THEN jsonb_array_length(o.entries) > 0 ELSE FALSE END
-  AND NOT EXISTS (
-    SELECT 1 FROM jsonb_array_elements(
-      CASE WHEN jsonb_typeof(o.entries) = 'array' THEN o.entries ELSE '[]'::jsonb END
-    ) WITH ORDINALITY AS outline_item(entry, ordinal)
-    WHERE entry->>'title' IS DISTINCT FROM ordinal::text OR entry->>'depth' IS DISTINCT FROM '0'
-  )`;
+import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
+import type { ContentSearchScope } from '../../common/protocol/search/index.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
@@ -291,6 +281,14 @@ export class PostgresMetadataStore implements MetadataStore {
         modified_at: String(row.modified_at), tags: (row.tags as string[]).map(String), ...bookClipCountFromRow(row),
       })),
     };
+  }
+
+  searchContent(scope: ContentSearchScope, query: string, limit?: number) {
+    return searchLibraryContent(this.db, scope, query, limit);
+  }
+
+  savePageOcrText(folder: string, filename: string, stamp: string, pageIndex: number, text: string) {
+    return savePageOcrSearchText(this.db, folder, filename, stamp, pageIndex, text);
   }
 
   async listBooksByFolder(folder: string): Promise<BookRecord[]> {
@@ -841,6 +839,7 @@ export class PostgresMetadataStore implements MetadataStore {
         PRIMARY KEY (folder, filename)
       );
       ALTER TABLE book_outlines ADD COLUMN IF NOT EXISTS is_manually_edited BOOLEAN;
+      ${contentSearchSchema}
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
     await this.backfillTitleChoseong();

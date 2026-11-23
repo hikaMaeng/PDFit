@@ -121,6 +121,7 @@ export function createPdfitFrontApp(extension: PdfitFrontExtension = {}) {
     onAiTagRemoved: extension.onAiTagRemoved,
     bookMetadataEnabled: extension.bookMetadataEnabled,
     serverThumbnails: extension.serverThumbnails,
+    contentSearch: extension.contentSearch,
     bookResearchAccess: extension.bookResearchAccess,
     themeOptions: extension.themeOptions,
     languagePreference: extension.languagePreference,

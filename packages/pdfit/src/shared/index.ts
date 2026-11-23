@@ -13,6 +13,7 @@ export { compareUnicode } from './unicodeOrder.js';
 export { BOOKSTORE_TAG_GROUPS, BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, bookstoreTagGroupFor, documentTagFromTitle } from './tagTaxonomy.js';
 export type { BookstoreTagGroupId } from './tagTaxonomy.js';
 import type { TagDetailsPatch, TagDetailsUpdateResult, TagIconName } from './tagDetails.js';
+import type { ContentSearchResult, ContentSearchScope } from '../common/protocol/search/index.js';
 
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
@@ -65,6 +66,8 @@ export interface MetadataStore {
    * 대소문자와 유니코드 정규화(NFC/NFD) 차이는 무시한다. 구현하지 않는 저장소는 라우트가 501로 답한다.
    */
   searchBooksByTitle?(query: string, limit?: number): Promise<BookTitleSearchResult>;
+  searchContent?(scope: ContentSearchScope, query: string, limit?: number): Promise<ContentSearchResult>;
+  savePageOcrText?(folder: string, filename: string, sourceStamp: string, pageIndex: number, text: string): Promise<void>;
   listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>>;
   getProgress(folder: string, filename: string, driveFileId?: string): Promise<number | null>;
   setProgress(folder: string, filename: string, page: number, driveFileId?: string): Promise<void>;

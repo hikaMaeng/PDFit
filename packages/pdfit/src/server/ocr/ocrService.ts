@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { INTERACTIVE_TASK_PRIORITY, type TaskEnvelope, type TaskOutcome } from '../tasks/taskProtocol.js';
@@ -7,6 +7,8 @@ import type { BookmarkOcr, BookmarkRecord } from '../../common/protocol/bookmark
 import type { PageTextRect, PageTextTaskPayload, PageTextTaskResult } from './pdfPageTextTask.worker.js';
 import { meaningfulLength } from './pdfPageTextTask.worker.js';
 import { recognizeImageText, type VisionImageType, type VisionOcrServer } from './visionOcr.js';
+import { thumbnailIdentityHash } from '../thumbnails/thumbnailStore.js';
+import { restorePageOcrSearchIndex, type PageOcrSearchIndex } from './pageOcrSearchIndex.js';
 
 export const PAGE_TEXT_TASK_TYPE = 'page-text';
 export const PAGE_TEXT_TASK_SCRIPT_URL = new URL(import.meta.url.endsWith('.ts') ? './pdfPageTextTask.worker.ts' : './pdfPageTextTask.worker.js', import.meta.url);
@@ -49,6 +51,7 @@ export interface OcrServiceOptions {
   resolveVisionServer?: () => Promise<VisionOcrServer | null>;
   /** Directory for cached page results. */
   cacheRoot: string;
+  pageSearchIndex?: PageOcrSearchIndex;
   bookmarks?: BookmarkOcrStore & {
     /** Absolute path of the saved clip image. */
     imagePath(bookmark: BookmarkRecord): string;
@@ -76,13 +79,22 @@ export interface OcrService {
 }
 
 export function pageOcrCacheName(folder: string, filename: string, stamp: string, pageIndex: number): string {
-  const hash = createHash('sha1').update(`${folder}\u0000${filename}`).digest('hex');
+  const hash = thumbnailIdentityHash(folder, filename);
   return `${hash}.${stamp}.p${pageIndex}.json`;
 }
 
 export function createOcrService(options: OcrServiceOptions): OcrService {
   const log = options.log ?? (() => undefined);
   const request = options.request ?? fetch;
+  const pageSearchIndex = options.pageSearchIndex;
+  let restoringPageIndex: Promise<void> | undefined;
+
+  async function indexPage(folder: string, filename: string, stamp: string, result: Pick<PageOcrResult, 'source' | 'pageIndex' | 'text'>) {
+    if (pageSearchIndex && result.source !== 'none' && result.text.trim()) {
+      await pageSearchIndex.save(folder, filename, stamp, result.pageIndex, result.text)
+        .catch(() => log('Could not index page OCR text.'));
+    }
+  }
 
   /**
    * Callers waiting for a page-text task.
@@ -149,6 +161,12 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     script: PAGE_TEXT_TASK_SCRIPT_URL,
     timeoutMs: 2 * 60 * 1000,
     async plan() {
+      if (pageSearchIndex && !restoringPageIndex) {
+        restoringPageIndex = restorePageOcrSearchIndex(options.cacheRoot, PAGE_CACHE_VERSION, pageSearchIndex).catch(() => {
+          log('Could not restore the page OCR search index. The next plan will retry.');
+          restoringPageIndex = undefined;
+        });
+      }
       const planned: PlannedTask<PageTextOcrPayload>[] = [...waiting.entries()].map(([key, entry]) => ({ key, payload: entry.payload, priority: INTERACTIVE_PRIORITY }));
       // Bookmarks left pending by a restart. Failed and unavailable ones wait for a retry.
       const pending = options.bookmarks ? await options.bookmarks.listBookmarksWithOcrStatus('pending', PENDING_BOOKMARKS_PER_PLAN).catch(() => []) : [];
@@ -215,12 +233,18 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const started = Date.now();
       const sourcePath = await options.resolveSourcePath(folder, filename);
       if (!sourcePath) throw Object.assign(new Error('File not found.'), { status: 404 });
-      const stamp = `${PAGE_CACHE_VERSION}-${await options.sourceStamp(sourcePath)}`;
+      const sourceStamp = await options.sourceStamp(sourcePath);
+      const stamp = `${PAGE_CACHE_VERSION}-${sourceStamp}`;
       const cacheName = pageOcrCacheName(folder, filename, stamp, pageIndex);
       const cachePath = path.join(options.cacheRoot, cacheName);
       try {
         const cached = JSON.parse(await fs.readFile(cachePath, 'utf8')) as Omit<PageOcrResult, 'cached' | 'durationMs'>;
-        if (typeof cached.text === 'string') return { ...cached, cached: true, durationMs: Date.now() - started };
+        if (typeof cached.text === 'string') {
+          if (cached.source === 'text-layer' || cached.source === 'vision') {
+            await indexPage(folder, filename, sourceStamp, { ...cached, pageIndex });
+          }
+          return { ...cached, cached: true, durationMs: Date.now() - started };
+        }
       } catch { /* not cached */ }
 
       const key = `page:${cacheName.replace(/\.json$/, '')}`;
@@ -243,9 +267,14 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
         for (const name of await fs.readdir(options.cacheRoot).catch(() => [] as string[])) {
           if (name.startsWith(prefix) && !name.startsWith(`${prefix}${stamp}.`)) await fs.rm(path.join(options.cacheRoot, name), { force: true });
         }
-        const temporary = `${cachePath}.tmp`;
-        await fs.writeFile(temporary, JSON.stringify(record), 'utf8');
-        await fs.rename(temporary, cachePath);
+        const temporary = `${cachePath}.${randomUUID()}.tmp`;
+        try {
+          await fs.writeFile(temporary, JSON.stringify(record), 'utf8');
+          await fs.rename(temporary, cachePath);
+        } finally {
+          await fs.rm(temporary, { force: true });
+        }
+        await indexPage(folder, filename, sourceStamp, record);
       }
       return { ...record, cached: false, durationMs: Date.now() - started };
     },

@@ -18,12 +18,12 @@ function ClipBookGroup({ record, count }: { record: BookmarkRecord; count: numbe
 }
 
 // See docs/usage.md#book-clips.
-export default function ClipCollection({ book }: { book?: ClipBook }) {
+export default function ClipCollection({ book, initialClipId }: { book?: ClipBook; initialClipId?: string }) {
   const { t } = usePdfitI18n();
   const { bookmarks, loading, error, refresh, model } = useClipCollection(book);
   const [tab, setTab] = useState<'recent' | 'books'>('recent');
   const [sort, setSort] = useState<'created' | 'page'>('created');
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(initialClipId ?? null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const previewTitleId = useId();
   const preview = bookmarks.find((record) => record.id === previewId);

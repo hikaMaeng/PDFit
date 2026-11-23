@@ -155,6 +155,8 @@ The shared tags router in [`src/server/routes/tags.ts`](../src/server/routes/tag
 
 The route is part of `createPdfitMetadataRouterMounts`, so the hosted runtime mounts it too. A hosted store answers from the browser's hydrated IndexedDB snapshot instead (`searchCachedBooksByTitle` in `front/cache/metadataCache.ts`, same rules), and `front/api/search.ts` picks whichever exists.
 
+`GET /api/search/content/:scope?q=&limit=` queries a single scope described in [Content search and indexes](content-search.md). It accepts the same query length as title search, with an optional integer limit from 1 to 100. The response contains `hits` (id, folder, filename, nullable 1-based page and snippet) and `hasMore`. Invalid input returns `400`; a store without a content index returns `501`. Responses use `Cache-Control: no-store`.
+
 ## Table of contents endpoints
 
 [`/api/outlines/:folder/:filename[?driveFileId=]`](../src/server/routes/outlines.ts#createOutlinesRouter) keeps embedded or edited outlines. The wire types and validation are in [`src/common/protocol/outlines/index.ts`](../src/common/protocol/outlines/index.ts).

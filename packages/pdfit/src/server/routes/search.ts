@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
+import { isContentSearchScope } from '../../common/protocol/search/index.js';
 
 export const SEARCH_QUERY_MAX_LENGTH = 200;
 
-/** DB(`books` 테이블) 기준 도서 검색. 현재는 책 제목만 대상으로 한다. */
+/** Title and individual content searches use the current library's metadata store. */
 export function createSearchRouter(metadataStoreResolver: MetadataStoreResolver): Router {
   const router = Router();
 
@@ -18,6 +19,28 @@ export function createSearchRouter(metadataStoreResolver: MetadataStoreResolver)
       res.json({ query, ...(await metadataStore.searchBooksByTitle(query, Number.isFinite(limit) ? limit : undefined)) });
     } catch (error) {
       res.status(500).json({ error: String(error) });
+    }
+  });
+
+  router.get('/content/:scope', async (req: Request, res: Response) => {
+    const { scope } = req.params;
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (!isContentSearchScope(scope) || !query || query.length > SEARCH_QUERY_MAX_LENGTH) {
+      res.status(400).json({ error: 'A valid content scope and search query are required.' });
+      return;
+    }
+    const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+    if (limit !== undefined && (typeof req.query.limit !== 'string' || !Number.isInteger(limit) || limit < 1 || limit > 100)) {
+      res.status(400).json({ error: 'Search limit must be between 1 and 100.' });
+      return;
+    }
+    res.set('Cache-Control', 'no-store');
+    try {
+      const store = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!store.searchContent) { res.sendStatus(501); return; }
+      res.json(await store.searchContent(scope, query, limit));
+    } catch {
+      res.sendStatus(500);
     }
   });
 

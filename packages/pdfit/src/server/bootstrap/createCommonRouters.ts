@@ -149,6 +149,10 @@ export function createPdfitCommonRouterAssembly(options: {
       submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
       resolveVisionServer: background.resolveVisionServer,
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
+      pageSearchIndex: store.savePageOcrText ? {
+        listBooks: () => store.listTrackedBooks(),
+        save: store.savePageOcrText.bind(store),
+      } : undefined,
       bookmarks: store.getBookmark && store.listBookmarksWithOcrStatus && store.setBookmarkOcr ? {
         getBookmark: (id) => store.getBookmark!(id),
         listBookmarksWithOcrStatus: (status, limit) => store.listBookmarksWithOcrStatus!(status, limit),

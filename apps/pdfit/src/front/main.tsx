@@ -12,6 +12,7 @@ const App = createPdfitServiceApp({
   displayTranslation: { translate: translateDisplayTexts },
   // Covers are rendered by the server's hourly thumbnail task, not in the browser.
   serverThumbnails: true,
+  contentSearch: true,
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

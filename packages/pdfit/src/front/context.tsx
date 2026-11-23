@@ -31,6 +31,8 @@ export interface PdfitFrontExtension {
   bookMetadataEnabled?: boolean;
   /** Covers come from the server's thumbnail task (local or hosted) instead of a browser-side render. */
   serverThumbnails?: boolean;
+  /** The library exposes indexed outline, OCR, and clip text searches. */
+  contentSearch?: boolean;
   /** Whether the current account can use the server-managed AI book research feature. */
   bookResearchAccess?: () => boolean;
   themeOptions?: ThemeOptions;
@@ -59,6 +61,7 @@ export interface PdfitFrontRuntimeConfig {
   onAiTagRemoved?: PdfitFrontExtension['onAiTagRemoved'];
   bookMetadataEnabled?: boolean;
   serverThumbnails?: boolean;
+  contentSearch?: PdfitFrontExtension['contentSearch'];
   bookResearchAccess?: PdfitFrontExtension['bookResearchAccess'];
   themeOptions?: ThemeOptions;
   languagePreference?: PdfitFrontExtension['languagePreference'];
