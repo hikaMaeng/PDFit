@@ -6,6 +6,7 @@ import { Router, type Request, type Response } from 'express';
 import { sanitizeName, UPLOAD_STAGING_PREFIX } from '../services/filesystem.js';
 import { LibraryOfflineError } from '../services/libraryVolume.js';
 import type { FilesystemService } from '../services/types.js';
+import type { WatcherController } from '../services/watcher.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
 import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
 
@@ -68,9 +69,7 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
-  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'> & {
-    commitUpload?: (persist: () => Promise<BookRecord[]>) => Promise<BookRecord[]>;
-  },
+  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'> & Partial<Pick<WatcherController, 'commitUpload' | 'mutateFiles'>>,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed' | 'favorites-changed') => void,
   thumbnails?: FolderThumbnailProvider,
@@ -79,6 +78,7 @@ export function createFoldersRouter(
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
+  const mutateFiles = metadataMutation?.mutateFiles ?? ((operation: () => Promise<void>) => operation());
 
   // Folder names last seen on disk. Key: folder name; scope: this router (one library root);
   // bound: the number of directories directly under the root; replaced wholesale on every
@@ -185,7 +185,7 @@ export function createFoldersRouter(
 
     try {
       const safeName = sanitizeName(newName.trim());
-      await filesystem.renameFolder(req.params.name, safeName);
+      await mutateFiles(() => filesystem.renameFolder(req.params.name, safeName));
       notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
@@ -195,8 +195,10 @@ export function createFoldersRouter(
 
   router.delete('/:name', async (req: Request, res: Response) => {
     try {
-      await filesystem.deleteFolder(req.params.name);
-      await metadataMutation?.purgeFolder(req.params.name);
+      await mutateFiles(async () => {
+        await filesystem.deleteFolder(req.params.name);
+        await metadataMutation?.purgeFolder(req.params.name);
+      });
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');
@@ -338,9 +340,11 @@ export function createFoldersRouter(
     try {
       const folder = decodeRouteParam(req.params.name);
       const filename = sanitizeName(decodeRouteParam(req.params.filename));
-      await filesystem.deleteFile(folder, filename);
-      await metadataMutation?.purgeFile(folder, filename);
-      await covers?.remove(folder, filename).catch(() => false);
+      await mutateFiles(async () => {
+        await filesystem.deleteFile(folder, filename);
+        await metadataMutation?.purgeFile(folder, filename);
+        await covers?.remove(folder, filename).catch(() => false);
+      });
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');
@@ -363,10 +367,13 @@ export function createFoldersRouter(
     }
 
     try {
-      await filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
-      await covers?.move({ folder: fromFolder, filename: sanitizeName(filename) }, { folder: toFolder, filename: sanitizeName(filename) }).catch(() => false);
+      const safeFilename = sanitizeName(filename);
+      await mutateFiles(async () => {
+        await filesystem.moveFile(fromFolder, toFolder, safeFilename);
+        await covers?.move({ folder: fromFolder, filename: safeFilename }, { folder: toFolder, filename: safeFilename }).catch(() => false);
+        await metadataMutation?.purgeFile(fromFolder, safeFilename);
+      });
       await refresh?.();
-      await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');

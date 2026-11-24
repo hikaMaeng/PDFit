@@ -183,7 +183,12 @@ export function createPdfitCommonRouterAssembly(options: {
         () => options.metadataStore.listFolderBookCounts(),
         () => options.metadataStore.listFolderColors(),
         (folder, color) => options.metadataStore.updateFolderColor(folder, color),
-        watcher,
+        {
+          commitUpload: watcher.commitUpload,
+          mutateFiles: watcher.mutateFiles,
+          purgeFile: (folder, filename) => options.metadataStore.purgeFile(folder, filename),
+          purgeFolder: (folder) => options.metadataStore.purgeFolder(folder),
+        },
         options.maxUploadBytes,
         (event) => watcher.bus.emit('change', event),
         thumbnailService,

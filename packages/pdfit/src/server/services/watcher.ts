@@ -10,8 +10,12 @@ export interface WatcherController {
   start(): void;
   refresh(): Promise<void>;
   commitUpload(persist: () => Promise<BookRecord[]>): Promise<BookRecord[]>;
-  purgeFile(folder: string, filename: string): Promise<void>;
-  purgeFolder(folder: string): Promise<void>;
+  mutateFiles<T>(operation: () => Promise<T>): Promise<T>;
+}
+
+function isMissing(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 export function createWatcher(options: {
@@ -24,11 +28,14 @@ export function createWatcher(options: {
 }): WatcherController {
   const { booksRoot, rootFolderName, metadataStore } = options;
   const volume = options.volume ?? createLibraryVolumeGuard();
-  const present = (target: string) => volume.run(() => fs.promises.access(target)).then(() => true, () => false);
+  const stat = (target: string) => volume.run(() => fs.promises.stat(target)).catch((error: unknown) => {
+    if (isMissing(error)) return null;
+    throw error;
+  });
   const bus = new EventEmitter();
   const dirWatchers = new Map<string, fs.FSWatcher>();
   let indexWrites = Promise.resolve();
-  let indexRevision = 0;
+  let activeScan: AbortController | undefined;
   let refreshing: Promise<void> | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -38,15 +45,10 @@ export function createWatcher(options: {
     return result;
   }
 
-  function changeIndex<T>(operation: () => Promise<T>): Promise<T> {
-    return queueIndexWrite(async () => {
-      try { return await operation(); }
-      finally { indexRevision += 1; }
-    });
+  function mutateFiles<T>(operation: () => Promise<T>): Promise<T> {
+    activeScan?.abort();
+    return queueIndexWrite(operation);
   }
-
-  const purgeFile = (folder: string, filename: string) => changeIndex(() => metadataStore.purgeFile(folder, filename));
-  const purgeFolder = (folder: string) => changeIndex(() => metadataStore.purgeFolder(folder));
 
   function scheduleRefresh(): void {
     if (refreshTimer) return;
@@ -60,7 +62,7 @@ export function createWatcher(options: {
   async function commitUpload(persist: () => Promise<BookRecord[]>): Promise<BookRecord[]> {
     // The Free upload response and change events follow the index commit. See apps/pdfit/docs/api.md#server-routes.
     try {
-      const books = await changeIndex(async () => {
+      const books = await mutateFiles(async () => {
         const uploaded = await persist();
         await metadataStore.syncBooks(uploaded);
         return uploaded;
@@ -70,7 +72,7 @@ export function createWatcher(options: {
       return books;
     } finally {
       // A scan can also recover already-persisted files after an indexing error.
-      scheduleRefresh();
+      if (!refreshing) scheduleRefresh();
     }
   }
 
@@ -114,23 +116,20 @@ export function createWatcher(options: {
     // A volume that cannot answer is not evidence that the file is gone: change events
     // from a flapping mount must never purge database rows.
     if (volume.isOffline()) return;
-    const exists = await present(fullPath);
+    const entry = await stat(fullPath);
     if (volume.isOffline()) return;
 
-    if (exists) {
-      if (isRoot && !isPdf) {
-        const isDirectory = await volume.run(() => fs.promises.stat(fullPath)).then((stat) => stat.isDirectory(), () => false);
-        if (isDirectory) {
-          watchDir(fullPath);
-          bus.emit('change', 'folders-changed');
-        }
+    if (entry) {
+      if (isRoot && entry.isDirectory()) {
+        watchDir(fullPath);
+        bus.emit('change', 'folders-changed');
       }
       return;
     }
 
-    const removed = await changeIndex(async () => {
+    const removed = await mutateFiles(async () => {
       // A file can be replaced by a completed upload while this event waits.
-      if (volume.isOffline() || await present(fullPath) || volume.isOffline()) return false;
+      if (volume.isOffline() || await stat(fullPath) || volume.isOffline()) return false;
       if (isPdf) {
         await metadataStore.purgeFile(isRoot ? rootFolderName : path.basename(dir), name);
       } else {
@@ -146,50 +145,63 @@ export function createWatcher(options: {
     bus.emit('change', 'favorites-changed');
   }
 
-  async function scanBooks(): Promise<{ books: BookRecord[]; dirs: string[] }> {
+  async function scanBooks(signal: AbortSignal): Promise<BookRecord[]> {
     const books: BookRecord[] = [];
-    const folders = [{ name: rootFolderName, dir: booksRoot }];
+    const readDir = async (dir: string) => {
+      signal.throwIfAborted();
+      const entries = await volume.run(() => fs.promises.readdir(dir, { withFileTypes: true }));
+      signal.throwIfAborted();
+      watchDir(dir);
+      return entries;
+    };
     // Every read here is asynchronous: a dead network mount must fail this call,
     // not freeze the event loop for everyone else. An unreachable root rejects
     // before anything is written, so an offline volume never looks like an empty library.
-    for (const entry of await volume.run(() => fs.promises.readdir(booksRoot, { withFileTypes: true }))) {
-      if (entry.isDirectory()) folders.push({ name: entry.name, dir: path.join(booksRoot, entry.name) });
-    }
-    for (const folder of folders) {
-      let entries: fs.Dirent[];
-      try { entries = await volume.run(() => fs.promises.readdir(folder.dir, { withFileTypes: true })); }
-      catch (error) {
-        if (folder.dir === booksRoot) throw error;
-        continue;
-      }
+    const rootEntries = await readDir(booksRoot);
+    const collect = async (folder: string, dir: string, entries: fs.Dirent[]) => {
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.pdf')) continue;
-        try {
-          const stat = await volume.run(() => fs.promises.stat(path.join(folder.dir, entry.name)));
-          books.push({ folder: folder.name, filename: entry.name, size: stat.size, modified_at: stat.mtime.toISOString() });
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
+        signal.throwIfAborted();
+        const info = await stat(path.join(dir, entry.name));
+        if (info?.isFile()) books.push({ folder, filename: entry.name, size: info.size, modified_at: info.mtime.toISOString() });
       }
+    };
+    await collect(rootFolderName, booksRoot, rootEntries);
+    for (const entry of rootEntries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(booksRoot, entry.name);
+      let entries: fs.Dirent[];
+      try { entries = await readDir(dir); }
+      catch (error) { if (isMissing(error)) continue; throw error; }
+      await collect(entry.name, dir, entries);
     }
-    return { books, dirs: folders.map((folder) => folder.dir) };
+    signal.throwIfAborted();
+    return books;
   }
 
   async function refreshIndex(): Promise<void> {
     for (;;) {
-      const revision = indexRevision;
-      const snapshot = await scanBooks();
-      const applied = await queueIndexWrite(async () => {
-        // An upload or deletion during the scan supersedes its snapshot.
-        if (revision !== indexRevision) return false;
-        await metadataStore.syncBooks(snapshot.books);
-        return true;
-      });
-      if (!applied) continue;
-      for (const dir of snapshot.dirs) watchDir(dir);
-      bus.emit('change', 'folders-changed');
-      bus.emit('change', 'tags-changed');
-      return;
+      const pendingWrites = indexWrites;
+      await pendingWrites;
+      if (pendingWrites !== indexWrites) continue;
+      const controller = new AbortController();
+      activeScan = controller;
+      const { signal } = controller;
+      try {
+        const books = await scanBooks(signal);
+        await queueIndexWrite(async () => {
+          signal.throwIfAborted();
+          await metadataStore.syncBooks(books);
+        });
+        signal.throwIfAborted();
+        bus.emit('change', 'folders-changed');
+        bus.emit('change', 'tags-changed');
+        return;
+      } catch (error) {
+        if (!signal.aborted) throw error;
+      } finally {
+        activeScan = undefined;
+      }
     }
   }
 
@@ -204,14 +216,13 @@ export function createWatcher(options: {
     bus,
     refresh,
     commitUpload,
-    purgeFile,
-    purgeFolder,
+    mutateFiles,
     start() {
       // Startup must never scan or synchronize the library. Watch only the
       // root so newly-created folders can be discovered; existing folder
       // watchers are attached during the explicit refresh operation.
       // The existence probe is asynchronous so an unreachable volume cannot stall boot.
-      void present(booksRoot).then((exists) => { if (exists) watchDir(booksRoot); });
+      void stat(booksRoot).then((entry) => { if (entry?.isDirectory()) watchDir(booksRoot); }).catch(() => {});
     },
   };
 }
