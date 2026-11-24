@@ -89,7 +89,7 @@ try {
     await page.screenshot({ path: resolve(output, `fit-${name}.png`) });
     recordResult(`${name} after resize`, await recordAction(() => page.setViewportSize({ width: 1360, height: 920 })), axis);
     if (name === 'width') {
-      const bookmarks = page.getByTestId('legacy-bookmark-sidebar-toggle');
+      const bookmarks = page.getByRole('button', { name: '클립', exact: true });
       recordResult('width with bookmarks', await recordAction(() => bookmarks.click()), axis);
     }
   }

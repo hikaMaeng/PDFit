@@ -11,7 +11,7 @@ export function usePdfPan(viewportRef: RefObject<HTMLDivElement | null>, enabled
   const pointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!enabled || event.button !== 0) return;
     const target = event.target;
-    if (target instanceof Element && target.closest('[data-annotation-id], button, input, textarea, select, [role="button"], [role="dialog"]')) return;
+    if (target instanceof Element && target.closest('aside, [data-annotation-id], button, input, textarea, select, [role="button"], [role="dialog"]')) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
     onEmptyPress();

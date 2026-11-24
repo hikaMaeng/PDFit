@@ -787,10 +787,14 @@ export const F03 = {
     await page.mouse.click(mainBox.x + mainBox.width / 6, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
-    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 1);
-    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
-    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
+    const clip = page.getByRole('button', { name: /^(Clips|클립)$/ });
+    const clipPanel = page.getByRole('complementary', { name: /^(Book bookmarks|클립)$/ });
+    await clip.click();
+    await clipPanel.waitFor();
+    assert.equal(await clip.getAttribute('aria-pressed'), 'true');
+    await clip.click();
+    await clipPanel.waitFor({ state: 'detached' });
+    assert.equal(await clip.getAttribute('aria-pressed'), 'false');
     await page.mouse.click(mainBox.x + mainBox.width / 2, mainBox.y + mainBox.height / 2);
     await page.waitForTimeout(120);
     assert.equal(await page.getByRole('toolbar', { name: 'viewer controls' }).count(), 1);
@@ -821,15 +825,22 @@ export const F03 = {
 export const F04 = {
   id: 'F04',
   group: 'F',
-  title: 'Always-available bookmark capture and fresh delete affordance',
+  title: 'GPU one-shot clip capture, list, and overlay deletion',
   seed: seed({
     folders: [{ name: 'viewer-bookmark-always', files: [{ name: 'bookmark-always.pdf', pages: 2 }] }],
   }),
   run: async ({ page }) => {
-    await openViewer(page, 'viewer-bookmark-always', 'bookmark-always.pdf');
-    assert.equal(await page.getByRole('complementary', { name: 'Book bookmarks' }).count(), 0);
+    await page.goto('/viewer/viewer-bookmark-always/bookmark-always.pdf?engine=gpu', { waitUntil: 'domcontentloaded' });
+    const clip = page.getByRole('button', { name: /^(Clips|클립)$/ });
+    const panel = page.getByRole('complementary', { name: /^(Book bookmarks|클립)$/ });
+    await clip.waitFor();
+    assert.equal(await panel.count(), 0);
+    await clip.click();
+    await panel.waitFor();
+    assert.equal(await clip.getAttribute('aria-pressed'), 'true');
 
-    const canvas = page.locator('canvas').first();
+    const canvas = page.getByTestId('pdfgpu-page-shell').and(page.locator('[data-page-index="0"]'));
+    await canvas.waitFor();
     const canvasBox = await canvas.boundingBox();
     assert.notEqual(canvasBox, null);
     const start = { x: canvasBox.x + canvasBox.width * 0.2, y: canvasBox.y + canvasBox.height * 0.2 };
@@ -840,25 +851,25 @@ export const F04 = {
     await page.getByTestId('bookmark-drag-preview').waitFor({ state: 'visible' });
     const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
     await page.mouse.up();
-    assert.equal((await createdResponse).ok(), true);
-    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: /^(Clips|클립)$/, pressed: false }).waitFor();
+    assert.equal((await createdResponse).status(), 201);
+    await panel.getByTestId('bookmark-card').waitFor();
 
     const overlay = page.getByTestId('bookmark-page-overlay').first();
     await overlay.waitFor({ state: 'visible' });
     const deleteButton = overlay.getByTestId('bookmark-overlay-delete');
-    assert.ok(Number(await deleteButton.evaluate((element) => getComputedStyle(element).opacity)) > 0.9);
+    await deleteButton.waitFor();
 
-    const pageInput = page.locator('input[type="text"]').first();
+    const pageInput = page.getByRole('textbox', { name: /^(Page number|페이지 번호)$/ });
     await overlay.hover();
     await page.mouse.wheel(0, 900);
-    await page.waitForFunction(() => document.querySelector('input[type="text"]')?.value === '2');
+    await page.waitForFunction((input) => input.value === '2', await pageInput.elementHandle());
     await pageInput.fill('1');
     await pageInput.press('Enter');
     await overlay.waitFor({ state: 'visible' });
 
     await page.waitForFunction((element) => Number(getComputedStyle(element).opacity) < 0.6, await deleteButton.elementHandle(), { timeout: 7000 });
 
-    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
     assert.equal(await page.getByTestId('bookmark-card').count(), 1);
     await deleteButton.click();
     await overlay.waitFor({ state: 'detached' });
@@ -868,7 +879,7 @@ export const F04 = {
 export const F05 = {
   id: 'F05',
   group: 'F',
-  title: 'Legacy fallback bookmark capture and sidebar control',
+  title: 'PDF.js one-shot clip capture and manual cancellation',
   seed: seed({
     folders: [{ name: 'viewer-bookmark-legacy', files: [{ name: 'bookmark-legacy.pdf', pages: 2 }] }],
   }),
@@ -877,11 +888,22 @@ export const F05 = {
     await waitText(page, 'bookmark-legacy.pdf');
     const canvas = page.locator('[data-pdf-page] canvas').first();
     await canvas.waitFor({ state: 'visible' });
-    await page.getByTestId('legacy-bookmark-sidebar-toggle').waitFor({ state: 'visible' });
+    const clip = page.getByRole('button', { name: /^(Clips|클립)$/ });
+    const panel = page.getByRole('complementary', { name: /^(Book bookmarks|클립)$/ });
+    assert.equal(await clip.getAttribute('aria-pressed'), 'false');
+    await clip.click();
+    await panel.waitFor();
+    await clip.click();
+    await panel.waitFor({ state: 'detached' });
+    assert.equal(await clip.getAttribute('aria-pressed'), 'false');
+    await clip.click();
+    await panel.waitFor();
 
     const canvasBox = await canvas.boundingBox();
+    const surfaceBox = await page.getByTestId('legacy-bookmark-capture-surface').boundingBox();
     assert.notEqual(canvasBox, null);
-    const start = { x: canvasBox.x + 30, y: canvasBox.y + 30 };
+    assert.notEqual(surfaceBox, null);
+    const start = { x: canvasBox.x + 30, y: Math.max(canvasBox.y, surfaceBox.y) + 30 };
     const end = { x: start.x + 20, y: start.y + 20 };
     const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
     await page.mouse.move(start.x, start.y);
@@ -889,13 +911,13 @@ export const F05 = {
     await page.mouse.move(end.x, end.y, { steps: 4 });
     await page.getByTestId('legacy-bookmark-drag-preview').waitFor({ state: 'visible' });
     await page.mouse.up();
-    assert.equal((await createdResponse).ok(), true);
-    await page.getByText('북마크가 저장되었습니다.', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: /^(Clips|클립)$/, pressed: false }).waitFor();
+    assert.equal((await createdResponse).status(), 201);
     await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'visible' });
 
-    await page.getByRole('button', { name: '북마크 사이드바 열기' }).click();
-    assert.equal(await page.getByTestId('legacy-bookmark-card').count(), 1);
-    await page.getByRole('button', { name: '북마크 사이드바 닫기' }).click();
+    await panel.getByTestId('legacy-bookmark-card').waitFor();
+    await panel.getByRole('button', { name: /^(Close|닫기)$/ }).click();
+    await panel.waitFor({ state: 'detached' });
     await page.getByTestId('legacy-bookmark-delete').click();
     await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'detached' });
   },

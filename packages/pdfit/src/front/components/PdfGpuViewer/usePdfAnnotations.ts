@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Annotation, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
 import { createAnnotation, deleteAnnotation, listAnnotations, updateAnnotation } from '../../api/annotations.js';
 import { useAnnotationHistory } from '../../annotation/history.js';
 import { DEFAULT_ANNOTATION_STYLE } from '../../annotation/model.js';
+import { ViewerToolModel } from '../../viewer/toolModel.js';
 
 export type AnnotationSaveState = 'loading' | 'saving' | 'saved' | 'error';
 
 /** Owns annotation tools, history, persistence, selection, and keyboard shortcuts. */
 export function usePdfAnnotations(documentId: string) {
   const history = useAnnotationHistory();
-  const [tool, setTool] = useState<AnnotationTool>('bookmark');
+  const toolModel = useMemo(() => new ViewerToolModel(), [documentId]);
+  useSyncExternalStore(toolModel.subscribe, toolModel.getVersion, toolModel.getVersion);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [style, setStyle] = useState<AnnotationStyle>(DEFAULT_ANNOTATION_STYLE);
   const [saveState, setSaveState] = useState<AnnotationSaveState>('loading');
@@ -56,10 +58,10 @@ export function usePdfAnnotations(documentId: string) {
   }, [history.annotations, history.redo, history.redoTarget, persist]);
 
   const selectTool = useCallback((nextTool: AnnotationTool) => {
-    setTool(nextTool);
+    toolModel.toggleTool(nextTool);
     setSelectedId(null);
-    if (nextTool === 'highlight') setStyle({ color: '#facc15', opacity: 0.35, strokeWidth: 1, fillColor: null });
-  }, []);
+    if (toolModel.getTool() === 'highlight') setStyle({ color: '#facc15', opacity: 0.35, strokeWidth: 1, fillColor: null });
+  }, [toolModel]);
 
   const selected = history.annotations.find((annotation) => annotation.id === selectedId) ?? null;
   const displayedStyle = selected?.style ?? style;
@@ -106,8 +108,11 @@ export function usePdfAnnotations(documentId: string) {
     commit,
     undo,
     redo,
-    tool,
+    tool: toolModel.getTool(),
     selectTool,
+    clipPanelOpen: toolModel.isClipPanelOpen(),
+    finishClipSelection: toolModel.finishClipSelection,
+    closeClipPanel: toolModel.closeClipPanel,
     selectedId,
     setSelectedId,
     style,

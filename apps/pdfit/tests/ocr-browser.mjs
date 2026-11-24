@@ -34,7 +34,7 @@ const TEXT = {
   slow: '스캔된 페이지는 AI 서버가 읽습니다. 몇 분 걸릴 수 있습니다.',
   sourceTextLayer: 'PDF 텍스트',
   sourceVision: 'AI 인식',
-  areaBookmark: '선택 영역 보관',
+  clipTool: '클립',
   pageNumber: '페이지 번호',
   close: '닫기',
 };
@@ -226,9 +226,9 @@ const closeDialog = async (page, dialog) => {
   await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
 };
 
-// 뷰어에서 "선택 영역 보관" 도구로 페이지 위를 끌어 클립을 만든다(실제 캡처 경로: PdfViewer handleCapturePointerUp).
+// 뷰어에서 "클립" 도구로 페이지 위를 끌어 클립을 만든다(실제 캡처 경로: PdfViewer handleCapturePointerUp).
 const captureClip = async (page, filename, pageNumber, region) => {
-  const tool = page.getByRole('button', { name: TEXT.areaBookmark, exact: true });
+  const tool = page.getByRole('button', { name: TEXT.clipTool, exact: true });
   await tool.click();
   const canvas = page.locator(`[data-pdf-page][data-page-number="${pageNumber}"] canvas`).first();
   await canvas.waitFor({ state: 'visible', timeout: 30_000 });

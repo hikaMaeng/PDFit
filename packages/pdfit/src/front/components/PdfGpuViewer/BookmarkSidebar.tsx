@@ -4,7 +4,12 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 
+import { BookmarkPanel } from './BookmarkPanel.js';
+
 type Props = {
+  id: string;
+  armed: boolean;
+  onClose: () => void;
   bookmarks: BookmarkRecord[];
   recentId: string | null;
   deletingId: string | null;
@@ -14,11 +19,10 @@ type Props = {
 };
 
 /** Bookmark list shown beside the PDF viewport. */
-export function BookmarkSidebar({ bookmarks, recentId, deletingId, onEdit, onDelete, onGoToPage }: Props) {
-  const { t, ui } = usePdfitI18n();
-  return <Box component="aside" aria-label={t('bookBookmarks')} sx={{ width: 220, flexShrink: 0, overflowY: 'auto', bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : '#242426', borderRight: '1px solid', borderColor: (theme) => theme.palette.mode === 'light' ? theme.palette.divider : 'rgba(255,255,255,.08)', p: 1 }}>
-    <Typography variant="caption" sx={{ display: 'block', color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[400], px: 0.5, pb: 0.75 }}>{t('bookBookmarks')}</Typography>
-    {bookmarks.length === 0 ? <Typography variant="caption" sx={{ color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[600], px: 0.5 }}>{t('dragToCapture')}</Typography> : bookmarks.map((bookmark) => <Box data-testid="bookmark-card" component="article" role="button" tabIndex={0} key={bookmark.id} onClick={() => onEdit(bookmark)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onEdit(bookmark); } }} sx={{ display: 'block', width: '100%', mb: 1, p: 0, textAlign: 'left', cursor: 'pointer', border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
+export function BookmarkSidebar({ id, armed, onClose, bookmarks, recentId, deletingId, onEdit, onDelete, onGoToPage }: Props) {
+  const { ui } = usePdfitI18n();
+  return <BookmarkPanel id={id} armed={armed} empty={bookmarks.length === 0} onClose={onClose}>
+    {bookmarks.map((bookmark) => <Box data-testid="bookmark-card" component="article" role="button" tabIndex={0} key={bookmark.id} onClick={() => onEdit(bookmark)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onEdit(bookmark); } }} sx={{ display: 'block', width: '100%', mb: 1, p: 0, textAlign: 'left', cursor: 'pointer', border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
       <Box sx={{ height: 92, bgcolor: bookmark.fillColor ?? '#161618', position: 'relative' }}>
         <Box component="img" src={bookmark.imageUrl} alt="" sx={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', bgcolor: '#161618' }} />
         {bookmark.fillColor && <Box sx={{ position: 'absolute', inset: 0, bgcolor: bookmark.fillColor, opacity: bookmark.fillOpacity, pointerEvents: 'none' }} />}
@@ -33,5 +37,5 @@ export function BookmarkSidebar({ bookmarks, recentId, deletingId, onEdit, onDel
       </Box>
       {bookmark.comment && <Typography variant="caption" noWrap sx={{ display: 'block', px: 0.75, pb: 0.5, color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[400] }}>{bookmark.comment}</Typography>}
     </Box>)}
-  </Box>;
+  </BookmarkPanel>;
 }

@@ -9,20 +9,17 @@ import {
   Slider,
   Switch,
   ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import BorderColorIcon from '@mui/icons-material/BorderColor';
 import CloudDoneOutlinedIcon from '@mui/icons-material/CloudDoneOutlined';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import DrawIcon from '@mui/icons-material/Draw';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import HighlightAltOutlinedIcon from '@mui/icons-material/HighlightAltOutlined';
 import HorizontalRuleIcon from '@mui/icons-material/HorizontalRule';
-import NearMeOutlinedIcon from '@mui/icons-material/NearMeOutlined';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import RedoIcon from '@mui/icons-material/Redo';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -34,22 +31,23 @@ import type { AnnotationSaveState } from './usePdfAnnotations.js';
 import { useDraggablePalette } from './useDraggablePalette.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import type { PdfitMessageKey } from '../../i18n/messages.js';
+import { RSC } from './resource.js';
 
-const TOOLS: ReadonlyArray<{ value: AnnotationTool; label: PdfitMessageKey; icon: typeof NearMeOutlinedIcon }> = [
-  { value: 'bookmark', label: 'areaBookmark', icon: Inventory2OutlinedIcon },
-  { value: 'select', label: 'selectAnnotation', icon: NearMeOutlinedIcon },
-  { value: 'highlight', label: 'highlighter', icon: HighlightAltOutlinedIcon },
-  { value: 'text', label: 'addText', icon: TextFieldsIcon },
-  { value: 'pen', label: 'freehand', icon: DrawIcon },
-  { value: 'rectangle', label: 'rectangle', icon: CropSquareIcon },
-  { value: 'circle', label: 'circle', icon: RadioButtonUncheckedIcon },
-  { value: 'line', label: 'line', icon: HorizontalRuleIcon },
-  { value: 'arrow', label: 'arrow', icon: ArrowForwardIcon },
+const TOOLS: ReadonlyArray<{ value: AnnotationTool; label: PdfitMessageKey; caption?: PdfitMessageKey; icon: typeof AttachFileIcon }> = [
+  { value: 'bookmark', label: RSC.clips, icon: AttachFileIcon },
+  { value: 'highlight', label: RSC.highlighter, icon: BorderColorIcon },
+  { value: 'text', label: RSC.addText, caption: RSC.textCaption, icon: TextFieldsIcon },
+  { value: 'pen', label: RSC.freehand, caption: RSC.penCaption, icon: DrawIcon },
+  { value: 'rectangle', label: RSC.rectangle, icon: CropSquareIcon },
+  { value: 'circle', label: RSC.circle, icon: RadioButtonUncheckedIcon },
+  { value: 'line', label: RSC.line, icon: HorizontalRuleIcon },
+  { value: 'arrow', label: RSC.arrow, icon: ArrowForwardIcon },
 ];
 
 type Props = {
-  leftOffset?: number;
   tool: AnnotationTool;
+  clipPanelOpen: boolean;
+  clipPanelId: string;
   style: AnnotationStyle;
   saveState: AnnotationSaveState;
   canUndo: boolean;
@@ -63,14 +61,24 @@ type Props = {
 };
 
 /** Horizontal space reserved for the default annotation palette. */
-export const ANNOTATION_RAIL_WIDTH = 64;
+export const ANNOTATION_RAIL_WIDTH = 80;
+
+const iconCaptionSx = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '2px',
+  '& .MuiSvgIcon-root': { fontSize: 17 },
+} as const;
 
 const railButtonSx = {
-  width: 32,
-  height: 32,
-  p: 0,
+  ...iconCaptionSx,
+  width: '100%',
+  minHeight: 32,
+  p: 0.25,
   border: 0,
-  borderRadius: '4px !important',
+  borderRadius: 1,
+  flexShrink: 0,
   color: 'text.secondary',
   '&.Mui-selected': {
     bgcolor: 'primary.main',
@@ -79,10 +87,14 @@ const railButtonSx = {
   },
 };
 
+function RailCaption({ children }: { children: string }) {
+  return <Box component="span" sx={{ maxWidth: '100%', fontSize: '0.625rem', lineHeight: 1.1, fontWeight: 500, textAlign: 'center', textTransform: 'none', overflowWrap: 'anywhere' }}>{children}</Box>;
+}
+
 /** Compact PDF-editor rail for annotation tools and styles. */
 export function AnnotationControls(props: Props) {
   const { t, ui } = usePdfitI18n();
-  const { leftOffset = 0, tool, style, saveState, canUndo, canRedo, canRetry, onToolChange, onStyleChange, onUndo, onRedo, onRetry } = props;
+  const { tool, clipPanelOpen, clipPanelId, style, saveState, canUndo, canRedo, canRetry, onToolChange, onStyleChange, onUndo, onRedo, onRetry } = props;
   const [styleAnchor, setStyleAnchor] = useState<HTMLElement | null>(null);
   const { paletteRef, position, dragHandleProps } = useDraggablePalette('pdfit.annotationPalette.position');
   const saveLabel = saveState === 'loading' ? ui("주석 불러오는 중") : saveState === 'saving' ? ui("주석 저장 중") : saveState === 'saved' ? ui("주석 저장됨") : ui("주석 저장 실패");
@@ -94,80 +106,77 @@ export function AnnotationControls(props: Props) {
     <Box
       ref={paletteRef}
       component="aside"
-      aria-label={t('annotationTools')}
+      aria-label={t(RSC.tools)}
       onPointerDown={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       sx={{
         position: 'absolute',
-        left: position.x + leftOffset,
+        left: position.x,
         top: position.y,
-        width: 40,
+        width: 56,
+        maxHeight: 'calc(100% - 24px)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: 0.25,
-        pb: 0.5,
+        p: 0.25,
         bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
         borderRadius: 1,
         boxShadow: 4,
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        scrollbarWidth: 'thin',
         zIndex: 10,
       }}
     >
-      <Tooltip title={t('movePalette')} placement="right" arrow>
-        <Box
-          role="button"
-          tabIndex={0}
-          aria-label={t('movePalette')}
-          {...dragHandleProps}
-          sx={{ width: '100%', height: 22, flex: '0 0 22px', display: 'grid', placeItems: 'center', color: 'text.disabled', cursor: 'grab', touchAction: 'none', borderBottom: '1px solid', borderColor: 'divider', '&:active': { cursor: 'grabbing' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}
+      {TOOLS.map(({ value, label, caption = label, icon: ToolIcon }) => (
+        <ToggleButton
+          key={value}
+          value={value}
+          selected={tool === value}
+          aria-label={t(label)}
+          aria-expanded={value === 'bookmark' ? clipPanelOpen : undefined}
+          aria-controls={value === 'bookmark' && clipPanelOpen ? clipPanelId : undefined}
+          onClick={() => onToolChange(value)}
+          sx={railButtonSx}
         >
-          <DragIndicatorIcon sx={{ fontSize: 20, transform: 'rotate(90deg)' }} />
-        </Box>
-      </Tooltip>
-      <ToggleButtonGroup
-        orientation="vertical"
-        size="small"
-        exclusive
-        value={tool}
-        onChange={(_, value: AnnotationTool | null) => { if (value) onToolChange(value); }}
-        aria-label={t('annotationTools')}
-        sx={{ gap: 0.125 }}
-      >
-        {TOOLS.map(({ value, label, icon: ToolIcon }, index) => (
-          <Box key={value} sx={{ display: 'contents' }}>
-            {index === 2 ? <Divider sx={{ my: 0.125 }} /> : null}
-            <Tooltip title={t(label)} placement="right" arrow>
-              <ToggleButton value={value} aria-label={t(label)} sx={railButtonSx}>
-                <ToolIcon fontSize="small" data-testid={value === 'select' ? 'select-move-cursor-icon' : undefined} />
-              </ToggleButton>
-            </Tooltip>
-          </Box>
-        ))}
-      </ToggleButtonGroup>
-
+          <ToolIcon />
+          <RailCaption>{t(caption)}</RailCaption>
+        </ToggleButton>
+      ))}
       <Divider flexItem sx={{ mx: 0.5, my: 0.125 }} />
-      <Tooltip title={t('undo')} placement="right" arrow>
-        <span><IconButton size="small" aria-label={t('undo')} disabled={!canUndo} onClick={onUndo} sx={railButtonSx}><UndoIcon fontSize="small" /></IconButton></span>
-      </Tooltip>
-      <Tooltip title={t('redo')} placement="right" arrow>
-        <span><IconButton size="small" aria-label={t('redo')} disabled={!canRedo} onClick={onRedo} sx={railButtonSx}><RedoIcon fontSize="small" /></IconButton></span>
-      </Tooltip>
-      <Tooltip title={t('annotationStyle')} placement="right" arrow>
-        <IconButton size="small" aria-label={t('annotationStyle')} onClick={openStyle} sx={railButtonSx}>
-          <TuneIcon fontSize="small" />
-          <Box sx={{ position: 'absolute', right: 4, bottom: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: style.color, border: '1px solid', borderColor: 'background.paper' }} />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title={saveLabel} placement="right" arrow>
-        <Box role="status" aria-label={saveLabel} sx={{ display: 'grid', placeItems: 'center', width: 32, height: 28, color: saveState === 'error' ? 'error.main' : saveState === 'saved' ? 'success.main' : 'text.disabled' }}>
-          <SaveIcon fontSize="small" sx={saveState === 'loading' || saveState === 'saving' ? { animation: 'pdfit-spin 1.1s linear infinite', '@keyframes pdfit-spin': { to: { transform: 'rotate(360deg)' } } } : undefined} />
-          <Box component="span" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{saveLabel}</Box>
+      <IconButton size="small" aria-label={t(RSC.undo)} disabled={!canUndo} onClick={onUndo} sx={railButtonSx}>
+        <UndoIcon />
+        <RailCaption>{t(RSC.undoCaption)}</RailCaption>
+      </IconButton>
+      <IconButton size="small" aria-label={t(RSC.redo)} disabled={!canRedo} onClick={onRedo} sx={railButtonSx}>
+        <RedoIcon />
+        <RailCaption>{t(RSC.redoCaption)}</RailCaption>
+      </IconButton>
+      <IconButton size="small" aria-label={t(RSC.style)} onClick={openStyle} sx={railButtonSx}>
+        <Box sx={{ position: 'relative', display: 'flex' }}>
+          <TuneIcon />
+          <Box sx={{ position: 'absolute', right: -2, bottom: -1, width: 7, height: 7, borderRadius: '50%', bgcolor: style.color, border: '1px solid', borderColor: 'background.paper' }} />
         </Box>
-      </Tooltip>
+        <RailCaption>{t(RSC.styleCaption)}</RailCaption>
+      </IconButton>
+      <Box role="status" aria-label={saveLabel} sx={{ ...iconCaptionSx, width: '100%', flexShrink: 0, py: 0.25, color: saveState === 'error' ? 'error.main' : saveState === 'saved' ? 'success.main' : 'text.disabled' }}>
+        <SaveIcon sx={{ animation: saveState === 'loading' || saveState === 'saving' ? 'pdfit-spin 1.1s linear infinite' : undefined }} />
+        <RailCaption>{t(RSC.saveCaptions[saveState])}</RailCaption>
+      </Box>
+
+      <IconButton
+        size="small"
+        aria-label={t(RSC.movePalette)}
+        {...dragHandleProps}
+        sx={{ ...railButtonSx, cursor: 'grab', touchAction: 'none', '&:active': { cursor: 'grabbing' } }}
+      >
+        <DragIndicatorIcon sx={{ transform: 'rotate(90deg)' }} />
+        <RailCaption>{t(RSC.moveCaption)}</RailCaption>
+      </IconButton>
 
       <Popover
         open={Boolean(styleAnchor)}

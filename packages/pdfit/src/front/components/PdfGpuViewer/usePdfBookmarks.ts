@@ -7,6 +7,7 @@ type Options = {
   enabled: boolean;
   controller: PdfGpuViewerController | null;
   onCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
+  onSelectionFinished: () => void;
   onUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
   onDeleted?: (id: string) => Promise<void>;
 };
@@ -29,12 +30,11 @@ async function waitForCaptureDetail(controller: PdfGpuViewerController, timeoutM
 }
 
 /** Owns bookmark capture gestures, notices, editing, and deletion state. */
-export function usePdfBookmarks({ enabled, controller, onCaptured, onUpdated, onDeleted }: Options) {
+export function usePdfBookmarks({ enabled, controller, onCaptured, onSelectionFinished, onUpdated, onDeleted }: Options) {
   const captureStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const recentTimerRef = useRef<number | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [captureDrag, setCaptureDrag] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureNotice, setCaptureNotice] = useState<{ message: string; error: boolean } | null>(null);
@@ -87,8 +87,18 @@ export function usePdfBookmarks({ enabled, controller, onCaptured, onUpdated, on
     const rect = event.currentTarget.getBoundingClientRect();
     const end = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     if (Math.abs(end.x - start.x) < 8 || Math.abs(end.y - start.y) < 8) return;
+    const points = [start, end];
+    const samePage = controller.getState().visiblePages.some((index) => {
+      const page = event.currentTarget.querySelector(`[data-pdfgpu-page-shell][data-page-index="${index}"]`)?.getBoundingClientRect();
+      return page && points.every(({ x, y }) => x + rect.left >= page.left && x + rect.left <= page.right && y + rect.top >= page.top && y + rect.top <= page.bottom);
+    });
+    if (!samePage) {
+      showNotice(uiText("한 페이지 안에서 북마크 영역을 드래그하세요."), true);
+      return;
+    }
     suppressClickRef.current = true;
     setCaptureBusy(true);
+    onSelectionFinished();
     try {
       let capture: PdfGpuCaptureResult;
       try {
@@ -115,7 +125,7 @@ export function usePdfBookmarks({ enabled, controller, onCaptured, onUpdated, on
     } finally {
       setCaptureBusy(false);
     }
-  }, [controller, enabled, onCaptured, showNotice]);
+  }, [controller, enabled, onCaptured, onSelectionFinished, showNotice]);
 
   const openEditor = useCallback((bookmark: BookmarkRecord) => {
     setEditing(bookmark);
@@ -142,5 +152,5 @@ export function usePdfBookmarks({ enabled, controller, onCaptured, onUpdated, on
     event.stopPropagation();
   }, []);
 
-  return { panelOpen, setPanelOpen, captureDrag, captureBusy, captureNotice, recentId, editing, setEditing, draft, setDraft, deletingId, pointerDown, pointerMove, pointerUp, cancelCapture, suppressCaptureClick, openEditor, saveEditor, deleteItem };
+  return { captureDrag, captureBusy, captureNotice, recentId, editing, setEditing, draft, setDraft, deletingId, pointerDown, pointerMove, pointerUp, cancelCapture, suppressCaptureClick, openEditor, saveEditor, deleteItem };
 }

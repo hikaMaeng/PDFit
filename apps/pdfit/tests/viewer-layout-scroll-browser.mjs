@@ -118,8 +118,8 @@ try {
 
   await page.getByRole('button', { name: '가로 너비 맞춤' }).click();
   const widthBeforeSidebar = (await pageShell(2).boundingBox())?.width ?? 0;
-  await page.getByTestId(engine === 'gpu' ? 'bookmark-sidebar-toggle' : 'legacy-bookmark-sidebar-toggle').click();
-  const sidebar = await page.getByRole('complementary', { name: '보관함' }).boundingBox();
+  await page.getByRole('button', { name: '클립', exact: true }).click();
+  const sidebar = await page.getByRole('complementary', { name: '클립' }).boundingBox();
   const viewportWithSidebar = await page.getByTestId('pdf-scroll-area').boundingBox();
   await page.waitForFunction((before) => {
     const shell = document.querySelector('[data-page-index="2"][data-legacy-page-shell="true"], [data-page-index="2"][data-testid="pdfgpu-page-shell"]');

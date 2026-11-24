@@ -92,7 +92,9 @@ try {
   const doubleButton = page.getByRole('button', { name: '두 페이지 보기' });
   const continuousButton = page.getByRole('button', { name: '연속 스크롤' });
   const fitWidthButton = page.getByRole('button', { name: '가로 너비 맞춤' });
-  const archiveButton = page.getByRole('button', { name: '보관함 열기' });
+  const toolRail = page.getByRole('complementary', { name: 'PDF 주석 도구' });
+  const clipButton = toolRail.getByRole('button', { name: '클립', exact: true });
+  const clipPanel = page.getByRole('complementary', { name: '클립', exact: true });
   const order = await Promise.all([singleButton, doubleButton, continuousButton, fitWidthButton, zoomInput, pageInput].map(async (locator) => (await locator.boundingBox())?.x ?? -1));
   if (!order.every((x, index) => index === 0 || x > order[index - 1])) throw new Error(`Toolbar order is incorrect: ${order.join(', ')}`);
 
@@ -109,19 +111,14 @@ try {
   await fitWidthButton.click();
   if (await fitWidthButton.getAttribute('aria-pressed') !== null) throw new Error('Fit width must be a momentary action.');
 
-  await archiveButton.click();
-  await page.getByRole('button', { name: '보관함 닫기' }).waitFor({ state: 'visible' });
-  await page.getByRole('complementary', { name: '보관함' }).waitFor({ state: 'visible' });
-  await page.getByText('보관함', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: '보관함 닫기' }).click();
-  await archiveButton.waitFor({ state: 'visible' });
-
-  if (engine === 'gpu') {
-    const selectMoveButton = page.getByRole('button', { name: 'select' });
-    if (await selectMoveButton.locator('[data-testid="select-move-cursor-icon"]').count() !== 1) throw new Error('Select/move cursor icon is missing.');
-    await selectMoveButton.hover();
-    await page.getByText('선택·이동', { exact: true }).waitFor({ state: 'visible' });
-  }
+  await clipButton.click();
+  await clipPanel.waitFor();
+  if (await clipButton.getAttribute('aria-pressed') !== 'true') throw new Error('Clip selection mode did not start.');
+  await clipButton.click();
+  await clipPanel.waitFor({ state: 'detached' });
+  if (await clipButton.getAttribute('aria-pressed') !== 'false') throw new Error('Clip selection mode did not cancel.');
+  await toolRail.getByRole('button', { name: '형광펜' }).getByText('형광펜').waitFor();
+  if (await toolRail.getByRole('button', { name: '선택·이동', exact: true }).count()) throw new Error('The old select/move tool still appears.');
 
   await page.evaluate(() => {
     Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: undefined });
@@ -159,7 +156,7 @@ try {
   if (picker?.suggestedName !== '인공지능 개론.pdf' || picker.writtenBytes !== pdfBytes.length || !picker.closed) throw new Error(`Native save picker contract failed: ${JSON.stringify(picker)}`);
   if (errors.length) throw new Error(errors.join(' | '));
 
-  await writeFile(new URL('result.json', output), JSON.stringify({ toolbarOrder: order, manualZoom: 137, continuousToggle: true, fitWidthMomentary: true, archiveToggleLabel: true, archiveSidebarTitle: true, cursorTool: true, exportOptions: ['pdf'], download: download.suggestedFilename(), nativeSavePicker: picker, errors }, null, 2));
+  await writeFile(new URL('result.json', output), JSON.stringify({ toolbarOrder: order, manualZoom: 137, continuousToggle: true, fitWidthMomentary: true, clipToggle: true, clipPanel: true, highlighterCaption: true, exportOptions: ['pdf'], download: download.suggestedFilename(), nativeSavePicker: picker, errors }, null, 2));
   console.log('PASS viewer toolbar and PDF export browser test');
   }
 } finally {

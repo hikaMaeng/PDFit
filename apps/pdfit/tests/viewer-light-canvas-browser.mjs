@@ -79,7 +79,7 @@ try {
         assert.equal(await canvasColor(), expected, `${engine} ${mode} canvas changed after ${buttonName}`);
       }
 
-      await page.getByTestId(engine === 'gpu' ? 'bookmark-sidebar-toggle' : 'legacy-bookmark-sidebar-toggle').click();
+      await page.getByRole('button', { name: '클립', exact: true }).click();
       const bookmarkPanel = page.getByRole('complementary', { name: '클립' });
       await bookmarkPanel.waitFor({ state: 'visible' });
       const bookmarkColor = await bookmarkPanel.evaluate((element) => getComputedStyle(element).backgroundColor);

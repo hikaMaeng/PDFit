@@ -26,6 +26,9 @@
 * Consumer: the integrated app `client/viewer` entry. Invariants: the viewer keeps
   `/viewer/:folder/:filename`, existing viewer-state payloads, semantic toolbar
   roles, and the legacy fallback path.
+* Both engines expose **Clips** in the **PDF annotation tools** complementary
+  landmark. The control's `aria-pressed` reports capture mode and `aria-expanded`
+  reports list visibility. The captured rectangle and thumbnail keep their existing format.
 * Consumer: bookmark preview plus folder/tag `PdfListItem` rows. Invariants: a book key is
   exactly `(folder, filename)`; at most one named viewer is reused for that key; an explicit
   bookmark page is delivered as a message rather than by reloading the existing viewer; and

@@ -11,7 +11,6 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import TuneIcon from '@mui/icons-material/Tune';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TocIcon from '@mui/icons-material/Toc';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
@@ -30,8 +29,6 @@ type Props = {
   zoomOutDisabled?: boolean;
   zoomInDisabled?: boolean;
   colorAdjustments: PdfGpuColorAdjustmentState;
-  bookmarkPanelOpen: boolean;
-  bookmarkToggleTestId: string;
   documentActions?: ReactNode;
   outlineOpen: boolean;
   outlineDisabled: boolean;
@@ -49,7 +46,6 @@ type Props = {
   onZoomInputChange: (value: string) => void;
   onSubmitZoom: () => void;
   onColorAdjustmentsChange: (adjustments: PdfGpuColorAdjustments) => void;
-  onToggleBookmarks: () => void;
   onOpenOutline: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -104,7 +100,6 @@ function ImageAdjustmentControl({ colors, onChange }: { colors: PdfGpuColorAdjus
 
 export function ViewerToolbar(props: Props) {
   const { t } = usePdfitI18n();
-  const bookmarkLabel = props.bookmarkPanelOpen ? t('closeBookmarkSidebar') : t('openBookmarkSidebar');
   return <ViewerToolbarFrame>
     <Box sx={groupStyle}>
       <ToggleButtonGroup size="small" value={props.pageLayout} exclusive onChange={(_, next: PageLayout | null) => { if (next) props.onPageLayoutChange(next); }}>
@@ -143,7 +138,6 @@ export function ViewerToolbar(props: Props) {
     </Box>
     <Box sx={dividedGroupStyle}>
       <ImageAdjustmentControl colors={props.colorAdjustments} onChange={props.onColorAdjustmentsChange} />
-      <ToolbarButton icon={<AttachFileIcon />} caption={labels.clips} label={bookmarkLabel} data-testid={props.bookmarkToggleTestId} onClick={props.onToggleBookmarks} color={props.bookmarkPanelOpen ? 'primary' : 'default'} aria-expanded={props.bookmarkPanelOpen} />
       {props.documentActions}
     </Box>
     <Box sx={{ ...groupStyle, marginInlineStart: 'auto' }}>
