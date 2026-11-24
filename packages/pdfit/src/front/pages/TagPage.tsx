@@ -199,13 +199,18 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   }, [books]);
 
   useEffect(() => {
-    if (!untagged) return;
     const reload = () => void loadBooks(true);
-    window.addEventListener(UNTAGGED_CHANGED_EVENT, reload);
-    window.addEventListener('tags-changed', reload);
+    window.addEventListener('tag-added', reload);
+    if (untagged) {
+      window.addEventListener(UNTAGGED_CHANGED_EVENT, reload);
+      window.addEventListener('tags-changed', reload);
+    }
     return () => {
-      window.removeEventListener(UNTAGGED_CHANGED_EVENT, reload);
-      window.removeEventListener('tags-changed', reload);
+      window.removeEventListener('tag-added', reload);
+      if (untagged) {
+        window.removeEventListener(UNTAGGED_CHANGED_EVENT, reload);
+        window.removeEventListener('tags-changed', reload);
+      }
     };
   }, [untagged, loadBooks]);
 

@@ -552,6 +552,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       return;
     }
 
+    setSidebarError(null);
     try {
       const currentTags = await tagsApi.listForBook(payload.folder, payload.filename, payload.driveFileId);
       if (currentTags.includes(tag)) {
@@ -560,14 +561,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
       await tagsApi.addTag(payload.folder, payload.filename, tag, payload.driveFileId);
       folderLibraryModel.get(payload.folder).addTag(payload.filename, tag, payload.driveFileId);
-      await loadTags();
       window.dispatchEvent(
         new CustomEvent('tag-added', {
           detail: { folder: payload.folder, filename: payload.filename, driveFileId: payload.driveFileId, tag },
         }),
       );
+      await loadTags();
     } catch {
-      // keep current UI state on error
+      setSidebarError(ui('요청에 실패했습니다.'));
     }
   };
 

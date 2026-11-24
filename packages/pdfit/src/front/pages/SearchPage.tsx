@@ -99,16 +99,22 @@ function TitleSearchResults({ query }: { query: string }) {
   }, [query, ui]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let controller = new AbortController();
     void load(controller.signal, false);
     // 폴더·태그가 바뀌면 같은 검색어로 조용히 다시 조회한다.
-    const refresh = () => void load(controller.signal, true);
+    const refresh = () => {
+      controller.abort();
+      controller = new AbortController();
+      void load(controller.signal, true);
+    };
     window.addEventListener('folders-changed', refresh);
     window.addEventListener('tags-changed', refresh);
+    window.addEventListener('tag-added', refresh);
     return () => {
       controller.abort();
       window.removeEventListener('folders-changed', refresh);
       window.removeEventListener('tags-changed', refresh);
+      window.removeEventListener('tag-added', refresh);
     };
   }, [load]);
 

@@ -37,6 +37,8 @@ Run:
 
 [`untagged-upload-browser.mjs`](../tests/untagged-upload-browser.mjs) tests a real upload on Free while holding the tag summary request. It opens the file chooser via `upload-pdf`, navigates via `lnb-untagged`, and checks `untagged-title`, `lnb-untagged-count`, and the new `pdf-filename-line` in `main`. The [plan](../tests/plans/untagged-upload-20261124.md) also covers the server-side race between upload registration and a full scan.
 
+[`cover-tag-drag-browser.mjs`](../tests/cover-tag-drag-browser.mjs) checks the current book and sidebar after dropping a book onto a tag inside a folder. [`tag-folder-drag-browser.mjs`](../tests/tag-folder-drag-browser.mjs) checks folder drop targets and a list refresh during an in-flight membership write. These tests intercept writes to tag fixtures in the browser. [Test plan](../tests/plans/cover-tag-drag-20261123.md)
+
 [`tag-editing-browser.mjs`](../tests/tag-editing-browser.mjs) verifies the Free tag editor on `PDFIT_TEST_ORIGIN` (default `http://127.0.0.1:15203`). It attaches temporary tags to one fixture PDF and removes them and their temporary tag folders in `finally`. [`tag-editing.test.mjs`](../../../packages/pdfit/tests/tag-editing.test.mjs) covers request validation, old-schema migration, stable ID, multi-folder membership, and concurrent rename conflict. Set `PDFIT_TEST_DATABASE_URL` to a dedicated test database. [Test plan](../tests/plans/tag-editing-20261123.md)
 
 [`tag-folder-edit-browser.mjs`](../tests/tag-folder-edit-browser.mjs) verifies rename, icon color, arrow order, reload, second-tab updates, and touch controls. Use an isolated `PDFIT_TEST_ORIGIN` with `Fixture/fixture.pdf` and set `PDFIT_TEST_ARTIFACT_DIR`. [Test plan](../tests/plans/tag-folder-edit-20261124.md)

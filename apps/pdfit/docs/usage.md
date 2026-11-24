@@ -59,7 +59,7 @@ Drag a tag onto the folder title or anywhere in its expanded body, including the
 
 ## Cover view
 
-Drag a book's cover or title onto a tag in the left sidebar to add that tag to the book. You can also start the drag while the card's details are open.
+Drag a book's cover or title onto a tag in the left sidebar to add that tag to the book. Tags inside expanded folders also accept book drops. The new tag appears on the book in the current view, and a tagged book leaves the Untagged list. You can start the drag while the card's details are open.
 
 A folder page lists its PDFs in Unicode order of the filename (code points after NFC; `compareUnicode` in `packages/pdfit/src/shared/unicodeOrder.ts`), the same in the list and the cover view: digits, Latin capitals, lowercase, then Hangul. Folder and tag pages have a list/cover toggle at the right of the toolbar. The cover view shows a card grid with each PDF's first page, title, tags (on a tag page too, including that page's own tag), last-opened time, size, and the same actions as the list. Covers are JPEGs rendered by the server, not by the browser: an hourly background task renders the first page of every PDF that has no thumbnail for its current modification time and size, and stores it under `/app/data/thumbnails`. A card whose cover is not rendered yet shows "Preparing cover…"; opening the view moves the visible covers to the front of the queue. The chosen view is stored per browser in `localStorage` key `pdfit.library.view`.
 

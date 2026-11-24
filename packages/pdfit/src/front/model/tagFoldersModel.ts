@@ -109,7 +109,12 @@ export const tagFoldersModel = {
     const target = folders.find((folder) => folder.name === folderName);
     if (!target || target.tags.includes(tag)) return;
     replace(folders.map((folder) => folder === target ? { ...folder, tags: [...folder.tags, tag].sort() } : folder));
-    try { await tagFoldersApi.addTag(folderName, tag); } catch (error) { await this.load(); throw error; }
+    try {
+      await tagFoldersApi.addTag(folderName, tag);
+    } finally {
+      // A refresh received while the write was pending may have read the old membership.
+      await this.load();
+    }
   },
 
   async removeTag(folderName: string, tag: string): Promise<void> {
