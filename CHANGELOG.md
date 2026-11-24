@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-11-25
+
+- Open a book's comment board from its cover card. The responsive dialog shows five complete posts per page and scrolls the post area while keeping the page controls in view.
+- Find automatic tags at the end of the cover's tag overlay. Use the three-dot menu to rename, move, or delete a PDF.
+- Preserve comments, tags, clips, and reading state when renaming a PDF or moving it to another folder.
+- Restore book and tag dragging on narrow and touch layouts.
+
 ## [0.4.12] - 2026-11-24
 
 - Scan local PDFs in the background from a chosen page. The viewer shows pages in progress and which pages already have text saved.
