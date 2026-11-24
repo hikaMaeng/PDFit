@@ -1,11 +1,13 @@
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { homeMessages } from './homeMessages.js';
+import { scanMessages } from './scanMessages.js';
 import { translateEnglishUi } from './uiText.js';
 
 const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es: 3, hi: 4, ar: 5, fr: 6, pt: 7, ru: 8, ms: 9, bn: 10, ja: 11 };
 
 const rows = {
   ...homeMessages,
+  ...scanMessages,
   backgroundSaving: ['Saving {count} changes…', '{count}개 변경사항 저장 중…', '正在保存 {count} 项更改…', 'Guardando {count} cambios…', '{count} बदलाव सहेजे जा रहे हैं…', 'جارٍ حفظ {count} تغييرات…', 'Enregistrement de {count} modifications…', 'Salvando {count} alterações…'],
   backgroundFailed: ['{count} changes failed', '{count}개 변경사항 저장 실패', '{count} 项更改失败', '{count} cambios fallidos', '{count} बदलाव विफल रहे', 'فشل حفظ {count} تغييرات', '{count} modifications ont échoué', '{count} alterações falharam'],
   language: ['Language', '언어', '语言', 'Idioma', 'भाषा', 'اللغة', 'Langue', 'Idioma'],

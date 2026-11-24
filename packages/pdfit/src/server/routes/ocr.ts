@@ -1,6 +1,14 @@
 import { Router, type Request, type Response } from 'express';
 import type { OcrService } from '../ocr/ocrService.js';
 
+function scanBook(input: Record<string, unknown>) {
+  const { folder, filename } = input;
+  if (typeof folder !== 'string' || folder === '.' || folder === '..' || /[/\\\0]/.test(folder)
+    || typeof filename !== 'string' || filename.length > 500 || /[/\\\0]/.test(filename)
+    || !filename.toLowerCase().endsWith('.pdf')) return null;
+  return { folder, filename };
+}
+
 /**
  * Page OCR for local library files.
  *   POST /page  { folder, filename, pageIndex }  ->  { text, source, cached, pageIndex, pageCount, durationMs }
@@ -9,6 +17,42 @@ import type { OcrService } from '../ocr/ocrService.js';
  */
 export function createOcrRouter(ocr: OcrService): Router {
   const router = Router();
+  const scan = ocr.scan;
+  // see packages/pdfit/docs/api.md#document-scan
+  if (scan) {
+    router.get('/scan', (req, res) => {
+      const book = scanBook(req.query);
+      if (!book) { res.status(400).json({ error: 'A PDF folder and filename are required.' }); return; }
+      res.set('Cache-Control', 'no-store').json({ job: scan.get(book.folder, book.filename) });
+    });
+    router.get('/scan/pages', async (req, res) => {
+      const book = scanBook(req.query);
+      if (!book) { res.status(400).json({ error: 'A PDF folder and filename are required.' }); return; }
+      try {
+        const pages = await scan.listPages(book.folder, book.filename);
+        res.set('Cache-Control', 'no-store').json({ pages });
+      } catch (error) {
+        const code = (error as { status?: number }).status === 404 ? 404 : 500;
+        res.status(code).json({ error: 'Could not load page OCR status.' });
+      }
+    });
+    router.post('/scan', (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const book = scanBook(body);
+      const startPage = body.startPage;
+      if (!book || typeof startPage !== 'number' || !Number.isSafeInteger(startPage) || startPage < 1) {
+        res.status(400).json({ error: 'A PDF folder, filename and 1-based start page are required.' });
+        return;
+      }
+      res.status(202).json({ job: scan.start(book.folder, book.filename, startPage) });
+    });
+    router.post('/scan/cancel', (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const book = scanBook(body);
+      if (!book || typeof body.id !== 'string') { res.status(400).json({ error: 'A PDF folder, filename and scan ID are required.' }); return; }
+      res.json({ job: scan.cancel(book.folder, book.filename, body.id) });
+    });
+  }
   router.post('/page', async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const folder = typeof body.folder === 'string' ? body.folder : null;

@@ -297,6 +297,21 @@ is a gateway or a restarting runtime answering, and is retried after 1, 2, 4, 8 
 seconds (about 30 s in all) before `OcrUnreachableError` reaches the caller. A JSON error
 from the runtime is not retried.
 
+### Document scan
+
+The [OCR router](../src/server/routes/ocr.ts) registers these endpoints when the local store supports page OCR lookups. They identify the book by `folder` and `filename`.
+
+| Request | Result |
+| --- | --- |
+| `POST /api/ocr/scan` with book and 1-based `startPage` | `202 { job }`. A second start for an active document returns its existing job. |
+| `GET /api/ocr/scan?folder=…&filename=…` | `{ job }` with the active or recent job, or `null` when absent. |
+| `POST /api/ocr/scan/cancel` with book and job `id` | `{ job }`. Only a matching running job enters cancellation. |
+| `GET /api/ocr/scan/pages?folder=…&filename=…` | `{ pages }` with zero-based indexes of pages whose text matches the current PDF's metadata stamp. |
+
+The [PDFit dispatcher](../src/server/ocr/ocrScan.ts) rotates through ready documents with a total page budget from the selected AI server's OCR limit. The shared worker pool reads PDF pages, and the [vision queue](../src/server/ocr/visionOcr.ts) applies the upstream request limit across scan, single-page, and clip OCR. A single [scan result listener](../src/server/ocr/ocrService.ts) saves results from all documents in receipt order.
+
+Job snapshots expose `id`, `status`, `startPage`, `pageCount`, 1-based `activePages`, and `processedPages` (including skipped DB hits). The worker determines the page count. The first error records `failure` and `failedPage` and stops new dispatch for that document. `stopping` or `cancelling` indicates that admitted work is draining before `failed` or `cancelled`. Jobs and progress are in process memory. Text is committed page by page to PostgreSQL and survives a restart.
+
 Clip bookmarks (`POST /api/bookmarks/:folder/:filename`, local files only) are queued
 after the clip is saved. The `201` response carries `ocr.status: "pending"`. When
 OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }` (`updatedAt` ISO 8601):

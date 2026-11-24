@@ -18,7 +18,7 @@ import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 import { bookClipCountsSchema } from './bookClipCounts.js';
-import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
+import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, listPageOcrSearchIndexes, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
 import type { ContentSearchScope } from '../../common/protocol/search/index.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -289,6 +289,10 @@ export class PostgresMetadataStore implements MetadataStore {
 
   savePageOcrText(folder: string, filename: string, stamp: string, pageIndex: number, text: string) {
     return savePageOcrSearchText(this.db, folder, filename, stamp, pageIndex, text);
+  }
+
+  listPageOcrIndexes(folder: string, filename: string, stamp: string, pageIndex?: number) {
+    return listPageOcrSearchIndexes(this.db, folder, filename, stamp, pageIndex);
   }
 
   async listBooksByFolder(folder: string): Promise<BookRecord[]> {

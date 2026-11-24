@@ -68,6 +68,7 @@ export interface MetadataStore {
   searchBooksByTitle?(query: string, limit?: number): Promise<BookTitleSearchResult>;
   searchContent?(scope: ContentSearchScope, query: string, limit?: number): Promise<ContentSearchResult>;
   savePageOcrText?(folder: string, filename: string, sourceStamp: string, pageIndex: number, text: string): Promise<void>;
+  listPageOcrIndexes?(folder: string, filename: string, sourceStamp: string, pageIndex?: number): Promise<number[]>;
   listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>>;
   getProgress(folder: string, filename: string, driveFileId?: string): Promise<number | null>;
   setProgress(folder: string, filename: string, page: number, driveFileId?: string): Promise<void>;

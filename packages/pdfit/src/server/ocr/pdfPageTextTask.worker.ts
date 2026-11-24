@@ -18,8 +18,8 @@ export interface PageTextRect { x: number; y: number; width: number; height: num
 
 export interface PageTextTaskPayload {
   sourcePath: string;
-  /** 0-based page index. */
-  pageIndex: number;
+  /** 0-based page index, or null to read only the document's page count. */
+  pageIndex: number | null;
   /** Area in PDF points, top-left origin. Omit for the whole page. */
   rect?: PageTextRect;
   /** Render the area when it has no trusted text: target width in pixels (at most 4x the PDF size). */
@@ -93,7 +93,9 @@ export function joinTextItems(items: PositionedItem[]): string {
   return lines.map((value) => value.replace(/[ \t]+/g, ' ').trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-export default defineTask<PageTextTaskPayload, PageTextTaskResult>({
+export type PageTextWorkerResult = PageTextTaskResult | { pageCount: number };
+
+export default defineTask<PageTextTaskPayload, PageTextWorkerResult>({
   async run(payload) {
     const { api, assetUrl } = await loadPdfJs();
     const loading = api.getDocument({
@@ -109,6 +111,7 @@ export default defineTask<PageTextTaskPayload, PageTextTaskResult>({
     });
     try {
       const document = await loading.promise;
+      if (payload.pageIndex === null) return { pageCount: document.numPages };
       if (!Number.isInteger(payload.pageIndex) || payload.pageIndex < 0 || payload.pageIndex >= document.numPages) {
         throw new Error(`Page ${payload.pageIndex + 1} is outside 1..${document.numPages}.`);
       }

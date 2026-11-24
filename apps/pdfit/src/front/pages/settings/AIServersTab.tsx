@@ -36,6 +36,7 @@ import {
   updateAiServer,
 } from '../../api/settings';
 import { usePdfitI18n } from '@pdfit/pdfit/client/service';
+import { settingsKeys } from './resource';
 
 interface HeadersEditorProps {
   value: Record<string, string>;
@@ -113,6 +114,7 @@ interface ServerDialogProps {
 function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
   const { t } = usePdfitI18n();
   const [form, setForm] = useState<AiServerInput>(EMPTY_INPUT);
+  const [ocrConcurrency, setOcrConcurrency] = useState('1');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -136,6 +138,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             models: { vision: '', llm: '', embedding: '' },
           },
     );
+    setOcrConcurrency(String(initial?.ocrConcurrency ?? 1));
     setError('');
   }, [initial, open]);
 
@@ -163,7 +166,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
     setSaving(true);
     setError('');
     try {
-      await onSave(form, initial?.id);
+      await onSave({ ...form, ocrConcurrency: Number(ocrConcurrency) }, initial?.id);
       onClose();
     } catch (caught) {
       setError(String(caught));
@@ -171,6 +174,9 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
       setSaving(false);
     }
   }
+
+  const limit = Number(ocrConcurrency);
+  const validLimit = Number.isInteger(limit) && limit >= 1 && limit <= 2_147_483_647;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -220,6 +226,16 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
+            label={t(settingsKeys.ocrConcurrency)}
+            type="number"
+            value={ocrConcurrency}
+            onChange={(event) => setOcrConcurrency(event.target.value)}
+            inputProps={{ min: 1, max: 2_147_483_647, step: 1 }}
+            error={!validLimit}
+            fullWidth
+            size="small"
+          />
+          <TextField
             label={t('llmModel')}
             placeholder="mistral:7b"
             value={form.models?.llm ?? ''}
@@ -247,7 +263,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
         <Button onClick={onClose} disabled={saving}>
           {t('cancel')}
         </Button>
-        <Button onClick={() => void handleSave()} variant="contained" disabled={saving}>
+        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit}>
           {saving ? t('saving') : t('save')}
         </Button>
       </DialogActions>

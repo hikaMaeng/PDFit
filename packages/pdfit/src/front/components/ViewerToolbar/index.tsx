@@ -19,6 +19,8 @@ import { DEFAULT_COLOR_ADJUSTMENTS, sameColorAdjustments, type PdfGpuColorAdjust
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { toolbarLabels as labels } from './resource.js';
 import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
+import { ScanControls } from './ScanControls.js';
+import type { OcrScanBook } from '../../api/ocr.js';
 
 type PageLayout = 'single' | 'double';
 
@@ -33,6 +35,7 @@ type Props = {
   bookmarkPanelOpen: boolean;
   bookmarkToggleTestId: string;
   documentActions?: ReactNode;
+  scanBook?: OcrScanBook;
   outlineOpen: boolean;
   outlineDisabled: boolean;
   pageInput: string;
@@ -146,7 +149,9 @@ export function ViewerToolbar(props: Props) {
       <ToolbarButton icon={<AttachFileIcon />} caption={labels.clips} label={bookmarkLabel} data-testid={props.bookmarkToggleTestId} onClick={props.onToggleBookmarks} color={props.bookmarkPanelOpen ? 'primary' : 'default'} aria-expanded={props.bookmarkPanelOpen} />
       {props.documentActions}
     </Box>
-    <Box sx={{ ...groupStyle, marginInlineStart: 'auto' }}>
+    <Box sx={{ ...groupStyle, flexShrink: 1, minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end', marginInlineStart: 'auto' }}>
+      {props.scanBook && props.pageCount > 0 && <ScanControls key={JSON.stringify([props.scanBook.folder, props.scanBook.filename])}
+        {...props.scanBook} pageCount={props.pageCount} />}
       <ToolbarButton icon={<TocIcon />} caption={labels.contents} label={t('tableOfContents')} data-testid="viewer-outline-open" aria-haspopup="dialog" onClick={props.onOpenOutline} disabled={props.outlineDisabled} color={props.outlineOpen ? 'primary' : 'default'} />
       <ToolbarButton icon={<NavigateBeforeIcon />} caption={labels.previous} label={t('previousPage')} tooltip={`${t('previousPage')} (←/PageUp)`} onClick={props.onPrevious} disabled={props.previousDisabled} />
       <Box data-testid="viewer-page-indicator" sx={{ ...groupStyle, gap: 0.5 }}>

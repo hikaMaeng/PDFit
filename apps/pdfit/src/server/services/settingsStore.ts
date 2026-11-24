@@ -15,6 +15,7 @@ export interface AiServer {
   url: string;
   headers: Record<string, string>;
   models: AiServerModels;
+  ocrConcurrency: number;
   created_at: number;
   updated_at: number;
 }
@@ -25,6 +26,7 @@ export interface AiServerInput {
   url: string;
   headers?: Record<string, string>;
   models?: AiServerModels;
+  ocrConcurrency?: number;
 }
 
 export interface SettingsStore {
@@ -49,6 +51,10 @@ export class PostgresSettingsStore implements SettingsStore {
         created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
         updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
       )
+    `);
+    await this.pool.query(`
+      ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS ocr_concurrency INTEGER NOT NULL DEFAULT 1
+        CHECK (ocr_concurrency > 0)
     `);
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_server_models (
@@ -80,7 +86,7 @@ export class PostgresSettingsStore implements SettingsStore {
 
   async listAiServers(): Promise<AiServer[]> {
     const servers = await this.pool.query(`
-      SELECT id, name, type, url, headers, created_at, updated_at
+      SELECT id, name, type, url, headers, ocr_concurrency, created_at, updated_at
       FROM ai_servers
       ORDER BY id
     `);
@@ -104,6 +110,7 @@ export class PostgresSettingsStore implements SettingsStore {
       url: row.url,
       headers: row.headers ?? {},
       models: byServer.get(Number(row.id)) ?? {},
+      ocrConcurrency: row.ocr_concurrency,
       created_at: Number(row.created_at),
       updated_at: Number(row.updated_at),
     }));
@@ -115,11 +122,11 @@ export class PostgresSettingsStore implements SettingsStore {
       await client.query('BEGIN');
       const inserted = await client.query(
         `
-          INSERT INTO ai_servers (name, type, url, headers)
-          VALUES ($1, $2, $3, $4::jsonb)
+          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency)
+          VALUES ($1, $2, $3, $4::jsonb, $5)
           RETURNING id
         `,
-        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {})],
+        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1],
       );
       const id = Number(inserted.rows[0].id);
 
@@ -174,6 +181,10 @@ export class PostgresSettingsStore implements SettingsStore {
       if (input.headers !== undefined) {
         fields.push(`headers = $${fields.length + 1}::jsonb`);
         values.push(JSON.stringify(input.headers));
+      }
+      if (input.ocrConcurrency !== undefined) {
+        fields.push(`ocr_concurrency = $${fields.length + 1}`);
+        values.push(input.ocrConcurrency);
       }
 
       if (fields.length > 0) {

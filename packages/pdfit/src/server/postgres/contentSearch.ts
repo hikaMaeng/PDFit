@@ -119,13 +119,34 @@ export async function searchLibraryContent(db: Pool, scope: ContentSearchScope, 
   return { hits: result.rows.slice(0, limit), hasMore: result.rows.length > limit };
 }
 
+function parsePageSourceStamp(stamp: string) {
+  const [mtime, size] = stamp.split('-');
+  const modifiedAt = new Date(Number(mtime));
+  return size && Number.isFinite(modifiedAt.getTime()) ? { size, modifiedAt: modifiedAt.toISOString() } : null;
+}
+
+export async function listPageOcrSearchIndexes(
+  db: Pool, folder: string, filename: string, stamp: string, pageIndex?: number,
+): Promise<number[]> {
+  const source = parsePageSourceStamp(stamp);
+  if (!source) return [];
+  const params = [folder, filename, source.size, source.modifiedAt];
+  const pageFilter = pageIndex === undefined ? '' : 'AND page_index = $5';
+  const { rows } = await db.query<{ page_index: number }>(`
+    SELECT page_index FROM book_page_ocr_search
+    WHERE folder = $1 AND filename = $2 AND source_size = $3 AND source_modified_at = $4
+      AND btrim(body) <> '' ${pageFilter}
+    ORDER BY page_index
+  `, pageIndex === undefined ? params : [...params, pageIndex]);
+  return rows.map((row) => row.page_index);
+}
+
 export async function savePageOcrSearchText(
   db: Pool, folder: string, filename: string, stamp: string, pageIndex: number, text: string,
 ): Promise<void> {
-  const [mtime, size] = stamp.split('-');
-  const modifiedAt = new Date(Number(mtime));
+  const source = parsePageSourceStamp(stamp);
   const body = text.trim().slice(0, 64_000).replaceAll('\u0000', '');
-  if (!body || !size || !Number.isFinite(modifiedAt.getTime())) return;
+  if (!body || !source) return;
   await db.query(`
     INSERT INTO book_page_ocr_search AS ocr (folder, filename, page_index, source_size, source_modified_at, body)
     SELECT b.folder, b.filename, $5, b.size, b.modified_at, $6 FROM books b
@@ -135,5 +156,5 @@ export async function savePageOcrSearchText(
       source_size = EXCLUDED.source_size, source_modified_at = EXCLUDED.source_modified_at
     WHERE (ocr.body, ocr.source_size, ocr.source_modified_at)
       IS DISTINCT FROM (EXCLUDED.body, EXCLUDED.source_size, EXCLUDED.source_modified_at)
-  `, [folder, filename, size, modifiedAt.toISOString(), pageIndex, body]);
+  `, [folder, filename, source.size, source.modifiedAt, pageIndex, body]);
 }

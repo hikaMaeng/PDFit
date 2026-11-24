@@ -145,13 +145,18 @@ export function createPdfitCommonRouterAssembly(options: {
     };
     ocr = createOcrService({
       resolveSourcePath,
-      sourceStamp: async (sourcePath) => { const stat = await filesystem.volume.run(() => fs.promises.stat(sourcePath)); return thumbnailSourceStamp(stat.mtimeMs, stat.size); },
+      sourceStamps: async (sourcePath) => {
+        const stat = await filesystem.volume.run(() => fs.promises.stat(sourcePath));
+        // Keep existing OCR cache names and match the Date used by the library index.
+        return { cacheStamp: thumbnailSourceStamp(stat.mtimeMs, stat.size), stamp: thumbnailSourceStamp(stat.mtime.getTime(), stat.size) };
+      },
       submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
       resolveVisionServer: background.resolveVisionServer,
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
       pageSearchIndex: store.savePageOcrText ? {
         listBooks: () => store.listTrackedBooks(),
         save: store.savePageOcrText.bind(store),
+        listPages: store.listPageOcrIndexes?.bind(store),
       } : undefined,
       bookmarks: store.getBookmark && store.listBookmarksWithOcrStatus && store.setBookmarkOcr ? {
         getBookmark: (id) => store.getBookmark!(id),

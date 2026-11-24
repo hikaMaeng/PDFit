@@ -91,7 +91,9 @@ const app = createPdfitServer({
       const servers = await settingsStore.listAiServers();
       const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
       const model = server?.models.vision || server?.models.llm;
-      return server && model ? { baseUrl: server.url, model, headers: server.headers, timeoutMs: 300_000 } : null;
+      return server && model ? {
+        baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency, timeoutMs: 300_000,
+      } : null;
     },
   },
 });

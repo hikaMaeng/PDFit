@@ -125,6 +125,7 @@ interface Props {
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
   documentActions?: React.ReactNode;
+  scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
@@ -147,6 +148,7 @@ export default function PdfViewer({
   onStateChange,
   uiHidden = false,
   documentActions,
+  scanBook,
   bookmarks = [],
   onBookmarkCaptured,
   onBookmarkDeleted,
@@ -884,6 +886,7 @@ export default function PdfViewer({
           bookmarkPanelOpen={bookmarkPanelOpen}
           bookmarkToggleTestId="legacy-bookmark-sidebar-toggle"
           documentActions={documentActions}
+          scanBook={scanBook}
           outlineOpen={outlineOpen}
           outlineDisabled={!docReady}
           pageInput={pageInput}

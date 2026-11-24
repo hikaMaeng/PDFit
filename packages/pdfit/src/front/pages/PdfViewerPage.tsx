@@ -305,8 +305,10 @@ export default function PdfViewerPage() {
     setOcrPage(Math.max(1, Math.trunc(latestViewerStateRef.current?.page ?? savedState?.page ?? 1)));
     setOcrOpen(true);
   };
+  const localOcr = !driveFileId && !sample && !pendingUpload;
+  const scanBook = localOcr ? { folder: folderName, filename: fileName } : undefined;
   const documentActions = <ViewerDocumentActions
-    onOcr={!driveFileId && !sample && !pendingUpload ? openOcr : undefined}
+    onOcr={localOcr ? openOcr : undefined}
     onDownload={() => setExportOpen(true)}
   />;
 
@@ -438,6 +440,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          scanBook={scanBook}
         />
       ) : (
         <PdfViewer
@@ -458,6 +461,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          scanBook={scanBook}
         />
       ) : (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
