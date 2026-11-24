@@ -4,6 +4,13 @@
 
 - The home page introduces large-library organization, AI-assisted tagging, OCR and label translation, and links directly to the tools used in the library.
 
+## [0.4.12] - 2026-11-24
+
+- Scan local PDFs in the background from a chosen page. The viewer shows pages in progress and which pages already have text saved.
+- Configure OCR concurrency per AI server. PDFit shares that capacity across documents, skips pages already indexed, and saves completed OCR results one at a time.
+- Use the viewer's annotation rail to capture, browse, and manage clips.
+- Edit and reorder tag folders, keep cover-tag drops visible, and index uploaded PDFs before refreshing library views.
+
 ## [0.4.11] - 2026-11-23
 
 - Yellow cover-card clip graphics display counts from 0 through 9 and 9+ for ten or more.
