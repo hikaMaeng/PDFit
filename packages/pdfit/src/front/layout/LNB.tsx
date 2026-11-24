@@ -77,6 +77,7 @@ import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js'
 import { RSC } from './resource.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
 import { synchronizeLibraryMetadata } from '../model/libraryMetadataSync.js';
+import { LibraryDragHandle } from '../components/LibraryDragHandle.js';
 
 export const LNB_WIDTH = 288;
 
@@ -150,6 +151,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const sidebarAccent = colorMode === 'light' ? '#626975' : theme.palette.primary.main;
   const selectedAccent = theme.palette.primary.main;
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [dragDrawerOpen, setDragDrawerOpen] = useState(false);
+  const folderHover = useRef<{ id: string; timer: number }>();
 
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [tags, setTags] = useState<TagSummary[]>([]);
@@ -580,6 +583,54 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const isBookDrag = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes(DRAG_TYPE);
   const isTagDrag = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes(tagFoldersModel.dragType);
 
+  function cancelFolderHover(id?: string) {
+    const hover = folderHover.current;
+    if (!hover || (id !== undefined && hover.id !== id)) return;
+    window.clearTimeout(hover.timer);
+    folderHover.current = undefined;
+  }
+
+  useEffect(() => {
+    const start = (event: DragEvent) => {
+      const types = event.dataTransfer?.types;
+      if (types?.includes(DRAG_TYPE)) {
+        setDragDrawerOpen(true);
+        setTagsOpen(true);
+      }
+    };
+    const finish = () => {
+      cancelFolderHover();
+      setDragDrawerOpen(false);
+      setDragOverTag(null);
+      setDragOverTagFolder(null);
+      setDragOverFolder(null);
+    };
+    window.addEventListener('dragstart', start);
+    window.addEventListener('dragend', finish);
+    window.addEventListener('drop', finish);
+    return () => {
+      cancelFolderHover();
+      window.removeEventListener('dragstart', start);
+      window.removeEventListener('dragend', finish);
+      window.removeEventListener('drop', finish);
+    };
+  }, []);
+
+  const expandTagFolderOnHover = (id: string) => {
+    if (folderHover.current?.id === id) return;
+    cancelFolderHover();
+    folderHover.current = { id, timer: window.setTimeout(() => {
+      folderHover.current = undefined;
+      setCollapsedTagFolders((current) => {
+        if (!current.ids.has(id)) return current;
+        const next = { ...current, ids: new Set(current.ids) };
+        next.ids.delete(id);
+        writeCollapsedTagFolders(next.ids);
+        return next;
+      });
+    }, 450) };
+  };
+
   const toggleTagFolder = (id: string) => {
     setCollapsedTagFolders((current) => {
       const ids = new Set(current.ids);
@@ -634,6 +685,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     const path = tagPath(tag.name);
     const rowKey = `${folderName ?? ''}\u0000${tag.name}`;
     const dragOver = dragOverTag === rowKey;
+    const dragPayload: TagDragPayload = { tag: tag.name, ...(folderName !== undefined ? { fromFolder: folderName } : {}) };
     const menuOpen = tagFolderMenu?.tag === tag.name && folderName === undefined;
     const rowButtonSx = { p: 0.25, color: sidebarTextSecondary, opacity: 0, transition: 'opacity 120ms ease', '.pdfit-tag-row:hover &, .pdfit-tag-row:focus-within &': { opacity: 0.8 }, '&:focus-visible, &:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover }, '@media (hover: none)': { opacity: 0.8 } };
     const folderButtonSx = { ...rowButtonSx, '&:focus-visible, &:hover': { opacity: 1, color: sidebarTextPrimary, bgcolor: sidebarHover } };
@@ -644,13 +696,12 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         data-testid={folderName === undefined ? 'lnb-tag-row' : 'lnb-folder-tag-row'}
         draggable={tagFoldersAvailable}
         onDragStart={(event) => {
-          if (!tagFoldersAvailable) return;
-          const payload: TagDragPayload = { tag: tag.name, ...(folderName !== undefined ? { fromFolder: folderName } : {}) };
-          event.dataTransfer.setData(tagFoldersModel.dragType, JSON.stringify(payload));
+          if (!tagFoldersAvailable || event.defaultPrevented || event.target !== event.currentTarget) return;
+          event.dataTransfer.setData(tagFoldersModel.dragType, JSON.stringify(dragPayload));
           event.dataTransfer.effectAllowed = 'copyMove';
         }}
         onDragEnd={() => setDragOverTagFolder(null)}
-        sx={{ px: 1, columnGap: 0.5 }}
+        sx={{ px: 1, columnGap: 0.5, userSelect: 'none' }}
         disablePadding
         onDragOver={(event) => {
           if (!isBookDrag(event)) return;
@@ -658,7 +709,10 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           event.dataTransfer.dropEffect = 'copy';
           setDragOverTag(rowKey);
         }}
-        onDragLeave={() => setDragOverTag(null)}
+        onDragLeave={(event) => {
+          if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+          setDragOverTag((current) => current === rowKey ? null : current);
+        }}
         onDrop={(event) => { if (isBookDrag(event)) void handleDropOnTag(tag.name, event); }}
       >
         <ListItemButton
@@ -673,10 +727,10 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             outlineColor: 'secondary.main',
             backgroundColor: dragOver ? 'rgba(34, 197, 94, 0.16)' : undefined,
             color: sidebarTextPrimary,
-            '&:hover': { backgroundColor: sidebarHover },
+            '&:hover': { backgroundColor: dragOver ? 'rgba(34, 197, 94, 0.16)' : sidebarHover },
             '&.Mui-selected': {
               color: sidebarTextPrimary,
-              backgroundColor: `${tag.color}29`,
+              backgroundColor: dragOver ? 'rgba(34, 197, 94, 0.16)' : `${tag.color}29`,
               boxShadow: `inset 3px 0 0 ${tag.color}`,
               '&:hover': { backgroundColor: 'rgba(34, 197, 94, 0.16)' },
             },
@@ -697,6 +751,9 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             disableTypography
           />
         </ListItemButton>
+        {tagFoldersAvailable && <LibraryDragHandle type={tagFoldersModel.dragType} payload={dragPayload}
+          label={t(RSC.SIDEBAR_TAG_DRAG_LABEL, { name: tag.name })} testId="lnb-tag-drag-handle"
+          sx={{ width: 22, alignSelf: 'stretch', color: sidebarTextSecondary }} />}
         <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
           {folderName !== undefined && (
             <Tooltip title={t('removeTagFromFolder')} placement="right" arrow>
@@ -767,6 +824,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         key={folder.id}
         data-testid="lnb-tag-folder"
         onDragOver={(event) => {
+          if (!open && members.length > 0 && isBookDrag(event)) expandTagFolderOnHover(folder.id);
           if (!isTagDrag(event)) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
@@ -774,6 +832,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         }}
         onDragLeave={(event) => {
           if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+          cancelFolderHover(folder.id);
           setDragOverTagFolder((current) => current === folder.name ? null : current);
         }}
         onDrop={(event) => { if (isTagDrag(event)) handleDropOnTagFolder(folder.name, event); }}
@@ -875,8 +934,9 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       <Drawer
         anchor={language === 'ar' ? 'right' : 'left'}
         variant={isMobile ? 'temporary' : 'permanent'}
-        open={!isMobile || mobileOpen}
+        open={!isMobile || mobileOpen || dragDrawerOpen}
         onClose={onMobileClose}
+        ModalProps={dragDrawerOpen && !mobileOpen ? { disableAutoFocus: true, disableEnforceFocus: true, disableRestoreFocus: true } : undefined}
         sx={{
           width: { md: LNB_WIDTH },
           flexShrink: 0,
@@ -989,7 +1049,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           </Tooltip>
         </Box>
 
-        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+        <Box data-library-drop-scroll sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           {extraSidebarItems.some((item) => item.placement === 'primary') && (
             <List dense disablePadding sx={{ pt: 0.75, pb: 0.25 }}>
               {extraSidebarItems.filter((item) => item.placement === 'primary').map((item) => (
@@ -1253,12 +1313,13 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                         }
                         sx={{ pr: 7 }}
                         onDragOver={(event) => {
+                          if (!isBookDrag(event)) return;
                           event.preventDefault();
                           event.dataTransfer.dropEffect = 'move';
                           setDragOverFolder(folder.name);
                         }}
                         onDragLeave={() => setDragOverFolder(null)}
-                        onDrop={(event) => void handleDropOnFolder(folder.name, event)}
+                        onDrop={(event) => { if (isBookDrag(event)) void handleDropOnFolder(folder.name, event); }}
                       >
                         <ListItemButton
                           selected={selected}

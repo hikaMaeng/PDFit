@@ -1,4 +1,5 @@
 export enum RSC {
+  LIBRARY_BOOK_DRAG_LABEL = 'library.book.drag.label',
   TAGFOLDER_EDITOR_TITLE_TEXT = 'tagFolder.editor.title.text',
   TAGFOLDER_EDITOR_COLOR_LABEL = 'tagFolder.editor.color.label',
   TAGFOLDER_EDITOR_DEFAULT_BUTTON = 'tagFolder.editor.default.button',

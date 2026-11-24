@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { startPointerDrag } from './drag-pointer.mjs';
 
 const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15203';
 const evidenceDir = process.env.PDFIT_TEST_ARTIFACT_DIR;
@@ -13,8 +14,10 @@ const target = { id: 'aaaaaaaa-0000-4000-8000-000000000002', name: '받는 폴�
 if (evidenceDir) await mkdir(evidenceDir, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome' });
 try {
-  for (const scenario of ['empty body', 'member row', 'collapsed title', 'refresh during drop']) {
-    const context = await browser.newContext({ locale: 'ko-KR', viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+  for (const scenario of ['empty body', 'member row', 'collapsed title', 'refresh during drop', 'phone touch']) {
+    const touch = scenario === 'phone touch';
+    const viewport = touch ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    const context = await browser.newContext({ locale: 'ko-KR', viewport, hasTouch: touch, isMobile: touch, serviceWorkers: 'block' });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -42,6 +45,8 @@ try {
     });
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      const openDrawer = () => page.getByRole('button', { name: '메뉴 열기', exact: true }).tap();
+      if (touch) await openDrawer();
       const folderRow = (name) => page.getByTestId('lnb-tag-folder').filter({ has: page.getByRole('button', { name, exact: true }) });
       const sourceFolder = folderRow(source.name);
       const targetFolder = folderRow(target.name);
@@ -54,7 +59,15 @@ try {
       const [response] = await Promise.all([
         page.waitForResponse((response) => new URL(response.url()).pathname === membershipPath && response.request().method() === 'PUT', { timeout: 5000 }),
         (async () => {
-          await sourceTag.dragTo(drop, { steps: 12, timeout: 5000 });
+          if (touch) {
+            const grip = sourceFolder.getByRole('img', { name: `${tag} 태그를 폴더로 드래그`, exact: true });
+            const pointer = await startPointerDrag(page, grip, { touch });
+            await pointer.over(drop);
+            if (evidenceDir) await page.screenshot({ path: join(evidenceDir, 'folder-phone-touch-drag.png') });
+            await pointer.drop();
+          } else {
+            await sourceTag.dragTo(drop, { steps: 12, timeout: 5000 });
+          }
           if (!refreshDuringDrop) return;
           const refresh = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/tag-folders' && response.request().method() === 'GET', { timeout: 4000 });
           sendRefresh.resolve();
@@ -70,6 +83,7 @@ try {
       await targetFolder.getByText(tag, { exact: true }).waitFor({ timeout: 5000 });
       await sourceTag.waitFor({ timeout: 5000 });
       await page.reload({ waitUntil: 'domcontentloaded' });
+      if (touch) await openDrawer();
       await targetFolder.getByText(tag, { exact: true }).waitFor({ timeout: 5000 });
       assert.deepEqual(errors, []);
       if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `folder-${scenario.replaceAll(' ', '-')}.png`) });
