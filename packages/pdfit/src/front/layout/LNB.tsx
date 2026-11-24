@@ -63,7 +63,7 @@ import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import { bookClipCountModel } from '../model/bookClipCountModel.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
-import { UNTAGGED_PATH } from '../model/untagged.js';
+import { UNTAGGED_CHANGED_EVENT, UNTAGGED_PATH } from '../model/untagged.js';
 import { FAVORITES_PATH } from '../model/favorites.js';
 import { favoritesModel } from '../model/favoritesModel.js';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
@@ -211,18 +211,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   const loadTags = useCallback(async () => {
     const request = ++tagsRequest.current;
-    try {
-      const data = await tagsApi.listSummary();
-      if (request === tagsRequest.current) setTags(data);
-    } catch {
-      // keep current tag list on error
-    }
-    try {
-      const count = await tagsApi.countUntaggedBooks();
-      if (request === tagsRequest.current) setUntaggedCount(count);
-    } catch {
-      // 미분류 개수를 못 구해도 마지막 값을 유지한다
-    }
+    await Promise.allSettled([
+      tagsApi.listSummary().then((data) => {
+        if (request === tagsRequest.current) setTags(data);
+      }),
+      tagsApi.countUntaggedBooks().then((count) => {
+        if (request === tagsRequest.current) setUntaggedCount(count);
+      }),
+    ]);
   }, []);
 
   useEffect(() => subscribeTagDetailsChanges(({ previousName, name }) => {
@@ -353,6 +349,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         }
         if (event.data === 'tags-changed') {
           void loadTags();
+          window.dispatchEvent(new Event(UNTAGGED_CHANGED_EVENT));
           // 태그가 지워지면 폴더 소속도 서버에서 함께 지워진다.
           void tagFoldersModel.load();
         }

@@ -11,6 +11,7 @@
 
 * `/health` — runtime health
 * `/api/folders`, `/api/tags`, `/api/progress`, `/api/viewer-state`, `/api/events` — shared library APIs
+* `POST /api/folders/:name/files` receives multipart PDFs. Each completed file is moved into the library, and the upload succeeds after its records are committed to PostgreSQL. The response contains `name`, `size`, and `modifiedAt`. The full scan runs separately, and the commit emits `folders-changed` and `tags-changed` on `/api/events`. See [upload route](../../../packages/pdfit/src/server/routes/folders.ts) and [index commit and scan](../../../packages/pdfit/src/server/services/watcher.ts).
 * `/api/tags/summary` — tag names with the number of books using each tag
 * `GET /api/tags/index` — every tag with all of its books (`[{ name, color, books: [{ folder, filename }] }]`), for the sidebar "Index" page; `501` when the metadata store does not implement it
 * `GET /api/tags/untagged-books`, `GET /api/tags/untagged-count` — books that have no tag at all (sidebar "Untagged"); `501` when the metadata store does not implement them

@@ -6,6 +6,7 @@ import ListMountProgress from '../components/ListMountProgress';
 import { useProgressiveItems } from '../components/useProgressiveItems';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { UNTAGGED_CHANGED_EVENT } from '../model/untagged.js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, List, Checkbox, ToggleButton, ToggleButtonGroup,
@@ -135,12 +136,16 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     if (!background) setLoading(true);
     setError(null);
     try {
-      const [data, summaries] = await Promise.all([favorites ? favoritesApi.listBooks() : untagged ? tagsApi.listUntaggedBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
+      const [data, summaries] = untagged
+        ? [await tagsApi.listUntaggedBooks(), []] as const
+        : await Promise.all([favorites ? favoritesApi.listBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
       if (request !== booksRequest.current) return;
-      const summary = summaries.find((item) => item.name === tagName);
-      setTagColor(summary?.color ?? '#22c55e');
-      setTagIcon(summary?.icon);
-      setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
+      if (!untagged) {
+        const summary = summaries.find((item) => item.name === tagName);
+        setTagColor(summary?.color ?? '#22c55e');
+        setTagIcon(summary?.icon);
+        setTagColors(Object.fromEntries(summaries.map((item) => [item.name, item.color])));
+      }
       setBooks(data);
       setBookTags(Object.fromEntries(data.map((book) => [
         bookIdentity(book), book.tags,
@@ -194,6 +199,18 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   }, [books]);
 
   useEffect(() => {
+    if (!untagged) return;
+    const reload = () => void loadBooks(true);
+    window.addEventListener(UNTAGGED_CHANGED_EVENT, reload);
+    window.addEventListener('tags-changed', reload);
+    return () => {
+      window.removeEventListener(UNTAGGED_CHANGED_EVENT, reload);
+      window.removeEventListener('tags-changed', reload);
+    };
+  }, [untagged, loadBooks]);
+
+  useEffect(() => {
+    if (untagged) return;
     let active = true;
     let request = 0;
     const refreshColor = () => {
@@ -207,7 +224,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     };
     window.addEventListener('tags-changed', refreshColor);
     return () => { active = false; window.removeEventListener('tags-changed', refreshColor); };
-  }, [tagName]);
+  }, [tagName, untagged]);
 
   // ─── 삭제 ─────────────────────────────────────────────────
   const handleDelete = useCallback((folder: string, filename: string, driveFileId?: string) => {

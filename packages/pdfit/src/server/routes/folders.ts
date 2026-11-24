@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { Router, type Request, type Response } from 'express';
-import { sanitizeName } from '../services/filesystem.js';
+import { sanitizeName, UPLOAD_STAGING_PREFIX } from '../services/filesystem.js';
 import { LibraryOfflineError } from '../services/libraryVolume.js';
 import type { FilesystemService } from '../services/types.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
@@ -11,6 +12,10 @@ import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
 type ReqWithParams = { params: Record<string, string> };
 
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+function uploadedFilename(file: Express.Multer.File): string {
+  return sanitizeName(Buffer.from(file.originalname, 'latin1').toString('utf8'));
+}
 
 function createUpload(
   filesystem: FilesystemService,
@@ -23,10 +28,7 @@ function createUpload(
         const folder = sanitizeName(getFolderName(req as ReqWithParams));
         callback(null, filesystem.getFolderPath(folder));
       },
-      filename: (_req, file, callback) => {
-        const name = sanitizeName(Buffer.from(file.originalname, 'latin1').toString('utf8'));
-        callback(null, name);
-      },
+      filename: (_req, _file, callback) => callback(null, `${UPLOAD_STAGING_PREFIX}${randomUUID()}.part`),
     }),
     fileFilter: (_req, file, callback) => {
       callback(null, path.extname(file.originalname).toLowerCase() === '.pdf');
@@ -66,7 +68,9 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
-  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'>,
+  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'> & {
+    commitUpload?: (persist: () => Promise<BookRecord[]>) => Promise<BookRecord[]>;
+  },
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed' | 'favorites-changed') => void,
   thumbnails?: FolderThumbnailProvider,
@@ -232,12 +236,32 @@ export function createFoldersRouter(
         res.status(400).json({ error: 'No PDF files selected.' });
         return;
       }
+      const folder = sanitizeName(req.params.name);
+      const staged = new Set(files.map((file) => file.path));
+      const persist = async () => {
+        const books = new Map<string, BookRecord>();
+        for (const file of files) {
+          const filename = uploadedFilename(file);
+          const stat = await filesystem.volume.run(() => fs.promises.stat(file.path));
+          await filesystem.volume.run(() => fs.promises.rename(file.path, filesystem.getFilePath(folder, filename)));
+          staged.delete(file.path);
+          books.set(filename, { folder, filename, size: stat.size, modified_at: stat.mtime.toISOString() });
+        }
+        return [...books.values()];
+      };
       try {
-        await refresh?.();
-        notifyChange?.('folders-changed');
-        res.json(files.map((file) => ({ name: file.filename, size: file.size })));
+        const books = metadataMutation?.commitUpload
+          ? await metadataMutation.commitUpload(persist)
+          : await persist();
+        if (!metadataMutation?.commitUpload) {
+          await refresh?.();
+          notifyChange?.('folders-changed');
+        }
+        res.json(books.map((book) => ({ name: book.filename, size: book.size, modifiedAt: book.modified_at })));
       } catch (error) {
-        res.status(500).json({ error: String(error) });
+        fail(res, error, 500);
+      } finally {
+        await Promise.allSettled([...staged].map((file) => filesystem.volume.run(() => fs.promises.unlink(file))));
       }
     },
   );
