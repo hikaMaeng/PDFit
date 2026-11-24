@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useId, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Box, Button, CircularProgress, Alert, Typography, IconButton } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -30,6 +30,7 @@ import {
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
 import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
+import { BOOKMARK_PANEL_WIDTH, BookmarkPanel } from '../PdfGpuViewer/BookmarkPanel.js';
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
@@ -181,7 +182,7 @@ export default function PdfViewer({
   const [loadRevision, setLoadRevision] = useState(0);
   // doc이 로드되고 첫 페이지가 준비된 상태 (스프레드 트리거용)
   const [docReady, setDocReady] = useState(false);
-  const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
+  const clipPanelId = useId();
   const [outlineOpen, setOutlineOpen] = useState(false);
   const captureStartRef = useRef<{ pageIndex: number; canvas: HTMLCanvasElement; x: number; y: number; clientX: number; clientY: number } | null>(null);
   const [captureDrag, setCaptureDrag] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
@@ -194,6 +195,12 @@ export default function PdfViewer({
   const initialPageAppliedRef = useRef(false);
   const initialPageRef = useRef(initialPage);
   const annotation = usePdfAnnotations(url);
+  const clipArmed = annotation.tool === 'bookmark';
+  useEffect(() => {
+    if (clipArmed) return;
+    captureStartRef.current = null;
+    setCaptureDrag(null);
+  }, [clipArmed]);
   const pan = usePdfPan(containerRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
   const annotationPageIndices = useMemo(() => {
     if (continuousScroll) return pages.map((_, pageIndex) => pageIndex);
@@ -538,7 +545,7 @@ export default function PdfViewer({
     writeSpreadCoverPreference(next);
     if (viewModeRef.current === 'double') goToPage(target);
   }, [goToPage]);
-  const pageSwipe = usePageSwipe(containerRef, viewMode !== 'scroll' && (annotation.tool === 'select' || annotation.tool === 'bookmark'), prevPage, nextPage, fitMode === 'height');
+  const pageSwipe = usePageSwipe(containerRef, viewMode !== 'scroll' && annotation.tool === 'select', prevPage, nextPage, fitMode === 'height');
 
   // ── initialPage 적용 ─────────────────────────────────────────
   useEffect(() => {
@@ -741,7 +748,7 @@ export default function PdfViewer({
   const handleCapturePointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (!onBookmarkCaptured || captureBusy || event.button !== 0) return;
     const target = event.target;
-    if (target instanceof Element && target.closest('button, input, textarea, select, [role="button"]')) return;
+    if (target instanceof Element && target.closest('aside, button, input, textarea, select, [role="button"]')) return;
     const point = capturePoint(event.clientX, event.clientY);
     if (!point) return;
     captureStartRef.current = point;
@@ -761,6 +768,9 @@ export default function PdfViewer({
     if (!start || !onBookmarkCaptured) return;
     const end = capturePoint(event.clientX, event.clientY);
     if (!end || end.canvas !== start.canvas || end.pageIndex !== start.pageIndex || Math.abs(end.x - start.x) < 8 || Math.abs(end.y - start.y) < 8) return;
+    const page = pages[start.pageIndex];
+    if (!page) return;
+    annotation.finishClipSelection();
     const canvasRect = start.canvas.getBoundingClientRect();
     const sourceScaleX = start.canvas.width / Math.max(1, canvasRect.width);
     const sourceScaleY = start.canvas.height / Math.max(1, canvasRect.height);
@@ -772,8 +782,6 @@ export default function PdfViewer({
     crop.width = Math.max(1, Math.round(width * sourceScaleX));
     crop.height = Math.max(1, Math.round(height * sourceScaleY));
     crop.getContext('2d')?.drawImage(start.canvas, x * sourceScaleX, y * sourceScaleY, width * sourceScaleX, height * sourceScaleY, 0, 0, crop.width, crop.height);
-    const page = pages[start.pageIndex];
-    if (!page) return;
     const baseViewport = page.getViewport({ scale: 1 });
     setCaptureBusy(true);
     setCaptureNotice(null);
@@ -786,7 +794,7 @@ export default function PdfViewer({
       setCaptureBusy(false);
       window.setTimeout(() => setCaptureNotice(null), 3000);
     }
-  }, [capturePoint, onBookmarkCaptured, pages]);
+  }, [annotation.finishClipSelection, capturePoint, onBookmarkCaptured, pages]);
 
   // ── 키보드 (화살표, PageUp/Down) ─────────────────────────────
   useEffect(() => {
@@ -847,7 +855,8 @@ export default function PdfViewer({
   const viewportScale = toPdfJsViewportScale(scale);
   const phW = bv ? Math.round(bv.width * viewportScale) : Math.round(595 * viewportScale);
   const phH = bv ? Math.round(bv.height * viewportScale) : Math.round(842 * viewportScale);
-  const viewerLeftInset = (uiHidden ? 0 : ANNOTATION_RAIL_WIDTH) + (bookmarkPanelOpen ? 220 : 0);
+  const railWidth = uiHidden ? 0 : ANNOTATION_RAIL_WIDTH;
+  const viewerLeftInset = annotation.clipPanelOpen ? `calc(${railWidth}px + ${BOOKMARK_PANEL_WIDTH})` : `${railWidth}px`;
 
   if (loading) {
     return (
@@ -883,8 +892,6 @@ export default function PdfViewer({
           zoomOutDisabled={scale <= ZOOM_LEVELS[0]}
           zoomInDisabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
           colorAdjustments={colorAdjustments}
-          bookmarkPanelOpen={bookmarkPanelOpen}
-          bookmarkToggleTestId="legacy-bookmark-sidebar-toggle"
           documentActions={documentActions}
           scanBook={scanBook}
           outlineOpen={outlineOpen}
@@ -903,7 +910,6 @@ export default function PdfViewer({
           onZoomInputChange={setZoomInput}
           onSubmitZoom={submitZoom}
           onColorAdjustmentsChange={onColorAdjustmentsChange}
-          onToggleBookmarks={() => setBookmarkPanelOpen((value) => !value)}
           onOpenOutline={() => setOutlineOpen(true)}
           onPrevious={prevPage}
           onNext={nextPage}
@@ -935,15 +941,14 @@ export default function PdfViewer({
           if (annotation.tool === 'bookmark') { captureStartRef.current = null; setCaptureDrag(null); }
           else if (annotation.tool === 'select') pan.pointerCancel(event);
         }}
-        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: viewMode !== 'scroll' && fitMode === 'height' ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default', '& [data-pdf-page] > canvas': { filter: pageColors.filter } }}
+        sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: clipArmed || (viewMode !== 'scroll' && fitMode === 'height') ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default', '& [data-pdf-page] > canvas': { filter: pageColors.filter } }}
       >
-      {!uiHidden && <AnnotationControls leftOffset={bookmarkPanelOpen ? 220 : 0} tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+      {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
       <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} visiblePages={annotationPageIndices} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
 
-      {bookmarkPanelOpen && (
-        <Box component="aside" aria-label={t('bookBookmarks')} sx={{ position: 'absolute', zIndex: 8, top: 0, bottom: 0, left: 0, width: 220, overflowY: 'auto', bgcolor: (theme) => theme.palette.mode === 'light' ? '#f5efe4' : '#242426', borderRight: '1px solid', borderColor: (theme) => theme.palette.mode === 'light' ? theme.palette.divider : 'rgba(255,255,255,.08)', p: 1 }}>
-          <Typography variant="caption" sx={{ display: 'block', color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[400], px: 0.5, pb: 0.75 }}>{t('bookBookmarks')}</Typography>
-          {bookmarks.length === 0 ? <Typography variant="caption" sx={{ color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.secondary : theme.palette.grey[600], px: 0.5 }}>{t('dragToCapture')}</Typography> : bookmarks.map((bookmark) => (
+      {annotation.clipPanelOpen && (
+        <BookmarkPanel id={clipPanelId} armed={clipArmed} empty={bookmarks.length === 0} onClose={annotation.closeClipPanel} left={railWidth}>
+          {bookmarks.map((bookmark) => (
             <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
               <Box sx={{ height: 92, position: 'relative', bgcolor: '#161618' }}>
                 <Box component="img" src={bookmark.imageUrl} alt="" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -952,7 +957,7 @@ export default function PdfViewer({
               <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.primary : theme.palette.grey[200] }}>p. {bookmark.pageIndex + 1}</Typography>
             </Box>
           ))}
-        </Box>
+        </BookmarkPanel>
       )}
 
       {captureDrag && <Box data-testid="legacy-bookmark-drag-preview" sx={{ position: 'fixed', zIndex: 15, pointerEvents: 'none', left: Math.min(captureDrag.startX, captureDrag.endX), top: Math.min(captureDrag.startY, captureDrag.endY), width: Math.abs(captureDrag.endX - captureDrag.startX), height: Math.abs(captureDrag.endY - captureDrag.startY), border: '2px dashed #f59e0b', bgcolor: 'rgba(245,158,11,.18)' }} />}
@@ -961,7 +966,7 @@ export default function PdfViewer({
       {/* ── 스크롤 모드 ── */}
       {(continuousScroll || pageLayout === 'single') && (
         <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{
-          height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`,
+          height: '100%', width: `calc(100% - ${viewerLeftInset})`, ml: `${viewerLeftInset}`,
           overflow: continuousScroll ? 'auto' : 'hidden',
           scrollbarGutter: continuousScroll ? 'stable' : undefined,
           overflowX: continuousScroll && fitMode === 'height' ? 'scroll' : undefined,
@@ -1019,7 +1024,7 @@ export default function PdfViewer({
       {!continuousScroll && pageLayout === 'double' && (
         <Box
           ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset}px)`, ml: `${viewerLeftInset}px`, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}
+          sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset})`, ml: `${viewerLeftInset}`, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}
         >
           {/* 좌측 페이지 */}
           {pages[currentPage - 1] ? (

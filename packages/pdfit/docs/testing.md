@@ -94,19 +94,17 @@ GPU viewer browser contract:
 * `data-testid="bookmark-capture-surface"`, `bookmark-drag-preview`,
   `bookmark-page-overlay`, `bookmark-card`, `bookmark-card-go-to-page`, and `bookmark-editor`
 
-Bookmark interaction coverage must assert a visible drag preview, a POST-created
-overlay without opening the bookmark sidebar or reloading, PATCH persistence through the editor, comment tooltip,
-and a changed overlay bounding box after zoom.
-It must also assert that the toolbar bookmark control only toggles the sidebar
-and that a newly created bookmark's delete affordance fades from emphasized to
-resting opacity. Successful capture must show its confirmation message; rejected
-capture must never fail silently.
+Scope **Clips** to the **PDF annotation tools** complementary landmark. Initially,
+capture is off and the list is closed. Clicking **Clips** sets `aria-pressed` and
+`aria-expanded` and opens the list. Clicking the active button again cancels it.
+Verify a visible drag preview, one successful POST, a card and overlay without
+reloading, and an inactive button with the list still open after pointer release.
+The list header's **Close** dismisses it. Keep PDFGPU checks for PATCH persistence
+through the editor, comment tooltip, and overlay coordinates after zoom.
 Remote-backed viewer verification must cover capture while the page is still in
 preview quality and confirm that detail readiness resumes the pending capture.
-The F05 acceptance case forces the PDF.js fallback with `?engine=legacy` and
-verifies its bookmark icon, closed-sidebar capture, overlay, panel, and deletion.
-It must also assert that the card's page-jump icon navigates to that bookmark's
-page without opening the editor.
+The F04/F05 acceptance cases explicitly select GPU and PDF.js. Verify the GPU
+card's page-jump icon navigates without opening the editor.
 The bookmark-library new-window flow must first persist a different viewer page,
 then assert that `?page=` wins after the loading indicator disappears. This guards
 the shared `goToPage` path against saved-scroll restoration races.

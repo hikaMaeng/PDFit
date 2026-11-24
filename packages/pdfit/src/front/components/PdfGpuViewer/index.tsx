@@ -1,5 +1,5 @@
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Box } from '@mui/material';
 import {
@@ -134,7 +134,9 @@ export default function PdfGpuViewer({
   const annotation = usePdfAnnotations(url);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const readOutline = useCallback(() => readPdfOutlineFromUrl(url, outlineLookup), [url, outlineLookup]);
-  const bookmark = usePdfBookmarks({ enabled: annotation.tool === 'bookmark', controller, onCaptured: onBookmarkCaptured, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
+  const clipPanelId = useId();
+  const clipArmed = annotation.tool === 'bookmark';
+  const bookmark = usePdfBookmarks({ enabled: clipArmed, controller, onCaptured: onBookmarkCaptured, onSelectionFinished: annotation.finishClipSelection, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
   const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
   // Wheel on the surface around the core viewport: page modes forward it to the viewport,
   // continuous scroll pans with the select tool. Non-passive so both can call preventDefault.
@@ -210,7 +212,7 @@ export default function PdfGpuViewer({
   }, [controller]);
   const pageSwipe = usePageSwipe(
     viewportRef,
-    state.scrollMode === 'page' && (annotation.tool === 'select' || annotation.tool === 'bookmark'),
+    state.scrollMode === 'page' && annotation.tool === 'select',
     () => goToPage(currentPage - (state.viewMode === 'spread' ? 2 : 1)),
     () => goToPage(currentPage + (state.viewMode === 'spread' ? 2 : 1)),
     state.fitMode === 'page' || state.fitMode === 'height',
@@ -419,8 +421,6 @@ export default function PdfGpuViewer({
           continuousScroll={state.scrollMode === 'continuous'}
           zoomInput={zoomInput}
           colorAdjustments={colorAdjustments}
-          bookmarkPanelOpen={bookmark.panelOpen}
-          bookmarkToggleTestId="bookmark-sidebar-toggle"
           documentActions={documentActions}
           scanBook={scanBook}
           outlineOpen={outlineOpen}
@@ -439,7 +439,6 @@ export default function PdfGpuViewer({
           onZoomInputChange={setZoomInput}
           onSubmitZoom={submitZoom}
           onColorAdjustmentsChange={onColorAdjustmentsChange}
-          onToggleBookmarks={() => bookmark.setPanelOpen((value) => !value)}
           onOpenOutline={() => setOutlineOpen(true)}
           onPrevious={() => goToPage(currentPage - pageStep)}
           onNext={() => goToPage(currentPage + pageStep)}
@@ -455,17 +454,17 @@ export default function PdfGpuViewer({
       {(state.loading || state.loadPhase === 'rendering') ? (
         <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
-      <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {bookmark.panelOpen && <BookmarkSidebar bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', pl: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px` }}>
+        {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-          <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: uiHidden ? '100%' : `calc(100% - ${ANNOTATION_RAIL_WIDTH}px)`, height: '100%', ml: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px`, minWidth: 0, minHeight: 0, position: 'relative', touchAction: state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height') ? 'none' : 'auto', cursor: annotation.tool === 'bookmark' && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={annotation.tool === 'bookmark' ? bookmark.suppressCaptureClick : undefined}>
+          <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
             {pageColors.definition}
             <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: 3, '& > canvas': { filter: pageColors.filter } }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>
-          {!uiHidden && <AnnotationControls tool={annotation.tool} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
         </Box>
+        {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />

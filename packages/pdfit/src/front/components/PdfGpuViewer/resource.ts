@@ -1,0 +1,33 @@
+import type { PdfitMessageKey } from '../../i18n/messages.js';
+
+export const RSC = {
+  tools: 'annotationTools',
+  movePalette: 'movePalette',
+  moveCaption: 'paletteMoveCaption',
+  clips: 'viewerClipTool',
+  clipPanel: 'bookBookmarks',
+  dragToCapture: 'dragToCapture',
+  clipsEmpty: 'clipBookEmpty',
+  close: 'close',
+  highlighter: 'highlighter',
+  addText: 'addText',
+  textCaption: 'paletteTextCaption',
+  freehand: 'freehand',
+  penCaption: 'palettePenCaption',
+  rectangle: 'rectangle',
+  circle: 'circle',
+  line: 'line',
+  arrow: 'arrow',
+  undo: 'undo',
+  undoCaption: 'paletteUndoCaption',
+  redo: 'redo',
+  redoCaption: 'paletteRedoCaption',
+  style: 'annotationStyle',
+  styleCaption: 'paletteStyleCaption',
+  saveCaptions: {
+    loading: 'paletteLoadingCaption',
+    saving: 'paletteSavingCaption',
+    saved: 'paletteSavedCaption',
+    error: 'paletteSaveFailedCaption',
+  },
+} as const satisfies Record<string, PdfitMessageKey | Record<string, PdfitMessageKey>>;

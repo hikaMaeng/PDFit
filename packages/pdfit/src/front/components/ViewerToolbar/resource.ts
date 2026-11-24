@@ -10,7 +10,6 @@ export const toolbarLabels = {
   zoomOut: 'Zoom −',
   zoomIn: 'Zoom +',
   image: 'Image',
-  clips: 'Clips',
   ocr: 'OCR',
   download: 'Download',
   contents: 'Contents',

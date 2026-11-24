@@ -113,23 +113,21 @@ API remains the shared source of truth.
 
 ## Bookmark overlays
 
-`front/components/PdfGpuViewer/index.tsx` keeps the persistent bookmark list in
-`front/model/bookmarkModel.ts`; a drag rectangle and edit draft are transient UI
-state only. Region capture is always available on the page surface; the toolbar
-bookmark control is always rendered as a labeled `북마크` button and changes
-only the visibility of the bookmark sidebar. A newly
-created bookmark temporarily emphasizes its delete affordance before fading to
-the normal resting opacity. The UI and PDFGPU capture engine share an 8-pixel
+`front/model/bookmarkModel.ts` holds the persistent clip list. The left palette's
+[Clips control](../src/front/components/PdfGpuViewer/AnnotationControls.tsx#AnnotationControls)
+arms capture and opens the document list beside the palette. The
+[tool model](../src/front/viewer/toolModel.ts#ViewerToolModel) returns to selection
+on a valid pointer release and leaves the list open. Pressing the active control
+again cancels capture and closes the list. The list header also closes it.
+A drag rectangle and edit draft are transient UI state. The UI and PDFGPU capture engine share an 8-pixel
 minimum drag threshold, and capture success or failure is always surfaced in the
 viewer. If a remote/Drive-backed page is still rendering its detail raster, the
 capture waits for detail readiness and retries once instead of dropping the
 gesture before the metadata request. The adapter passes PDF-point absolute rectangles to
 `PdfGpuViewerController.projectOverlays()`. PDFGPU normalizes them using each
 manifest page's point size and returns projections for visible pages only.
-If PDFGPU initialization fails, the shared PDF.js fallback keeps the same icon-only
-bookmark sidebar control, always-on region capture, overlays, deletion, and API
-callbacks. `?engine=legacy` selects that path explicitly for deterministic browser
-verification.
+If PDFGPU initialization fails, PDF.js uses the same palette, capture mode, list
+header, and API callbacks. `?engine=legacy` selects PDF.js explicitly for browser verification.
 The React overlay is a sibling of the PDFGPU-owned viewport because the core
 controller owns and replaces the viewport's child DOM.
 

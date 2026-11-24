@@ -62,7 +62,7 @@ try {
     const toolbarAtMs = Math.round(performance.now() - start);
     await page.waitForFunction(() => [...document.querySelectorAll('[data-pdf-page] canvas')].some((canvas) => canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0), undefined, { timeout: 90_000 });
     const firstCanvasAtMs = Math.round(performance.now() - start);
-    const annotationRail = page.locator('aside').filter({ has: page.getByTestId('select-move-cursor-icon') });
+    const annotationRail = page.getByRole('complementary', { name: 'PDF 주석 도구' });
     await annotationRail.waitFor({ state: 'visible' });
     const annotationRailBefore = await annotationRail.boundingBox();
     const indicator = page.getByTestId('viewer-page-indicator');

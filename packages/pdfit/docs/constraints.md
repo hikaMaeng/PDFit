@@ -27,6 +27,9 @@
   `/viewer/:folder/:filename`, existing viewer-state payloads, semantic toolbar
   roles, and the legacy fallback path.
 * Consumer: the PDF.js and GPU local viewer toolbars. [Document scan](api.md#document-scan) uses one server job per book and shares the runtime's OCR capacity. Browser locators use the named `Scan status` button and dialog, `Scan start page` spinbutton, and scan progress bar. Page status list items have page-number and saved-state names.
+* Both engines expose **Clips** in the **PDF annotation tools** complementary
+  landmark. The control's `aria-pressed` reports capture mode and `aria-expanded`
+  reports list visibility. The captured rectangle and thumbnail keep their existing format.
 * Consumer: bookmark preview plus folder/tag `PdfListItem` rows. Invariants: a book key is
   exactly `(folder, filename)`; at most one named viewer is reused for that key; an explicit
   bookmark page is delivered as a message rather than by reloading the existing viewer; and
