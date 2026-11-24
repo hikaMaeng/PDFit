@@ -39,7 +39,9 @@
   The memo editor writes the existing clip comment field on Save.
 * Consumer: shared cover cards. Scope the auto-classify button to `pdf-cover-tags`
   and locate Comments and File actions inside `pdf-cover-actions` by accessible name.
-  File actions opens a menu. Comments opens a dialog with one complete post per page.
+  File actions opens a menu. Comments opens a dialog with five complete posts
+  per page. Scope each post's edit and delete controls to its article.
+  `book-comments-content` scrolls independently of the heading and page controls.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`
   source tree during the build and must

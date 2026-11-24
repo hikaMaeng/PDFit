@@ -9,7 +9,8 @@ const origin = process.env.PDFIT_TEST_ORIGIN;
 if (!origin) throw new Error('Set PDFIT_TEST_ORIGIN to a disposable Free instance.');
 const artifacts = path.resolve(process.env.PDFIT_TEST_ARTIFACT_DIR ?? 'test/book-card-comments-browser');
 await mkdir(artifacts, { recursive: true });
-const folder = 'Fixture';
+const folder = process.env.PDFIT_TEST_FIXTURE_FOLDER ?? 'Fixture';
+const destination = process.env.PDFIT_TEST_DESTINATION_FOLDER ?? 'Destination';
 const original = 'Card fixture.pdf';
 const conflict = 'Existing name.pdf';
 const renamed = 'Renamed card.pdf';
@@ -33,14 +34,37 @@ const fetch = async (route, method = 'GET', data, expected = 200) => {
 
 const card = (name) => page.getByTestId('pdf-cover-card').filter({ has: page.getByRole('link', { name, exact: true }) });
 const board = page.getByRole('dialog').filter({ hasText: '코멘트' });
+const articles = board.getByRole('article');
 const action = (name, scope = page) => scope.getByRole('button', { name, exact: true });
 const mustSee = (text, scope = page) => scope.getByText(text, { exact: true }).waitFor({ state: 'visible' });
+const written = Array.from({ length: 6 }, (_, index) => `${index + 1}번째 독서 메모`);
+const longBody = [written[1], ...Array.from({ length: 80 }, (_, index) => `${index + 1}번째 줄에 적은 내용`)].join('\n');
 
-async function post(body) {
+async function post(body, displayed = body) {
   await action('새 코멘트', board).click();
   await board.getByRole('textbox', { name: '코멘트 본문' }).fill(body);
   await action('저장', board).click();
-  await mustSee(body, board);
+  await board.getByText(displayed, { exact: body === displayed }).waitFor({ state: 'visible' });
+}
+
+async function verifyLayout(browserPage, dialog) {
+  const content = dialog.getByTestId('book-comments-content');
+  const footer = action('새 코멘트', dialog);
+  const header = action('닫기', dialog);
+  const viewport = browserPage.viewportSize();
+  const box = await dialog.boundingBox();
+  assert.ok(box.width > viewport.width * .9 && box.width <= viewport.width, 'dialog fills the available width');
+  assert.ok(box.height > viewport.height * .88 && box.y >= 0 && box.y + box.height <= viewport.height + 1, 'dialog fits the available height');
+  const before = [(await header.boundingBox()).y, (await footer.boundingBox()).y];
+  const scrollTop = await content.evaluate((element) => {
+    if (element.scrollHeight <= element.clientHeight || element.scrollWidth > element.clientWidth) {
+      throw new Error('Expected only vertical overflow in the comment content');
+    }
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  assert.ok(scrollTop > 0);
+  assert.deepEqual([(await header.boundingBox()).y, (await footer.boundingBox()).y], before);
 }
 
 try {
@@ -63,7 +87,7 @@ try {
     localStorage.setItem('pdfit.language', 'ko');
     localStorage.setItem('pdfit.library.view', 'covers');
   });
-  await page.goto('/folder/Fixture');
+  await page.goto(`/folder/${encodeURIComponent(folder)}`);
   const source = card(original);
   const bar = source.getByTestId('pdf-cover-actions');
   await action('코멘트', bar).waitFor();
@@ -84,23 +108,32 @@ try {
   await action('닫기', clips).click();
   await action('코멘트', bar).click();
   await mustSee('이 책에 남긴 코멘트가 없습니다.', board);
-  await post('첫 번째 독서 메모');
-  await post('두 번째 독서 메모');
+  await post(written[0]);
+  await post(longBody, written[1]);
+  for (const entry of written.slice(2)) await post(entry);
   await mustSee('1 / 2', board);
-  assert.equal(await board.getByText('첫 번째 독서 메모', { exact: true }).count(), 0);
+  assert.equal(await articles.count(), 5);
+  assert.deepEqual(await articles.getByText(/^[3-6]번째 독서 메모$/).allTextContents(), written.slice(2).reverse());
+  assert.equal(await board.getByText(written[0], { exact: true }).count(), 0);
+  await page.screenshot({ path: path.join(artifacts, '02-comments-page.png'), animations: 'disabled' });
+  await verifyLayout(page, board);
+  await page.setViewportSize({ width: 900, height: 620 });
+  await verifyLayout(page, board);
+  await page.setViewportSize({ width: 1280, height: 850 });
   await action('다음 페이지', board).click();
-  await mustSee('첫 번째 독서 메모', board);
-  await action('수정', board).click();
+  await mustSee(written[0], board);
+  assert.equal(await articles.count(), 1);
+  assert.equal(await board.getByTestId('book-comments-content').evaluate((element) => element.scrollTop), 0);
+  await action('수정', articles.first()).click();
   await board.getByRole('textbox', { name: '코멘트 본문' }).fill('첫 번째 독서 메모 수정');
   await action('저장', board).click();
   await mustSee('첫 번째 독서 메모 수정', board);
   await mustSee('2 / 2', board);
   await action('새 코멘트', board).and(page.locator(':enabled')).waitFor();
-  await page.screenshot({ path: path.join(artifacts, '02-comments-page.png'), animations: 'disabled' });
   await action('닫기', board).click();
   await action('코멘트', card(conflict)).click();
   await mustSee('이 책에 남긴 코멘트가 없습니다.', board);
-  const foreignId = (await (await fetch(comments(original))).json()).comment.id;
+  const foreignId = (await (await fetch(comments(original))).json()).comments[0].id;
   await fetch(`${comments(conflict)}&id=${foreignId}`, 'PATCH', { body: 'Wrong book' }, 404);
   await fetch(`${comments(original)}&id=${randomUUID()}`, 'POST', { body: '  ' }, 400);
   await action('닫기', board).click();
@@ -135,24 +168,26 @@ try {
 
   await page.reload();
   await action('코멘트', card(renamed)).click();
-  await mustSee('두 번째 독서 메모', board);
-  await action('삭제', board).click();
+  await mustSee(written[5], board);
+  await action('삭제', articles.filter({ hasText: written[5] })).click();
   await mustSee('이 코멘트를 삭제할까요?', board);
   await action('삭제', board).click();
   await mustSee('첫 번째 독서 메모 수정', board);
   await mustSee('1 / 1', board);
+  assert.equal(await articles.count(), 5);
+  assert.equal(await board.getByText(written[5], { exact: true }).count(), 0);
   await action('닫기', board).click();
 
   await action('파일 작업', card(renamed)).click();
   await menu.getByRole('menuitem', { name: '다른 폴더로 이동' }).click();
   const move = page.getByRole('dialog').filter({ hasText: '다른 폴더로 이동' });
-  await move.getByRole('radio', { name: 'Destination' }).click();
+  await move.getByRole('radio', { name: destination, exact: true }).click();
   await action('이동', move).click();
   await card(renamed).waitFor({ state: 'hidden' });
-  await page.goto('/folder/Destination');
+  await page.goto(`/folder/${encodeURIComponent(destination)}`);
   await action('코멘트', card(renamed)).click();
   await mustSee('첫 번째 독서 메모 수정', board);
-  assert.equal(digest(await (await fetch(file(renamed, 'Destination'))).body()), sourceHash);
+  assert.equal(digest(await (await fetch(file(renamed, destination))).body()), sourceHash);
   await action('닫기', board).click();
   await action('파일 작업', card(renamed)).click();
   await menu.getByRole('menuitem', { name: '삭제', exact: true }).click();
@@ -164,21 +199,22 @@ try {
   const touch = await browser.newContext({ baseURL: origin, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ko-KR' });
   await touch.addInitScript(() => { localStorage.setItem('pdfit.language', 'ko'); localStorage.setItem('pdfit.library.view', 'covers'); });
   const mobile = await touch.newPage();
-  await mobile.goto('/folder/Destination');
+  await mobile.goto(`/folder/${encodeURIComponent(destination)}`);
   const mobileCard = mobile.getByTestId('pdf-cover-card');
   await action('문서 정보 보기', mobileCard).tap();
   await action('파일 자동 분류', mobileCard.getByTestId('pdf-cover-tags')).waitFor();
   await action('코멘트', mobileCard).tap();
   await mustSee('첫 번째 독서 메모 수정', mobile.getByRole('dialog'));
   await mobile.screenshot({ path: path.join(artifacts, '04-comments-touch.png'), animations: 'disabled' });
+  await verifyLayout(mobile, mobile.getByRole('dialog'));
   await touch.close();
 
   await action('파일 작업', card(renamed)).click();
   await menu.getByRole('menuitem', { name: '삭제', exact: true }).click();
   await action('삭제', deletion).click();
   await card(renamed).waitFor({ state: 'hidden' });
-  assert.equal((await (await fetch(comments(renamed, 'Destination'))).json()).total, 0);
-  console.log('PASS desktop and touch book card, isolated comments, rename, collision, move and delete');
+  assert.equal((await (await fetch(comments(renamed, destination))).json()).total, 0);
+  console.log('PASS five posts per page, responsive scrolling, isolated comments, rename, collision, move and delete');
 } catch (error) {
   await page.screenshot({ path: path.join(artifacts, 'failure.png') }).catch(() => undefined);
   throw error;

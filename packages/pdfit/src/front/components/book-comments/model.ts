@@ -16,6 +16,7 @@ class BookCommentsModel {
 
   page: BookCommentPage | null = null;
   mode: Mode = 'read';
+  selectedId: string | null = null;
   loading = false;
   saving = false;
   error: 'load' | 'save' | null = null;
@@ -35,6 +36,7 @@ class BookCommentsModel {
     this.book = book;
     this.page = null;
     this.mode = 'read';
+    this.selectedId = null;
     this.saving = false;
     void this.load(1);
   }
@@ -77,8 +79,9 @@ class BookCommentsModel {
 
   retry = () => void this.load(this.requestedPage);
 
-  setMode(mode: Mode) {
+  setMode(mode: Mode, commentId: string | null = null) {
     this.mode = mode;
+    this.selectedId = commentId;
     this.error = null;
     if (mode === 'create') this.draftId = createBrowserUuid();
     this.emit();
@@ -88,7 +91,7 @@ class BookCommentsModel {
     const book = this.book;
     const mode = this.mode;
     if (!book || mode === 'read' || this.saving) return;
-    const id = mode === 'create' ? this.draftId : this.page?.comment?.id;
+    const id = mode === 'create' ? this.draftId : this.selectedId;
     if (!id || (mode !== 'delete' && !body?.trim())) return;
     this.saving = true;
     this.error = null;
@@ -100,6 +103,7 @@ class BookCommentsModel {
       if (!response.ok || (mode !== 'delete' && !parseBookComment(await response.json()))) throw new Error('Unable to save book comment.');
       if (this.book !== book) return;
       this.mode = 'read';
+      this.selectedId = null;
       this.page = null;
       void this.load(mode === 'create' ? 1 : this.requestedPage);
     } catch {

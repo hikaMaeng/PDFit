@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { BookComment, BookCommentStore } from '../../common/protocol/book-comments/index.js';
+import { BOOK_COMMENT_PAGE_SIZE, type BookComment, type BookCommentStore } from '../../common/protocol/book-comments/index.js';
 
 export const bookCommentsSchema = `
   CREATE TABLE IF NOT EXISTS book_comments (
@@ -40,16 +40,19 @@ export function createPostgresBookComments(db: Pool): BookCommentStore {
         WITH tally AS (
           SELECT COUNT(*)::int AS total FROM book_comments WHERE (folder, filename) = ($1, $2)
         ), position AS (
-          SELECT total, LEAST(GREATEST(1, total), $3::bigint)::int AS page FROM tally
+          SELECT total, LEAST(GREATEST(1, (total - 1) / $4::int + 1), $3::bigint)::int AS page FROM tally
         )
         SELECT position.*, item.* FROM position
         LEFT JOIN LATERAL (
           SELECT ${commentColumns} FROM book_comments WHERE (folder, filename) = ($1, $2)
-          ORDER BY created_at DESC, id DESC OFFSET (position.page - 1) LIMIT 1
+          ORDER BY created_at DESC, id DESC
+          OFFSET ((position.page - 1)::bigint * $4::int) LIMIT $4::int
         ) item ON true
-      `, [folder, filename, page]);
+        ORDER BY item.created_at DESC, item.id DESC
+      `, [folder, filename, page, BOOK_COMMENT_PAGE_SIZE]);
       const row = result.rows[0];
-      return { page: row.page, total: row.total, comment: fromRow(row) };
+      const comments = result.rows.map(fromRow).filter((comment) => comment !== null);
+      return { page: row.page, total: row.total, comments };
     },
     async createBookComment({ folder, filename }, { id, body }) {
       const result = await db.query<CommentRow>(`

@@ -12,13 +12,14 @@ export interface BookComment {
 }
 
 export interface BookCommentPage {
-  comment: BookComment | null;
+  comments: BookComment[];
   page: number;
   total: number;
 }
 
 export const BOOK_COMMENTS_PATH = '/api/book-comments';
 export const BOOK_COMMENT_LIMIT = 10_000;
+export const BOOK_COMMENT_PAGE_SIZE = 5;
 export const BOOK_COMMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface WriteBookComment {
@@ -43,11 +44,18 @@ export function parseBookComment(value: unknown): BookComment | null {
 }
 
 export function parseBookCommentPage(value: unknown): BookCommentPage | null {
-  if (!value || typeof value !== 'object' || !('comment' in value) || !('page' in value) || !('total' in value) ||
+  if (!value || typeof value !== 'object' || !('comments' in value) || !Array.isArray(value.comments) ||
+    !('page' in value) || !('total' in value) ||
     typeof value.page !== 'number' || !Number.isSafeInteger(value.page) || value.page < 1 ||
     typeof value.total !== 'number' || !Number.isSafeInteger(value.total) || value.total < 0 ||
-    value.page > Math.max(1, value.total)) return null;
-  const comment = parseBookComment(value.comment);
-  if (value.total === 0 ? value.comment !== null : !comment) return null;
-  return { comment, page: value.page, total: value.total };
+    value.page > bookCommentPageCount(value.total)) return null;
+  const expectedCount = Math.min(BOOK_COMMENT_PAGE_SIZE, value.total - (value.page - 1) * BOOK_COMMENT_PAGE_SIZE);
+  if (value.comments.length !== expectedCount) return null;
+  const comments = value.comments.map(parseBookComment);
+  if (comments.some((comment) => comment === null)) return null;
+  return { comments: comments.filter((comment) => comment !== null), page: value.page, total: value.total };
+}
+
+export function bookCommentPageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / BOOK_COMMENT_PAGE_SIZE));
 }
