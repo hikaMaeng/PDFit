@@ -12,6 +12,10 @@ const exists = (target: string) => fs.promises.access(target).then(() => true, (
   throw error;
 });
 
+export class DestinationFileExistsError extends Error {
+  constructor() { super('Destination file already exists.'); }
+}
+
 function isPdfFile(entry: fs.Dirent): boolean {
   return entry.isFile() && entry.name.toLowerCase().endsWith('.pdf');
 }
@@ -122,6 +126,25 @@ export function createFilesystemService(booksRoot: string, rootFolderName = path
       if (!(await exists(destDir))) throw new Error('Destination folder does not exist.');
       if (await exists(dest)) throw new Error('Destination file already exists.');
       await fs.promises.rename(src, dest);
+    }),
+    relocateFile: (fromFolder, filename, toFolder, newName) => disk(async () => {
+      const source = getFilePath(fromFolder, filename);
+      const target = getFilePath(toFolder, newName);
+      const stat = await fs.promises.lstat(source);
+      if (!stat.isFile()) throw new Error('Source is not a regular file.');
+      if (source !== target) {
+        if (await fs.promises.lstat(target).then(() => true, (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        })) {
+          const directory = getFolderPath(toFolder);
+          const names = fromFolder === toFolder && filename.toLowerCase() === newName.toLowerCase()
+            ? await fs.promises.readdir(directory) : [];
+          if (!names.includes(filename) || names.includes(newName)) throw new DestinationFileExistsError();
+        }
+        await fs.promises.rename(source, target);
+      }
+      return { name: newName, size: stat.size, modifiedAt: stat.mtime.toISOString() };
     }),
   };
 }

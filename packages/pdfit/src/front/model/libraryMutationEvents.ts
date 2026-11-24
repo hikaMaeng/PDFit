@@ -2,6 +2,7 @@ import type { PdfInfo } from '../api/folders.js';
 
 export type LibraryFileMutation =
   | { kind: 'upsert'; folder: string; file: PdfInfo }
+  | { kind: 'rename'; folder: string; filename: string; file: PdfInfo }
   | { kind: 'remove'; folder: string; filename: string; driveFileId?: string };
 
 const listeners = new Set<(mutation: LibraryFileMutation) => void>();

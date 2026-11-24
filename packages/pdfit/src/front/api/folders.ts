@@ -22,6 +22,26 @@ import { isPdfFile, ResumableSessionExpiredError, uploadPdfToResumableSession } 
 import { backgroundSyncModel } from '../model/backgroundSyncModel.js';
 import { publishLibraryFileMutation } from '../model/libraryMutationEvents.js';
 import { beginMutationPerformance } from '../model/mutationPerformance.js';
+import { FILE_RENAME_PATH, parseRenamedPdf, type RenamePdfRequest } from '../../common/protocol/file-rename/index.js';
+import { renameOpenedDocument } from '../model/documentOpenHistory.js';
+
+export class FileRenameError extends Error {
+  constructor(readonly status: number) { super('PDF rename failed.'); }
+}
+
+async function renameFile(input: RenamePdfRequest): Promise<void> {
+  const response = await fetch(`/api/folders${FILE_RENAME_PATH}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new FileRenameError(response.status);
+  const file = parseRenamedPdf(await response.json());
+  if (!file || file.name !== input.newName) throw new FileRenameError(500);
+  if (file.driveFileId) await upsertCachedFile(input.folder, file).catch(() => undefined);
+  else renameOpenedDocument(input.folder, input.filename, file.name);
+  publishLibraryFileMutation({ kind: 'rename', folder: input.folder, filename: input.filename, file });
+  notifyFoldersChanged();
+  window.dispatchEvent(new Event('book-renamed'));
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch('/api' + url, options);
@@ -401,6 +421,8 @@ export const foldersApi = {
   deleteFile: deleteFileOptimistically,
 
   moveFile: moveFileOptimistically,
+
+  renameFile,
 
   fileUrl: (folder: string, filename: string, driveFileId?: string | null) => driveFileId
     ? `/api/folders/by-id/${encodeURIComponent(driveFileId)}`

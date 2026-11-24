@@ -2,7 +2,7 @@
 
 * PDFium bitmap output stays in native BGRA order and is converted to RGBA exactly once. Do not combine `FPDF_REVERSE_BYTE_ORDER` with the existing BGRA-to-RGBA conversion because it corrupts red and blue channels in color-heavy PDFs.
 
-* Keep shared metadata limited to tags, reading progress, and viewer state.
+* Shared metadata owns book and library data. Store book comments separately from clips and their clip memos.
 * Keep shared metadata tables separate from application settings tables.
 * Do not let service composition import viewer entry composition directly.
 * Do not let viewer composition import service layout, LNB, home, folder, or tag routes.
@@ -37,6 +37,9 @@
   `book-clips-dialog`. Both book and library grids use `bookmark-library-card`
   and `bookmark-preview-dialog`. `clip-text-pane` is the separate OCR dialog.
   The memo editor writes the existing clip comment field on Save.
+* Consumer: shared cover cards. Scope the auto-classify button to `pdf-cover-tags`
+  and locate Comments and File actions inside `pdf-cover-actions` by accessible name.
+  File actions opens a menu. Comments opens a dialog with one complete post per page.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`
   source tree during the build and must

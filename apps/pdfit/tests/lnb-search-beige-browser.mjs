@@ -84,12 +84,12 @@ try {
     const nameBox = await titleRow.locator('a').boundingBox();
     assert.ok(checkBox.x + checkBox.width <= nameBox.x);
     assert.equal(await actions.getByTestId('pdf-cover-selection').count(), 0);
-    // 카드 높이 = 썸네일 + 버튼 4종. 버튼 사이 구분선은 없고 균등 4분할이다.
+    // 코멘트, 태그 관리, 파일 작업 버튼을 같은 폭으로 표시한다.
     assert.equal(await cover.getByTestId('pdf-cover-action-divider').count(), 0);
-    assert.equal(await cover.getByTestId('pdf-cover-tag-actions').getByRole('button').count(), 2);
-    assert.equal(await cover.getByTestId('pdf-cover-file-actions').getByRole('button').count(), 2);
+    assert.equal(await cover.getByTestId('pdf-cover-tag-actions').getByRole('button').count(), 1);
+    assert.equal(await cover.getByTestId('pdf-cover-file-actions').getByRole('button').count(), 1);
     const buttonBoxes = await actions.getByRole('button').evaluateAll((elements) => elements.map((element) => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; }));
-    assert.equal(buttonBoxes.length, 4);
+    assert.equal(buttonBoxes.length, 3);
     for (let index = 1; index < buttonBoxes.length; index += 1) {
       assert.ok(Math.abs(buttonBoxes[index].width - buttonBoxes[0].width) < 1, '버튼 폭이 균등하지 않음');
       assert.ok(Math.abs(buttonBoxes[index].x - (buttonBoxes[index - 1].x + buttonBoxes[index - 1].width)) < 1, '버튼 사이에 빈틈이 있음');

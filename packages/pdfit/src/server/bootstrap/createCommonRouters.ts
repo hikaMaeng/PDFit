@@ -12,6 +12,8 @@ import { createViewerStateRouter } from '../api/viewer-state/index.js';
 import { createOutlinesRouter } from '../routes/outlines.js';
 import { createBookmarksRouter } from '../api/bookmarks/index.js';
 import { createAnnotationsRouter } from '../api/annotations/index.js';
+import { createBookCommentsRouter } from '../routes/bookComments.js';
+import { BOOK_COMMENTS_PATH } from '../../common/protocol/book-comments/index.js';
 import { createFilesystemService } from '../services/filesystem.js';
 import { createWatcher } from '../services/watcher.js';
 import express from 'express';
@@ -84,6 +86,7 @@ export function createPdfitMetadataRouterMounts(
     { path: '/api/outlines', router: createOutlinesRouter(metadataStore) },
     { path: '/api/bookmarks', router: createBookmarksRouter(metadataStore, bookmarkOcr) },
     { path: '/api/annotations', router: createAnnotationsRouter(metadataStore) },
+    { path: BOOK_COMMENTS_PATH, router: createBookCommentsRouter(metadataStore) },
   ];
 }
 
@@ -182,11 +185,12 @@ export function createPdfitCommonRouterAssembly(options: {
         () => options.metadataStore.listFolderBookCounts(),
         () => options.metadataStore.listFolderColors(),
         (folder, color) => options.metadataStore.updateFolderColor(folder, color),
-        { purgeFile: (folder, filename) => options.metadataStore.purgeFile(folder, filename), purgeFolder: (folder) => options.metadataStore.purgeFolder(folder) },
+        options.metadataStore,
         options.maxUploadBytes,
         (event) => watcher.bus.emit('change', event),
         thumbnailService,
         covers,
+        watcher.relocate,
       ) },
       ...(covers ? [{ path: '/api/covers', router: createCoversRouter({
         filesystem,

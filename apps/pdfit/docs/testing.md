@@ -13,6 +13,8 @@ Run:
 
 [Cover card tag drag test](../tests/plans/cover-tag-drag-20261123.md) uses native mouse drags in the deployed Free UI with isolated tag API responses.
 
+[Book card and comments test](../tests/plans/book-card-comments-20261124.md) uses a disposable Free Docker library to exercise the card overlay, comment paging, file-name conflicts, and persistence across rename and folder move.
+
 `apps/pdfit/tests/viewer-restored-page-wheel-browser.mjs` mocks a saved viewer state (page 5, single and double layout) on an 8-page PDF, opens `/viewer/...` on the standalone server (`PDFIT_TEST_ORIGIN`, default `http://127.0.0.1:15203`), and asserts that the first mouse wheel without any prev/next click moves from the restored page (`5→6` single, `5→7` double). `PDFIT_TEST_CHANNEL=chrome` uses the installed Chrome; `PDFIT_TEST_RUN` names the report directory.
 
 [Viewer toolbar labels](../tests/plans/viewer-toolbar-labels-20261120.md) checks both renderers at 1440 px and 375 px. It scopes OCR, download, layout and navigation controls to the `viewer controls` toolbar and exercises the real OCR and PDF download routes on an isolated three-page fixture.

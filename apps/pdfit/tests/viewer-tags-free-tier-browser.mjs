@@ -451,7 +451,7 @@ try {
     const rect = element.getBoundingClientRect();
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
   }));
-  assert.equal(actionBoxes.length, 4, '유료 표지의 작업 버튼 4종이 표시되지 않음');
+  assert.equal(actionBoxes.length, 3, '유료 표지의 작업 버튼 3종이 표시되지 않음');
   for (const button of actionBoxes) {
     assert.ok(Math.abs(button.y - actionBoxes[0].y) < 1 && Math.abs(button.width - actionBoxes[0].width) < 1, '표지 작업 버튼이 일렬 균등 분할이 아님');
   }
@@ -461,7 +461,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(200);
   const mobileButtons = await paidActions.locator('button').evaluateAll((elements) => elements.map((element) => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width }; }));
-  assert.equal(mobileButtons.length, 4, '모바일 표지 작업 버튼 4종 누락');
+  assert.equal(mobileButtons.length, 3, '모바일 표지 작업 버튼 3종 누락');
   assert.ok(mobileButtons.every((button) => Math.abs(button.y - mobileButtons[0].y) < 1 && Math.abs(button.width - mobileButtons[0].width) < 1), '모바일 표지 작업 버튼이 균등 분할이 아님');
   scrollFixture = true;
   paidCoverFixture = false;

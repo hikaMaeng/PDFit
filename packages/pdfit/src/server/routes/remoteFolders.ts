@@ -3,7 +3,8 @@ import { open, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import multer from 'multer';
 import { Router, raw, type Request, type RequestHandler, type Response } from 'express';
-import { sanitizeName } from '../services/filesystem.js';
+import { DestinationFileExistsError, sanitizeName } from '../services/filesystem.js';
+import { FILE_RENAME_PATH, parseRenamePdfRequest, type RenamePdfRequest, type RenamedPdf } from '../../common/protocol/file-rename/index.js';
 import type { FolderInfo, PdfInfo } from '../services/types.js';
 
 /** Stream returned by a remote PDF content adapter. */
@@ -69,6 +70,7 @@ export interface PdfitRemoteLibraryAdapter {
   saveThumbnailById?(request: Request, driveFileId: string, mimeType: 'image/jpeg' | 'image/png', data: Buffer): Promise<void>;
   deleteFile(request: Request, folder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
   moveFile(request: Request, fromFolder: string, toFolder: string, filename: string, driveFileId?: string): Promise<PdfInfo>;
+  renameFile?(request: Request, input: RenamePdfRequest): Promise<RenamedPdf>;
 }
 
 /** Runtime controls for the shared remote-library router. */
@@ -293,6 +295,16 @@ export function createPdfitRemoteFoldersRouter(
     if (!fromFolder || !toFolder || !filename) { res.status(400).json({ error: 'Required parameters are missing.' }); return; }
     try { res.json({ ok: true, ...(await adapter.moveFile(req, fromFolder, toFolder, filename, driveFileId)) }); }
     catch (error) { sendError(res, 400, 'File could not be moved.', error); }
+  });
+  router.patch(FILE_RENAME_PATH, async (req, res) => {
+    const input = parseRenamePdfRequest(req.body);
+    if (!input) { res.status(400).end(); return; }
+    if (!adapter.renameFile) { res.status(501).end(); return; }
+    try { res.json(await adapter.renameFile(req, input)); }
+    catch (error) {
+      if (error instanceof DestinationFileExistsError) { res.status(409).end(); return; }
+      sendError(res, 400, 'File could not be renamed.', error);
+    }
   });
   return router;
 }

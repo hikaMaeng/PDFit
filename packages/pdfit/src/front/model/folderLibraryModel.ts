@@ -97,6 +97,17 @@ class FolderModel {
     this.emit();
   }
 
+  renameFile(filename: string, file: PdfInfo): void {
+    const previous = this.state.files.find((entry) => entry.name === filename && (!file.driveFileId || file.driveFileId === entry.driveFileId));
+    const oldIdentity = fileIdentity(filename, file.driveFileId);
+    const newIdentity = fileIdentity(file.name, file.driveFileId);
+    const tags = this.state.fileTags[oldIdentity] ?? this.state.fileTags[filename];
+    if (tags) this.state.fileTags[newIdentity] = tags;
+    if (oldIdentity !== newIdentity) delete this.state.fileTags[oldIdentity];
+    this.state.files = this.state.files.map((entry) => entry === previous ? { ...entry, ...file } : entry);
+    this.emit();
+  }
+
   addTag(filename: string, tag: string, driveFileId?: string): void {
     const identity = fileIdentity(filename, driveFileId);
     const current = this.state.fileTags[identity] ?? [];
@@ -164,6 +175,7 @@ class FolderLibraryModel {
       const model = this.folders.get(mutation.folder);
       if (!model) return;
       if (mutation.kind === 'remove') model.removeFile(mutation.filename, mutation.driveFileId);
+      else if (mutation.kind === 'rename') model.renameFile(mutation.filename, mutation.file);
       else model.upsertFile(mutation.file);
     });
   }

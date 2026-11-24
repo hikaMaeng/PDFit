@@ -34,6 +34,20 @@ export function recordDocumentOpened(document: DocumentIdentity): void {
   }
 }
 
+export function renameOpenedDocument(folder: string, filename: string, newName: string): void {
+  if (filename === newName) return;
+  try {
+    const history = readHistory();
+    const previous = identityKey({ folder, filename });
+    const openedAt = history[previous];
+    if (!openedAt) return;
+    history[identityKey({ folder, filename: newName })] = openedAt;
+    delete history[previous];
+    window.localStorage.setItem(storageKey(), JSON.stringify(history));
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  } catch { /* history is browser-local */ }
+}
+
 /** 마지막 열기 시각을 조회한다. 저장 기록이 없으면 null을 반환한다. */
 export function getDocumentOpenedAt(document: DocumentIdentity): string | null {
   const value = readHistory()[identityKey(document)];

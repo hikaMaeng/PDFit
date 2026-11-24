@@ -18,6 +18,7 @@ import type { ContentSearchResult, ContentSearchScope } from '../common/protocol
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
 export type { BookOutlineEntry, BookOutlinePayload } from '../common/protocol/outlines/index.js';
+export type { BookComment, BookCommentStore } from '../common/protocol/book-comments/index.js';
 
 export interface TagSummary {
   name: string;
@@ -61,6 +62,8 @@ export interface BookTitleSearchResult {
 }
 
 export interface MetadataStore {
+  bookComments?: import('../common/protocol/book-comments/index.js').BookCommentStore;
+  relocateBook?(fromFolder: string, filename: string, toFolder: string, file: import('../common/protocol/file-rename/index.js').RenamedPdf): Promise<import('../common/protocol/file-rename/index.js').RenamedPdf>;
   /**
    * 책 제목(파일명에서 `.pdf`를 뺀 값)에 `query`가 부분 문자열로 들어 있는 책을 DB 기준으로 찾는다.
    * 대소문자와 유니코드 정규화(NFC/NFD) 차이는 무시한다. 구현하지 않는 저장소는 라우트가 501로 답한다.

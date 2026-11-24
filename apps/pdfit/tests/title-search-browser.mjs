@@ -111,9 +111,13 @@ try {
   await waitForMountedResults();
   check('표지 보기 카드 수가 결과 수와 같음', (await page.getByTestId('pdf-cover-title-row').count()) === initialsNames.length);
   const firstCoverActions = page.getByTestId('pdf-cover-file-actions').first();
-  check('표지 카드에서 이동·삭제 가능',
-    await firstCoverActions.getByRole('button', { name: '폴더로 이동' }).count() === 1
-      && await firstCoverActions.getByRole('button', { name: '삭제' }).count() === 1);
+  await firstCoverActions.getByRole('button', { name: '파일 작업' }).click();
+  const fileMenu = page.getByRole('menu');
+  check('표지 카드 메뉴에서 이동·삭제·이름 변경 가능',
+    await fileMenu.getByRole('menuitem', { name: '다른 폴더로 이동' }).count() === 1
+      && await fileMenu.getByRole('menuitem', { name: '삭제' }).count() === 1
+      && await fileMenu.getByRole('menuitem', { name: '파일 이름 바꾸기' }).count() === 1);
+  await page.keyboard.press('Escape');
   await page.screenshot({ path: path.join(output, '03-results-covers.png') });
   await page.evaluate(() => localStorage.setItem('pdfit.library.view', 'list'));
 

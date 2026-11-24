@@ -2,8 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStor
 import { useNavigate } from 'react-router-dom';
 import { Box, Button, Checkbox, CircularProgress, IconButton, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import DeleteIcon from '@mui/icons-material/Delete';
-import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageSearchIcon from '@mui/icons-material/ImageSearch';
 import HashTagIcon from './HashTagIcon.js';
@@ -22,6 +21,10 @@ import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
 import FavoriteToggle from './FavoriteToggle.js';
 import BookClipButton from './clips/BookClipButton.js';
+import BookCommentsDialog from './book-comments/BookCommentsDialog.js';
+import { bookCommentsModel } from './book-comments/model.js';
+import { COMMENT } from './book-comments/resource.js';
+import BookFileActions from './book-file-actions/BookFileActions.js';
 import type { BookClipCount } from '../../common/protocol/bookmarks/index.js';
 
 type Props = Partial<BookClipCount> & {
@@ -428,6 +431,10 @@ function PdfCoverItem(props: Props) {
   const coverThumbnailUrl = localServerCover && props.thumbnailUrl ? withCoverVersion(props.thumbnailUrl, props.folder, props.filename) : props.thumbnailUrl;
   const canReplaceCover = localServerCover && !pending && Boolean(props.onManageTags) && coversAvailable();
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const hasFileActions = !props.hideFileActions && Boolean(props.onMove || props.onDelete);
+  const showComments = hasFileActions || Boolean(props.onManageTags);
+  const book = { folder: props.folder, filename: props.filename, driveFileId: props.driveFileId };
 
   // The last page is the page the viewer saved in its viewer state (the same value that reopening
   // the book restores). It is read only once the overlay is first shown, so a grid of cards does
@@ -482,6 +489,12 @@ function PdfCoverItem(props: Props) {
             {pending ? <Typography role="status" variant="caption" sx={{ alignSelf: 'flex-start', px: .75, py: .25, border: '1px solid', borderColor: 'warning.main', borderRadius: 99, color: 'warning.light', fontWeight: 650 }}>{t('uploadPending')}</Typography> : null}
             <Box data-testid="pdf-cover-tags" sx={{ display: 'flex', flexWrap: 'wrap', gap: .5 }}>
               {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={props.onTagDelete ? () => props.onTagDelete?.(props.folder, props.filename, tag) : undefined} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
+              {props.onAutoTag && <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small"
+                disabled={pending || props.autoTagging || props.autoTagDisabled}
+                onClick={() => props.onAutoTag?.(props.folder, props.filename)}
+                sx={{ color: aiAccentColor, p: .25, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>
+                {props.autoTagging ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon sx={{ fontSize: 16 }} />}
+              </IconButton></span></Tooltip>}
             </Box>
             {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', color: 'primary.light', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
             <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" sx={OVERLAY_TEXT_SX}>{t('openedAt')}: {openedLabel}</Typography>
@@ -508,18 +521,21 @@ function PdfCoverItem(props: Props) {
         <InfoOutlinedIcon sx={{ fontSize: 18 }} />
       </IconButton>
     </Box>
-    {(props.onAutoTag || props.onManageTags || canReplaceCover || (!props.hideFileActions && (props.onMove || props.onDelete))) && <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
+    {(showComments || canReplaceCover) && <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
+      {showComments && <Tooltip title={t(COMMENT.BUTTON)}><span><IconButton aria-label={t(COMMENT.BUTTON)} aria-haspopup="dialog" size="small" disabled={pending}
+        onClick={() => { bookCommentsModel.open(book); setCommentsOpen(true); }} sx={{ color: 'primary.main' }}>
+        <ChatBubbleOutlineIcon fontSize="small" />
+      </IconButton></span></Tooltip>}
       <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'contents' }}>
-        {props.onAutoTag ? <Tooltip title={t('aiAutoTag')}><span><IconButton aria-label={t('aiAutoTag')} size="small" disabled={pending || props.autoTagging || props.autoTagDisabled} onClick={() => props.onAutoTag?.(props.folder, props.filename)} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>{props.autoTagging ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon fontSize="small" />}</IconButton></span></Tooltip> : null}
         {canReplaceCover ? <Tooltip title={t('realCover')}><span><IconButton aria-label={t('realCover')} data-testid="pdf-cover-real-cover" size="small" onClick={() => setCoverDialogOpen(true)} sx={{ color: 'primary.main' }}><ImageSearchIcon fontSize="small" /></IconButton></span></Tooltip> : null}
         {props.onManageTags ? <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags?.(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip> : null}
       </Box>
-      {!props.hideFileActions && <Box data-testid="pdf-cover-file-actions" sx={{ display: 'contents' }}>
-        {props.onMove ? <Tooltip title={t('moveToFolder')}><span><IconButton aria-label={t('moveToFolder')} size="small" disabled={pending} onClick={() => props.onMove?.(props.folder, props.filename)}><DriveFileMoveIcon fontSize="small" /></IconButton></span></Tooltip> : null}
-        {props.onDelete ? <Tooltip title={t('delete')}><span><IconButton aria-label={t('delete')} size="small" color="error" disabled={pending} onClick={() => props.onDelete?.(props.folder, props.filename)}><DeleteIcon fontSize="small" /></IconButton></span></Tooltip> : null}
+      {hasFileActions && <Box data-testid="pdf-cover-file-actions" sx={{ display: 'contents' }}>
+        <BookFileActions book={book} disabled={pending} onMove={props.onMove} onDelete={props.onDelete} />
       </Box>}
     </Box>}
     {canReplaceCover ? <RealCoverDialog open={coverDialogOpen} folder={props.folder} filename={props.filename} onClose={() => setCoverDialogOpen(false)} /> : null}
+    {commentsOpen && <BookCommentsDialog book={book} onClose={() => { bookCommentsModel.close(); setCommentsOpen(false); }} />}
   </Box>;
 }
 

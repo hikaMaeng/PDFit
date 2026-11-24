@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 import { Router, type Request, type Response } from 'express';
-import { sanitizeName } from '../services/filesystem.js';
+import { DestinationFileExistsError, sanitizeName } from '../services/filesystem.js';
+import { FILE_RENAME_PATH, parseRenamePdfRequest, type RenamedPdf } from '../../common/protocol/file-rename/index.js';
 import { LibraryOfflineError } from '../services/libraryVolume.js';
 import type { FilesystemService } from '../services/types.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
@@ -66,12 +67,13 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
-  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder'>,
+  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder' | 'relocateBook'>,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed' | 'favorites-changed') => void,
   thumbnails?: FolderThumbnailProvider,
   /** Real-book covers chosen by the user; they replace the rendered first page. */
   covers?: CoverOverrideStore,
+  serializeRelocation: <T>(operation: () => Promise<T>) => Promise<T> = (operation) => operation(),
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
@@ -99,6 +101,39 @@ export function createFoldersRouter(
     if (error instanceof LibraryOfflineError) { res.status(503).json({ error: String(error), code: error.code }); return; }
     res.status(status).json({ error: String(error) });
   };
+
+  const relocateBook = (folder: string, filename: string, destination: string, newName: string) => serializeRelocation(async () => {
+    const file = await filesystem.relocateFile(folder, filename, destination, newName);
+    if (folder === destination && filename === newName) return file;
+    let saved = file;
+    try {
+      saved = await metadataMutation?.relocateBook?.(folder, filename, destination, file) ?? file;
+    } catch (error) {
+      await filesystem.relocateFile(destination, newName, folder, filename).catch((rollbackError) => {
+        console.error('[folders] file relocation rollback failed:', rollbackError);
+      });
+      throw error;
+    }
+    await covers?.move({ folder, filename }, { folder: destination, filename: newName }).catch((error) => {
+      console.warn('[folders] could not transfer the cover override:', error);
+    });
+    return saved;
+  });
+
+  router.patch(FILE_RENAME_PATH, async (req, res) => {
+    const input = parseRenamePdfRequest(req.body);
+    if (!input || input.driveFileId) { res.status(400).end(); return; }
+    if (!metadataMutation?.relocateBook) { res.status(501).end(); return; }
+    try {
+      const saved: RenamedPdf = await relocateBook(input.folder, input.filename, input.folder, input.newName);
+      notifyChange?.('folders-changed');
+      notifyChange?.('tags-changed');
+      notifyChange?.('favorites-changed');
+      res.json(saved);
+    } catch (error) {
+      fail(res, error, error instanceof DestinationFileExistsError ? 409 : 400);
+    }
+  });
 
   router.post('/refresh', async (_req: Request, res: Response) => {
     try {
@@ -339,10 +374,15 @@ export function createFoldersRouter(
     }
 
     try {
-      await filesystem.moveFile(fromFolder, toFolder, sanitizeName(filename));
-      await covers?.move({ folder: fromFolder, filename: sanitizeName(filename) }, { folder: toFolder, filename: sanitizeName(filename) }).catch(() => false);
-      await refresh?.();
-      await metadataMutation?.purgeFile(fromFolder, sanitizeName(filename));
+      const name = sanitizeName(filename);
+      if (metadataMutation?.relocateBook) {
+        await relocateBook(sanitizeName(fromFolder), name, sanitizeName(toFolder), name);
+      } else {
+        await filesystem.moveFile(fromFolder, toFolder, name);
+        await covers?.move({ folder: fromFolder, filename: name }, { folder: toFolder, filename: name }).catch(() => false);
+        await refresh?.();
+        await metadataMutation?.purgeFile(fromFolder, name);
+      }
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');

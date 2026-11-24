@@ -18,6 +18,8 @@ import { compactSearchText, titleChoseong } from '../../shared/choseong.js';
 import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest, UpdateBookmarkRequest } from '../../common/protocol/bookmarks/index.js';
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 import { bookClipCountsSchema } from './bookClipCounts.js';
+import { bookCommentsSchema, createPostgresBookComments } from './bookComments.js';
+import type { RenamedPdf } from '../../common/protocol/file-rename/index.js';
 import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
 import type { ContentSearchScope } from '../../common/protocol/search/index.js';
 
@@ -50,7 +52,11 @@ function bookmarkOcrFromRow(row: Record<string, unknown>): BookmarkOcr | null {
 import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../../common/protocol/annotations/index.js';
 
 export class PostgresMetadataStore implements MetadataStore {
-  constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {}
+  readonly bookComments: NonNullable<MetadataStore['bookComments']>;
+
+  constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {
+    this.bookComments = createPostgresBookComments(db);
+  }
 
   async listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>> {
     const result = await this.db.query(`
@@ -553,6 +559,42 @@ export class PostgresMetadataStore implements MetadataStore {
     return result.rowCount === 1;
   }
 
+  async relocateBook(fromFolder: string, filename: string, toFolder: string, file: RenamedPdf): Promise<RenamedPdf> {
+    const client = await this.db.connect();
+    const keys = [fromFolder, filename, toFolder, file.name];
+    try {
+      await client.query('BEGIN');
+      // Match the lock order used by the clip-count triggers.
+      await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(0, 2));
+      await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(2));
+      const moved = await client.query(`
+        UPDATE books SET folder = $3, filename = $4, title_choseong = $5,
+          clip_count_revision = nextval('book_clip_count_revisions')
+        WHERE (folder, filename) = ($1, $2) RETURNING clip_count, clip_count_revision
+      `, [...keys, titleChoseong(file.name)]);
+      for (const table of ['reading_progress', 'book_tags', 'viewer_state', 'bookmarks', 'book_outlines', 'book_favorites']) {
+        await client.query(`UPDATE ${table} SET folder = $3, filename = $4 WHERE (folder, filename) = ($1, $2)`, keys);
+      }
+      const fileUrl = (folder: string, name: string) => `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(name)}`;
+      await client.query('UPDATE annotations SET document_id = $2 WHERE document_id = $1', [fileUrl(fromFolder, filename), fileUrl(toFolder, file.name)]);
+      let row = moved.rows[0];
+      if (!row) {
+        await client.query(`
+          INSERT INTO books (folder, filename, size, modified_at, title_choseong)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [toFolder, file.name, file.size, file.modifiedAt, titleChoseong(file.name)]);
+        row = (await client.query('SELECT clip_count, clip_count_revision FROM books WHERE (folder, filename) = ($1, $2)', keys.slice(2))).rows[0];
+      }
+      await client.query('COMMIT');
+      return { ...file, ...bookClipCountFromRow(row) };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async purgeFile(folder: string, filename: string): Promise<void> {
     await this.db.query('DELETE FROM books WHERE folder = $1 AND filename = $2', [folder, filename]);
     await this.db.query('DELETE FROM reading_progress WHERE folder = $1 AND filename = $2', [folder, filename]);
@@ -840,6 +882,7 @@ export class PostgresMetadataStore implements MetadataStore {
       );
       ALTER TABLE book_outlines ADD COLUMN IF NOT EXISTS is_manually_edited BOOLEAN;
       ${contentSearchSchema}
+      ${bookCommentsSchema}
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
     await this.backfillTitleChoseong();

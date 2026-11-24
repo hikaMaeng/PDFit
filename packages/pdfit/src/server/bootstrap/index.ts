@@ -145,6 +145,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
 export { createPdfitMetadataRouterMounts } from './createCommonRouters.js';
 export type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
 export { createPdfitRemoteFoldersRouter, parsePdfitByteRange } from '../routes/remoteFolders.js';
+export { DestinationFileExistsError } from '../services/filesystem.js';
 export type { PdfitRemoteFile, PdfitRemoteFoldersRouterOptions, PdfitRemoteLibraryAdapter, PdfitRemoteRefreshResult, PdfitRemoteThumbnail, PdfitRemoteThumbnailState, PdfitResumableUploadSession } from '../routes/remoteFolders.js';
 export { createThumbnailStore, isThumbnailStamp, thumbnailFileName, thumbnailSourceStamp, THUMBNAIL_FAILURE_RETRY_MS } from '../thumbnails/thumbnailStore.js';
 export type { ThumbnailStore } from '../thumbnails/thumbnailStore.js';

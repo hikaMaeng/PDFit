@@ -157,6 +157,12 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     return () => { booksRequest.current += 1; };
   }, [loadBooks]);
 
+  useEffect(() => {
+    const reload = () => void loadBooks(true);
+    window.addEventListener('book-renamed', reload);
+    return () => window.removeEventListener('book-renamed', reload);
+  }, [loadBooks]);
+
   useEffect(() => subscribeTagDetailsChanges(({ previousName, name }) => {
     if (previousName === name || previousName === tagName) return;
     void loadBooks(true);

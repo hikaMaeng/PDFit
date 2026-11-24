@@ -174,6 +174,11 @@ PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, fi
 
 [`OutlineModel`](../src/front/viewer/outlineModel.ts#OutlineModel) owns dialog operations for both engines. [`loadOutlineWithStorage`](../src/front/viewer/storedOutline.ts#loadOutlineWithStorage) initializes an outline that has at least one destination and reads back current storage on `412`. PostgreSQL treats automatically generated sequences of numeric top-level placeholders as missing. Existing copies with unknown provenance are kept until explicit regeneration. Normal `PUT` writes record a manual edit, and an explicit regeneration sends `generated: true`.
 
+## Book file actions and comments
+
+- `PATCH /api/folders/files/rename` takes `{folder, filename, newName, driveFileId?}` and returns the renamed file metadata. It rejects invalid PDF names with `400` and existing destination names with `409`. The Free store relocates path-keyed metadata in one transaction. [Rename protocol](../src/common/protocol/file-rename/index.ts)
+- `GET /api/book-comments?folder=…&filename=…&page=1` returns `{comment, page, total}`, one full post per page in descending creation order. A page past the last post is clamped. `POST` and `PATCH` use the same book query plus a UUID `id` and a JSON `{body}` of up to 10,000 characters. `DELETE` also uses the book and post ID. Posts follow the PDF through file rename and folder moves. [Comment protocol](../src/common/protocol/book-comments/index.ts)
+
 ## Bookmark endpoints
 
 `GET /api/bookmarks` lists persisted clips for **My clips**. The viewer and book

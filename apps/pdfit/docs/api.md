@@ -11,6 +11,7 @@
 
 * `/health` — runtime health
 * `/api/folders`, `/api/tags`, `/api/progress`, `/api/viewer-state`, `/api/events` — shared library APIs
+* `PATCH /api/folders/files/rename` and `/api/book-comments` — rename a PDF or manage its posts. [Shared API contract](../../../packages/pdfit/docs/api.md#book-file-actions-and-comments)
 * `/api/tags/summary` — tag names with the number of books using each tag
 * `GET /api/tags/index` — every tag with all of its books (`[{ name, color, books: [{ folder, filename }] }]`), for the sidebar "Index" page; `501` when the metadata store does not implement it
 * `GET /api/tags/untagged-books`, `GET /api/tags/untagged-count` — books that have no tag at all (sidebar "Untagged"); `501` when the metadata store does not implement them

@@ -19,8 +19,12 @@ try {
   await page.getByRole('button', { name: '표지 보기', exact: true }).click();
   await page.getByTestId('pdf-cover-card').first().waitFor();
   assert.equal(await page.getByTestId('pdf-cover-selection').count(), 0);
-  assert.equal(await page.getByTestId('pdf-cover-file-actions').count(), 0);
+  const fileActions = page.getByTestId('pdf-cover-file-actions').first();
+  assert.equal(await fileActions.getByRole('button').count(), 1);
+  await fileActions.getByRole('button', { name: '파일 작업', exact: true }).click();
+  await page.getByRole('menuitem', { name: '파일 이름 바꾸기', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '목록 보기', exact: true }).click();
   await page.locator('.pdfit-row-action-tags').first().waitFor();
-  console.log('태그 화면 새로고침, 목록/표지 전환, 선택 및 이동/삭제 제거 통과');
+  console.log('태그 화면 새로고침, 목록/표지 전환, 표지 파일 작업 메뉴 통과');
 } finally { await browser.close(); }

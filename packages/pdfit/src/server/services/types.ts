@@ -34,4 +34,5 @@ export interface FilesystemService {
   renameFolder(oldName: string, newName: string): Promise<void>;
   deleteFile(folder: string, filename: string): Promise<void>;
   moveFile(fromFolder: string, toFolder: string, filename: string): Promise<void>;
+  relocateFile(fromFolder: string, filename: string, toFolder: string, newName: string): Promise<PdfInfo>;
 }

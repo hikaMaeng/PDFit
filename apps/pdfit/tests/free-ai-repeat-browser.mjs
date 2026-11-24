@@ -61,7 +61,9 @@ try {
   await page.getByRole('dialog').screenshot({ path: 'apps/pdfit/tests/reports/free-ai-repeat/20261006/free-pdf-classify-guide.png' });
   await page.getByRole('dialog').getByRole('button', { name: '닫기', exact: true }).click();
   await page.getByRole('button', { name: '표지 보기', exact: true }).click();
-  await page.getByTestId('pdf-cover-card').first().getByTestId('pdf-cover-file-actions').getByRole('button').first().click();
+  const fileActions = page.getByTestId('pdf-cover-card').first().getByRole('button', { name: '파일 작업', exact: true });
+  await fileActions.click();
+  await page.getByRole('menuitem', { name: '다른 폴더로 이동', exact: true }).click();
   const filenameLine = page.getByTestId('move-document-filename');
   await filenameLine.waitFor();
   assert.match(await filenameLine.innerText(), /^파일명 : .+\.pdf$/);
@@ -84,7 +86,8 @@ try {
   assert.equal(await page.getByRole('dialog').getByRole('button', { name: '이동', exact: true }).isEnabled(), true);
   await page.getByRole('dialog').screenshot({ path: 'apps/pdfit/tests/reports/free-ai-repeat/20261006/move-folder-list.png' });
   await page.getByRole('dialog').getByRole('button', { name: '취소', exact: true }).click();
-  await page.getByTestId('pdf-cover-card').first().getByTestId('pdf-cover-file-actions').getByRole('button').last().click();
+  await fileActions.click();
+  await page.getByRole('menuitem', { name: '삭제', exact: true }).click();
   const deleteDialog = page.getByRole('dialog');
   const cancel = deleteDialog.getByRole('button', { name: '취소', exact: true });
   const remove = deleteDialog.getByRole('button', { name: '삭제', exact: true });

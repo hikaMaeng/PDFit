@@ -8,6 +8,7 @@ export interface WatcherController {
   bus: EventEmitter;
   start(): void;
   refresh(): Promise<void>;
+  relocate<T>(operation: () => Promise<T>): Promise<T>;
 }
 
 export function createWatcher(options: {
@@ -23,6 +24,15 @@ export function createWatcher(options: {
   const present = (target: string) => volume.run(() => fs.promises.access(target)).then(() => true, () => false);
   const bus = new EventEmitter();
   const dirWatchers = new Map<string, fs.FSWatcher>();
+  let pending: Promise<unknown> = Promise.resolve();
+
+  // A scan must never publish the old filename after a relocation commits, and a
+  // filesystem notification must not purge its metadata while relocation is in flight.
+  function relocate<T>(operation: () => Promise<T>): Promise<T> {
+    const result = pending.then(operation);
+    pending = result.catch(() => undefined);
+    return result;
+  }
 
   function closeWatcher(dir: string): void {
     const watcher = dirWatchers.get(dir);
@@ -46,7 +56,7 @@ export function createWatcher(options: {
         if (!name) {
           return;
         }
-        void handleChange(dir, String(name));
+        void relocate(() => handleChange(dir, String(name))).catch((error) => console.warn('[watcher] change failed:', error));
       });
 
       watcher.on('error', () => closeWatcher(dir));
@@ -71,11 +81,11 @@ export function createWatcher(options: {
       } else {
         closeWatcher(fullPath);
         if (name.toLowerCase().endsWith('.pdf')) {
-          void metadataStore.purgeFile(rootFolderName, name);
+          await metadataStore.purgeFile(rootFolderName, name);
         } else {
-          void metadataStore.purgeFolder(name);
+          await metadataStore.purgeFolder(name);
         }
-        void metadataStore.purgeOrphanTags();
+        await metadataStore.purgeOrphanTags();
       }
 
       bus.emit('change', 'folders-changed');
@@ -89,8 +99,8 @@ export function createWatcher(options: {
     }
 
     if (!exists) {
-      void metadataStore.purgeFile(path.basename(dir), name);
-      void metadataStore.purgeOrphanTags();
+      await metadataStore.purgeFile(path.basename(dir), name);
+      await metadataStore.purgeOrphanTags();
       bus.emit('change', 'tags-changed');
       bus.emit('change', 'favorites-changed');
     }
@@ -138,7 +148,8 @@ export function createWatcher(options: {
 
   return {
     bus,
-    refresh,
+    refresh: () => relocate(refresh),
+    relocate,
     start() {
       // Startup must never scan or synchronize the library. Watch only the
       // root so newly-created folders can be discovered; existing folder
