@@ -29,6 +29,8 @@ import {
   useTheme,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -42,6 +44,7 @@ import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutl
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TagIcon from '../components/HashTagIcon.js';
 import TagEditDialog from '../components/TagEditDialog.js';
+import TagFolderEditDialog from '../components/TagFolderEditDialog.js';
 import TagGlyph from '../components/TagGlyph.js';
 import TagNoticeSnackbar from '../components/TagNoticeSnackbar.js';
 import LanguageIcon from '@mui/icons-material/Language';
@@ -54,7 +57,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePdfitFrontConfig } from '../context';
 import { foldersApi, type FolderInfo } from '../api/folders';
 import { tagsApi, type TagSummary } from '../api/tags';
-import type { TagFolder } from '../api/tagFolders.js';
+import { normalizeTagFolderName, TAG_FOLDER_NAME_MAX, type TagFolder, type TagFolderDirection } from '../../common/protocol/tagFolders/index.js';
 import { tagFoldersModel, type TagDragPayload } from '../model/tagFoldersModel.js';
 import { folderLibraryModel } from '../model/folderLibraryModel';
 import { listAllBookmarks } from '../api/bookmarks';
@@ -63,7 +66,7 @@ import { subscribeBookmarkChanges } from '../model/bookmarkEvents.js';
 import { bookClipCountModel } from '../model/bookClipCountModel.js';
 import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
-import { UNTAGGED_PATH } from '../model/untagged.js';
+import { UNTAGGED_CHANGED_EVENT, UNTAGGED_PATH } from '../model/untagged.js';
 import { FAVORITES_PATH } from '../model/favorites.js';
 import { favoritesModel } from '../model/favoritesModel.js';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
@@ -85,18 +88,23 @@ export interface DragPayload {
 
 export const DRAG_TYPE = 'application/pdf-item';
 
-/** 접어 둔 태그 폴더 이름. 키: 폴더 이름 / 범위: 이 브라우저 / 정리: 폴더 목록을 받을 때 없는 이름을 지운다. */
+// Folder IDs keep collapsed rows closed after a rename. See docs/internals.md#태그-폴더.
 const COLLAPSED_TAG_FOLDERS_KEY = 'pdfit.lnb.collapsedTagFolders';
-function readCollapsedTagFolders(): Set<string> {
+type CollapsedTagFolders = { ids: Set<string>; legacyNames?: Set<string> };
+function readCollapsedTagFolders(): CollapsedTagFolders {
   try {
-    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_TAG_FOLDERS_KEY) ?? '[]') as unknown;
-    return new Set(Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : []);
-  } catch {
-    return new Set();
-  }
+    const value = JSON.parse(localStorage.getItem(COLLAPSED_TAG_FOLDERS_KEY) ?? 'null') as unknown;
+    if (Array.isArray(value)) {
+      return { ids: new Set(), legacyNames: new Set(value.filter((name): name is string => typeof name === 'string')) };
+    }
+    if (value && typeof value === 'object' && 'ids' in value && Array.isArray(value.ids)) {
+      return { ids: new Set(value.ids.filter((id): id is string => typeof id === 'string')) };
+    }
+  } catch { /* Use the default when local storage is unavailable. */ }
+  return { ids: new Set() };
 }
-function writeCollapsedTagFolders(names: Set<string>): void {
-  try { localStorage.setItem(COLLAPSED_TAG_FOLDERS_KEY, JSON.stringify([...names])); } catch { /* 저장소를 못 써도 이번 화면에서는 동작한다 */ }
+function writeCollapsedTagFolders(ids: Set<string>): void {
+  try { localStorage.setItem(COLLAPSED_TAG_FOLDERS_KEY, JSON.stringify({ ids: [...ids] })); } catch { /* 저장소를 못 써도 이번 화면에서는 동작한다 */ }
 }
 
 const noopSubscribe = (_listener: () => void) => () => undefined;
@@ -157,7 +165,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   useSyncExternalStore(tagFoldersModel.subscribe, tagFoldersModel.getVersion, tagFoldersModel.getVersion);
   const tagFolders = tagFoldersModel.list();
   const tagFoldersAvailable = tagFoldersModel.isAvailable();
-  const [collapsedTagFolders, setCollapsedTagFolders] = useState<Set<string>>(readCollapsedTagFolders);
+  const [collapsedTagFolders, setCollapsedTagFolders] = useState(readCollapsedTagFolders);
   const [dragOverTagFolder, setDragOverTagFolder] = useState<string | null>(null);
   const tagFolderMenuId = useId();
   const [tagFolderMenu, setTagFolderMenu] = useState<{ anchor: HTMLElement; tag: string } | null>(null);
@@ -166,6 +174,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const [newTagFolderName, setNewTagFolderName] = useState('');
   const [creatingTagFolder, setCreatingTagFolder] = useState(false);
   const [tagFolderError, setTagFolderError] = useState<string | null>(null);
+  const [editTagFolder, setEditTagFolder] = useState<TagFolder | null>(null);
   const [loading, setLoading] = useState(true);
   const [foldersOpen, setFoldersOpen] = useState(true);
   const [tagsOpen, setTagsOpen] = useState(true);
@@ -211,18 +220,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
   const loadTags = useCallback(async () => {
     const request = ++tagsRequest.current;
-    try {
-      const data = await tagsApi.listSummary();
-      if (request === tagsRequest.current) setTags(data);
-    } catch {
-      // keep current tag list on error
-    }
-    try {
-      const count = await tagsApi.countUntaggedBooks();
-      if (request === tagsRequest.current) setUntaggedCount(count);
-    } catch {
-      // 미분류 개수를 못 구해도 마지막 값을 유지한다
-    }
+    await Promise.allSettled([
+      tagsApi.listSummary().then((data) => {
+        if (request === tagsRequest.current) setTags(data);
+      }),
+      tagsApi.countUntaggedBooks().then((count) => {
+        if (request === tagsRequest.current) setUntaggedCount(count);
+      }),
+    ]);
   }, []);
 
   useEffect(() => subscribeTagDetailsChanges(({ previousName, name }) => {
@@ -353,6 +358,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         }
         if (event.data === 'tags-changed') {
           void loadTags();
+          window.dispatchEvent(new Event(UNTAGGED_CHANGED_EVENT));
           // 태그가 지워지면 폴더 소속도 서버에서 함께 지워진다.
           void tagFoldersModel.load();
         }
@@ -384,15 +390,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     };
   }, [loadFolders, loadTags]);
 
-  // 사라진 폴더의 접힘 기록을 지운다(폴더 목록을 한 번이라도 받은 뒤에만).
+  // Resolve old name-based preferences and remove records of deleted folders.
   useEffect(() => {
     if (!tagFoldersModel.isLoaded()) return;
     setCollapsedTagFolders((current) => {
-      const names = new Set(tagFolders.map((folder) => folder.name));
-      const next = new Set([...current].filter((name) => names.has(name)));
-      if (next.size === current.size) return current;
-      writeCollapsedTagFolders(next);
-      return next;
+      const ids = new Set(tagFolders.filter(({ id, name }) => current.ids.has(id) || current.legacyNames?.has(name)).map(({ id }) => id));
+      if (!current.legacyNames && ids.size === current.ids.size) return current;
+      writeCollapsedTagFolders(ids);
+      return { ids };
     });
   }, [tagFolders]);
 
@@ -547,6 +552,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       return;
     }
 
+    setSidebarError(null);
     try {
       const currentTags = await tagsApi.listForBook(payload.folder, payload.filename, payload.driveFileId);
       if (currentTags.includes(tag)) {
@@ -555,14 +561,14 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
 
       await tagsApi.addTag(payload.folder, payload.filename, tag, payload.driveFileId);
       folderLibraryModel.get(payload.folder).addTag(payload.filename, tag, payload.driveFileId);
-      await loadTags();
       window.dispatchEvent(
         new CustomEvent('tag-added', {
           detail: { folder: payload.folder, filename: payload.filename, driveFileId: payload.driveFileId, tag },
         }),
       );
+      await loadTags();
     } catch {
-      // keep current UI state on error
+      setSidebarError(ui('요청에 실패했습니다.'));
     }
   };
 
@@ -574,17 +580,17 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const isBookDrag = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes(DRAG_TYPE);
   const isTagDrag = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes(tagFoldersModel.dragType);
 
-  const toggleTagFolder = (name: string) => {
+  const toggleTagFolder = (id: string) => {
     setCollapsedTagFolders((current) => {
-      const next = new Set(current);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      writeCollapsedTagFolders(next);
-      return next;
+      const ids = new Set(current.ids);
+      if (ids.has(id)) ids.delete(id); else ids.add(id);
+      writeCollapsedTagFolders(ids);
+      return { ids };
     });
   };
 
   const handleCreateTagFolder = async () => {
-    const name = newTagFolderName.trim();
+    const name = normalizeTagFolderName(newTagFolderName);
     if (!name || creatingTagFolder) return;
     if (tagFolders.some((folder) => folder.name === name)) { setTagFolderError(t('tagFolderDuplicate')); return; }
     setCreatingTagFolder(true);
@@ -600,6 +606,11 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     } finally {
       setCreatingTagFolder(false);
     }
+  };
+
+  const moveTagFolder = (id: string, direction: TagFolderDirection) => {
+    setSidebarError(null);
+    void tagFoldersModel.move(id, direction).catch(() => setSidebarError(t(RSC.SIDEBAR_TAGFOLDER_REORDERFAILED_ALERT)));
   };
 
   const addTagToFolder = (folderName: string, tag: string) => {
@@ -739,14 +750,21 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
     );
   };
 
-  const renderTagFolder = (folder: TagFolder) => {
-    const open = !collapsedTagFolders.has(folder.name);
+  const renderTagFolder = (folder: TagFolder, index: number) => {
+    const editLabel = t(RSC.SIDEBAR_TAGFOLDER_EDIT_BUTTON, { name: folder.name });
+    const actionSx = {
+      p: 0.25, width: 21, height: 25, color: sidebarTextSecondary,
+      '&:focus-visible, &:hover:not([aria-disabled="true"])': { color: sidebarTextPrimary, bgcolor: sidebarHover },
+      '&[aria-disabled="true"]': { opacity: 0.3, cursor: 'default' },
+      '@media (hover: none)': { width: 30, height: 32 },
+    } as const;
+    const open = !collapsedTagFolders.ids.has(folder.id) && !collapsedTagFolders.legacyNames?.has(folder.name);
     const dragOver = dragOverTagFolder === folder.name;
     const members = folder.tags.map((name) => tagsByName.get(name)).filter((tag): tag is TagSummary => Boolean(tag));
     return (
       <Box
         component="li"
-        key={folder.name}
+        key={folder.id}
         data-testid="lnb-tag-folder"
         onDragOver={(event) => {
           if (!isTagDrag(event)) return;
@@ -771,15 +789,17 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           component="div"
           className="pdfit-tag-row"
           disablePadding
-          sx={{ px: 1, columnGap: 0.5 }}
+          sx={{ px: 1, columnGap: 0.25 }}
         >
           <ListItemButton
             disableGutters
             data-testid="lnb-tag-folder-toggle"
             aria-expanded={open}
             aria-label={folder.name}
-            onClick={() => toggleTagFolder(folder.name)}
+            title={folder.name}
+            onClick={() => toggleTagFolder(folder.id)}
             sx={{
+              minWidth: 0,
               borderRadius: 1,
               paddingInlineStart: 0.75,
               py: 0.4,
@@ -793,7 +813,8 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
                   {open
                     ? <ExpandMoreIcon aria-hidden sx={{ fontSize: 16, flexShrink: 0, color: sidebarTextSecondary }} />
                     : <ChevronRightIcon aria-hidden sx={{ fontSize: 16, flexShrink: 0, color: sidebarTextSecondary }} />}
-                  <FolderOutlinedIcon aria-hidden sx={{ fontSize: 15, flexShrink: 0, color: sidebarAccent }} />
+                  <FolderOutlinedIcon aria-hidden data-testid="lnb-tag-folder-icon"
+                    sx={{ fontSize: 15, flexShrink: 0, color: folder.color ?? sidebarAccent }} />
                   <Typography noWrap variant="body2" translate="no" sx={{ fontSize: '0.8rem', flex: 1 }}>
                     {folder.name}
                   </Typography>
@@ -805,13 +826,34 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
               disableTypography
             />
           </ListItemButton>
+          <Tooltip title={editLabel} arrow>
+            <IconButton size="small" aria-label={editLabel} aria-haspopup="dialog"
+              onClick={() => setEditTagFolder(folder)} sx={actionSx}>
+              <EditOutlinedIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+          {([
+            { direction: 'up', Icon: ArrowUpwardIcon, label: RSC.SIDEBAR_TAGFOLDER_UP_BUTTON, atEdge: index === 0 },
+            { direction: 'down', Icon: ArrowDownwardIcon, label: RSC.SIDEBAR_TAGFOLDER_DOWN_BUTTON, atEdge: index === tagFolders.length - 1 },
+          ] as const).map(({ direction, Icon, label, atEdge }) => {
+            const buttonLabel = t(label, { name: folder.name });
+            const disabled = atEdge || tagFoldersModel.isMoving();
+            return (
+              <Tooltip key={direction} title={buttonLabel} arrow>
+                <IconButton size="small" aria-label={buttonLabel} aria-disabled={disabled}
+                  onClick={() => { if (!disabled) moveTagFolder(folder.id, direction); }} sx={actionSx}>
+                  <Icon sx={{ fontSize: 15 }} />
+                </IconButton>
+              </Tooltip>
+            );
+          })}
           <Tooltip title={t('deleteTagFolder')} placement="right" arrow>
             <IconButton
               size="small"
               data-testid="lnb-tag-folder-delete"
               aria-label={`${folder.name} ${t('deleteTagFolder')}`}
               onClick={(event) => { event.stopPropagation(); setConfirmDelete({ kind: 'tag_folder', name: folder.name }); }}
-              sx={{ p: 0.25, color: sidebarTextSecondary, opacity: 0, transition: 'opacity 120ms ease', '.pdfit-tag-row:hover &, .pdfit-tag-row:focus-within &': { opacity: 0.8 }, '&:focus-visible, &:hover': { opacity: 1, color: 'error.main', bgcolor: sidebarHover }, '@media (hover: none)': { opacity: 0.8 } }}
+              sx={{ ...actionSx, '&:focus-visible, &:hover': { color: 'error.main', bgcolor: sidebarHover } }}
             >
               <DeleteIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -1303,6 +1345,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       </Drawer>
 
       {editTag && <TagEditDialog tag={editTag} onClose={() => setEditTag(null)} />}
+      {editTagFolder && <TagFolderEditDialog folder={editTagFolder} defaultColor={sidebarAccent} onClose={() => setEditTagFolder(null)} />}
 
       <Menu
         anchorEl={tagFolderMenu?.anchor}
@@ -1428,13 +1471,13 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             disabled={creatingTagFolder}
             error={Boolean(tagFolderError)}
             helperText={tagFolderError ?? ''}
-            inputProps={{ maxLength: 100 }}
+            inputProps={{ maxLength: TAG_FOLDER_NAME_MAX }}
             sx={{ mt: 1 }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTagFolderDialogOpen(false)} disabled={creatingTagFolder}>{t('cancel')}</Button>
-          <Button data-testid="create-tag-folder-save" variant="contained" onClick={() => void handleCreateTagFolder()} disabled={!newTagFolderName.trim() || creatingTagFolder}>
+          <Button data-testid="create-tag-folder-save" variant="contained" onClick={() => void handleCreateTagFolder()} disabled={!normalizeTagFolderName(newTagFolderName) || creatingTagFolder}>
             {creatingTagFolder ? t('creating') : t('create')}
           </Button>
         </DialogActions>

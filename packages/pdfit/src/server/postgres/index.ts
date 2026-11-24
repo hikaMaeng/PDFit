@@ -20,9 +20,19 @@ import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/pro
 import { bookClipCountsSchema } from './bookClipCounts.js';
 import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, listPageOcrSearchIndexes, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
 import type { ContentSearchScope } from '../../common/protocol/search/index.js';
+import type { EditTagFolderRequest, MoveTagFolderRequest, TagFolder } from '../../common/protocol/tagFolders/index.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKMARK_OCR_STATUSES = new Set<BookmarkOcr['status']>(['pending', 'done', 'failed', 'unavailable']);
+
+type TagFolderPosition = { id: string; name: string; position: number | null };
+
+// Use the sidebar's original name order for folders without a saved position.
+// See docs/internals.md#태그-폴더.
+function compareTagFolderPosition(left: TagFolderPosition, right: TagFolderPosition): number {
+  return (left.position ?? Infinity) - (right.position ?? Infinity)
+    || (left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+}
 
 function bookClipCountFromRow(row: Record<string, unknown>): BookClipCount {
   return { clipCount: Number(row.clip_count), clipCountRevision: Number(row.clip_count_revision) };
@@ -212,21 +222,67 @@ export class PostgresMetadataStore implements MetadataStore {
     return existing.rows.length > 0;
   }
 
-  async listTagFolders(): Promise<Array<{ name: string; tags: string[] }>> {
-    const result = await this.db.query(`
-      SELECT f.name, COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+  async listTagFolders(): Promise<TagFolder[]> {
+    const result = await this.db.query<TagFolder & TagFolderPosition>(`
+      SELECT f.id, f.name, f.color, f.position,
+        COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
       FROM tag_folders f
       LEFT JOIN tag_folder_tags ft ON ft.folder_name = f.name
       LEFT JOIN tags t ON t.id = ft.tag_id
       GROUP BY f.name
-      ORDER BY f.name
     `);
-    return result.rows.map((row) => ({ name: String(row.name), tags: (row.tags as string[]).map(String) }));
+    return result.rows.sort(compareTagFolderPosition).map(({ id, name, color, tags }) => ({ id, name, color, tags: tags.sort() }));
   }
 
   async createTagFolder(name: string): Promise<boolean> {
     const result = await this.db.query('INSERT INTO tag_folders (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async editTagFolder(id: string, patch: EditTagFolderRequest): Promise<'updated' | 'missing' | 'duplicate'> {
+    try {
+      const result = await this.db.query(`
+        UPDATE tag_folders
+        SET name = COALESCE($2, name),
+            color = CASE WHEN $3 THEN $4 ELSE color END
+        WHERE id = $1
+      `, [id, patch.name, patch.color !== undefined, patch.color]);
+      return result.rowCount ? 'updated' : 'missing';
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return 'duplicate';
+      throw error;
+    }
+  }
+
+  async moveTagFolder(id: string, move: MoveTagFolderRequest): Promise<'moved' | 'missing' | 'stale'> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialize position changes with folder creation, editing and deletion.
+      await client.query('LOCK TABLE tag_folders IN SHARE ROW EXCLUSIVE MODE');
+      const { rows } = await client.query<TagFolderPosition>('SELECT id, name, position FROM tag_folders');
+      rows.sort(compareTagFolderPosition);
+      const index = rows.findIndex((folder) => folder.id === id);
+      const neighbor = index + (move.direction === 'up' ? -1 : 1);
+      if (index === -1 || rows[neighbor]?.id !== move.neighborId) {
+        await client.query('ROLLBACK');
+        return index === -1 ? 'missing' : 'stale';
+      }
+      [rows[index], rows[neighbor]] = [rows[neighbor], rows[index]];
+      await client.query(`
+        UPDATE tag_folders AS folder
+        SET position = ordered.ordinality - 1
+        FROM unnest($1::uuid[]) WITH ORDINALITY AS ordered(id, ordinality)
+        WHERE folder.id = ordered.id AND folder.position IS DISTINCT FROM ordered.ordinality - 1
+      `, [rows.map((folder) => folder.id)]);
+      await client.query('COMMIT');
+      return 'moved';
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async deleteTagFolder(name: string): Promise<boolean> {
@@ -756,12 +812,25 @@ export class PostgresMetadataStore implements MetadataStore {
         name TEXT PRIMARY KEY,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE tag_folders ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
+      ALTER TABLE tag_folders ADD COLUMN IF NOT EXISTS color TEXT;
+      ALTER TABLE tag_folders ADD COLUMN IF NOT EXISTS position INTEGER;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_folders_id ON tag_folders (id);
       CREATE TABLE IF NOT EXISTS tag_folder_tags (
         folder_name TEXT NOT NULL REFERENCES tag_folders(name) ON DELETE CASCADE,
         tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
         PRIMARY KEY (folder_name, tag_id)
       );
       CREATE INDEX IF NOT EXISTS idx_tag_folder_tags_tag ON tag_folder_tags (tag_id);
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE id = 'tag-folder-rename-cascade') THEN
+          ALTER TABLE tag_folder_tags DROP CONSTRAINT tag_folder_tags_folder_name_fkey;
+          ALTER TABLE tag_folder_tags ADD CONSTRAINT tag_folder_tags_folder_name_fkey
+            FOREIGN KEY (folder_name) REFERENCES tag_folders(name) ON UPDATE CASCADE ON DELETE CASCADE;
+          INSERT INTO schema_migrations (id) VALUES ('tag-folder-rename-cascade');
+        END IF;
+      END $$;
       INSERT INTO books (folder, filename)
       SELECT folder, filename FROM book_tags
       ON CONFLICT (folder, filename) DO NOTHING;

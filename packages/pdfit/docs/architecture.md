@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `src/client` | Browser entry factories and runtime-safe UI composition. | `src/client/entries/service/index.ts#createPdfitServiceApp` |
 | `src/front` | Shared library pages, viewer, and PDFGPU implementation. | `src/front/pages/PdfViewerPage.tsx` |
+| `src/common` | Runtime-neutral HTTP contracts shared by the browser and server. | [Tag folder protocol](../src/common/protocol/tagFolders/index.ts) |
 | `src/front/model/windowSync.ts` | Shared cross-window transport, message envelope, and topic router. | `src/front/model/windowSync.ts#subscribeWindowSyncMessage` |
 | `src/front/model/languagePreference.ts` | Shared browser-language detection, persisted preference, document direction, and external-store model. | `src/front/model/languagePreference.ts#pdfitLanguagePreferenceModel` |
 | `src/server` | Express route factories, filesystem services, and PostgreSQL adapter. | `src/server/bootstrap/index.ts#createPdfitServer` |

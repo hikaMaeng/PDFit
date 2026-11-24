@@ -8,6 +8,7 @@ import { createTagsRouter } from '../api/tags/index.js';
 import { createSearchRouter } from '../api/search/index.js';
 import { createFavoritesRouter } from '../api/favorites/index.js';
 import { createTagFoldersRouter } from '../api/tag-folders/index.js';
+import { TAG_FOLDERS_PATH } from '../../common/protocol/tagFolders/index.js';
 import { createViewerStateRouter } from '../api/viewer-state/index.js';
 import { createOutlinesRouter } from '../routes/outlines.js';
 import { createBookmarksRouter } from '../api/bookmarks/index.js';
@@ -77,7 +78,7 @@ export function createPdfitMetadataRouterMounts(
     { path: '/api/progress', router: createProgressRouter(metadataStore) },
     { path: '/api/tags', router: createTagsRouter(metadataStore, suggestBookTags, automaticTagUsage) },
     { path: '/api/favorites', router: createFavoritesRouter(metadataStore, eventBus) },
-    { path: '/api/tag-folders', router: createTagFoldersRouter(metadataStore, eventBus) },
+    { path: TAG_FOLDERS_PATH, router: createTagFoldersRouter(metadataStore, eventBus) },
     { path: '/api/search', router: createSearchRouter(metadataStore) },
     { path: '/api/events', router: createEventsRouter(eventBus) },
     { path: '/api/viewer-state', router: createViewerStateRouter(metadataStore) },
@@ -187,7 +188,12 @@ export function createPdfitCommonRouterAssembly(options: {
         () => options.metadataStore.listFolderBookCounts(),
         () => options.metadataStore.listFolderColors(),
         (folder, color) => options.metadataStore.updateFolderColor(folder, color),
-        { purgeFile: (folder, filename) => options.metadataStore.purgeFile(folder, filename), purgeFolder: (folder) => options.metadataStore.purgeFolder(folder) },
+        {
+          commitUpload: watcher.commitUpload,
+          mutateFiles: watcher.mutateFiles,
+          purgeFile: (folder, filename) => options.metadataStore.purgeFile(folder, filename),
+          purgeFolder: (folder) => options.metadataStore.purgeFolder(folder),
+        },
         options.maxUploadBytes,
         (event) => watcher.bus.emit('change', event),
         thumbnailService,

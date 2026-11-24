@@ -1,8 +1,10 @@
 import type { EventEmitter } from 'node:events';
 import { Router, type Request, type Response } from 'express';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
-
-export const TAG_FOLDER_NAME_MAX = 100;
+import {
+  EDIT_TAG_FOLDER_ROUTE, MOVE_TAG_FOLDER_ROUTE, TAG_FOLDER_NAME_MAX,
+  isTagFolderId, normalizeTagFolderName, parseEditTagFolderRequest, parseMoveTagFolderRequest,
+} from '../../common/protocol/tagFolders/index.js';
 
 /**
  * 태그 폴더(`/api/tag-folders`). 사이드바에서 태그를 묶어 접고 펴는 그룹이며 책 폴더와 무관하다.
@@ -28,11 +30,41 @@ export function createTagFoldersRouter(metadataStoreResolver: MetadataStoreResol
       const store = await resolveMetadataStore(metadataStoreResolver, req);
       if (!store.createTagFolder) { unavailable(res); return; }
       const raw = (req.body as { name?: unknown } | undefined)?.name;
-      const name = typeof raw === 'string' ? raw.normalize('NFC').trim() : '';
-      if (!name || name.length > TAG_FOLDER_NAME_MAX) { res.status(400).json({ error: `Folder name must be 1-${TAG_FOLDER_NAME_MAX} characters.` }); return; }
+      const name = normalizeTagFolderName(raw);
+      if (!name) { res.status(400).json({ error: `Folder name must be 1-${TAG_FOLDER_NAME_MAX} characters.` }); return; }
       if (!(await store.createTagFolder(name))) { res.status(409).json({ error: 'A tag folder with this name already exists.' }); return; }
       changed();
       res.status(201).json({ ok: true, name });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.patch(EDIT_TAG_FOLDER_ROUTE.path, async (req: Request, res: Response) => {
+    try {
+      const store = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!store.editTagFolder) { unavailable(res); return; }
+      const { id } = req.params;
+      const patch = parseEditTagFolderRequest(req.body);
+      if (!isTagFolderId(id) || !patch) { res.status(400).json({ error: 'Invalid tag folder edit.' }); return; }
+      const result = await store.editTagFolder(id, patch);
+      if (result === 'missing') { res.status(404).json({ error: 'Tag folder not found.' }); return; }
+      if (result === 'duplicate') { res.status(409).json({ error: 'A tag folder with this name already exists.' }); return; }
+      changed();
+      res.status(204).end();
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post(MOVE_TAG_FOLDER_ROUTE.path, async (req: Request, res: Response) => {
+    try {
+      const store = await resolveMetadataStore(metadataStoreResolver, req);
+      if (!store.moveTagFolder) { unavailable(res); return; }
+      const { id } = req.params;
+      const move = parseMoveTagFolderRequest(req.body);
+      if (!isTagFolderId(id) || !move || move.neighborId === id) { res.status(400).json({ error: 'Invalid tag folder move.' }); return; }
+      const result = await store.moveTagFolder(id, move);
+      if (result === 'missing') { res.status(404).json({ error: 'Tag folder not found.' }); return; }
+      if (result === 'stale') { res.status(409).json({ error: 'The tag folder order has changed.' }); return; }
+      changed();
+      res.status(204).end();
     } catch (error) { fail(res, error); }
   });
 

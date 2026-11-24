@@ -1,5 +1,10 @@
 # Testing
 
+## Tag folder editing
+
+Run [tag-folders.test.mjs](../tests/tag-folders.test.mjs) against an isolated PostgreSQL database to verify legacy migration, membership preservation, and concurrent moves.
+The [Free browser scenario](../../../apps/pdfit/tests/tag-folder-edit-browser.mjs) scopes actions to `lnb-tag-folder`, uses named buttons and the edit dialog, and reads the icon from `lnb-tag-folder-icon`.
+
 Shared package changes are verified through:
 
 * `npm run build`

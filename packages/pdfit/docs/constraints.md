@@ -1,5 +1,9 @@
 # Constraints
 
+## Tag folder controls
+
+The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder order and uses the folder ID for collapsed state. `lnb-tag-folder` identifies each row. The edit and arrow buttons include the folder name in their accessible labels. `lnb-tag-folder-icon` exposes the color for browser verification. [Scenario](testing.md#tag-folder-editing)
+
 * PDFium bitmap output stays in native BGRA order and is converted to RGBA exactly once. Do not combine `FPDF_REVERSE_BYTE_ORDER` with the existing BGRA-to-RGBA conversion because it corrupts red and blue channels in color-heavy PDFs.
 
 * Keep shared metadata limited to tags, reading progress, and viewer state.

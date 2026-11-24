@@ -14,6 +14,7 @@ export { BOOKSTORE_TAG_GROUPS, BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, bo
 export type { BookstoreTagGroupId } from './tagTaxonomy.js';
 import type { TagDetailsPatch, TagDetailsUpdateResult, TagIconName } from './tagDetails.js';
 import type { ContentSearchResult, ContentSearchScope } from '../common/protocol/search/index.js';
+import type { EditTagFolderRequest, MoveTagFolderRequest, TagFolder } from '../common/protocol/tagFolders/index.js';
 
 export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmarkRequest } from '../common/protocol/bookmarks/index.js';
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
@@ -94,9 +95,11 @@ export interface MetadataStore {
    * 태그 폴더(사이드바에서 태그를 묶어 접고 펴는 그룹). 책 폴더와는 무관하다.
    * 구현하지 않는 저장소는 라우트가 501로 답하고 화면은 태그 폴더 UI를 숨긴다.
    */
-  listTagFolders?(): Promise<Array<{ name: string; tags: string[] }>>;
+  listTagFolders?(): Promise<TagFolder[]>;
   /** 태그 폴더를 만든다. 이미 있으면 false. */
   createTagFolder?(name: string): Promise<boolean>;
+  editTagFolder?(id: string, patch: EditTagFolderRequest): Promise<'updated' | 'missing' | 'duplicate'>;
+  moveTagFolder?(id: string, move: MoveTagFolderRequest): Promise<'moved' | 'missing' | 'stale'>;
   /** 태그 폴더를 지운다. 안의 태그는 폴더에서만 빠지고 태그 자체는 남는다. 있었으면 true. */
   deleteTagFolder?(name: string): Promise<boolean>;
   /** 태그를 폴더에 넣는다. 폴더나 태그가 없으면 false. 이미 들어 있으면 true. */
