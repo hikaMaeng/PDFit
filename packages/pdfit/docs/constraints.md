@@ -1,5 +1,9 @@
 # Constraints
 
+## Tag folder controls
+
+The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder order and uses the folder ID for collapsed state. `lnb-tag-folder` identifies each row. The edit and arrow buttons include the folder name in their accessible labels. `lnb-tag-folder-icon` exposes the color for browser verification. [Scenario](testing.md#tag-folder-editing)
+
 * PDFium bitmap output stays in native BGRA order and is converted to RGBA exactly once. Do not combine `FPDF_REVERSE_BYTE_ORDER` with the existing BGRA-to-RGBA conversion because it corrupts red and blue channels in color-heavy PDFs.
 
 * Shared metadata owns book and library data. Store book comments separately from clips and their clip memos.
@@ -26,6 +30,7 @@
 * Consumer: the integrated app `client/viewer` entry. Invariants: the viewer keeps
   `/viewer/:folder/:filename`, existing viewer-state payloads, semantic toolbar
   roles, and the legacy fallback path.
+* Consumer: the PDF.js and GPU local viewer toolbars. [Document scan](api.md#document-scan) uses one server job per book and shares the runtime's OCR capacity. Browser locators use the named `Scan status` button and dialog, `Scan start page` spinbutton, and scan progress bar. Page status list items have page-number and saved-state names.
 * Both engines expose **Clips** in the **PDF annotation tools** complementary
   landmark. The control's `aria-pressed` reports capture mode and `aria-expanded`
   reports list visibility. The captured rectangle and thumbnail keep their existing format.

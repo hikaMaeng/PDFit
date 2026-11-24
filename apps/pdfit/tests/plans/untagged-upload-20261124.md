@@ -1,0 +1,7 @@
+# Untagged after upload
+
+- Environment is Windows, the Free Docker service on loopback port 15203, PostgreSQL, and headless Chrome.
+- Run `node --test packages/pdfit/tests/upload-index-order.test.mjs` after the shared build. Hold a filesystem read during a full scan and finish a second upload. The untagged API must return the new size before the read is released. The cancelled pass must skip its remaining file checks, and the new pass must retain the replacement and index a separate external PDF.
+- Pause the scan after reading a PDF and delete the PDF or its folder through HTTP. Check that the stale pass cannot restore its DB row. Pause after unlink and queue a same-name upload to check that metadata deletion finishes first. Pause a scan after it enters `syncBooks` to check that deletion waits for the already-started write. Simulate a permission error on a watcher event to check that the DB record survives.
+- Run `apps/pdfit/tests/untagged-upload-browser.mjs` against the deployed Free service. Use a unique temporary test folder. Delay the multipart request and the tag summary, then open Untagged. The page should render without waiting for the tag summary. Release the upload and check the upload response, the untagged API row, and the document rendered by the open page without a manual refresh.
+- Use `upload-pdf`, `lnb-untagged`, `untagged-title`, and `pdf-filename-line` as browser locator contracts. Capture the API result, a screenshot, and browser errors. Remove the temporary fixture after the run.

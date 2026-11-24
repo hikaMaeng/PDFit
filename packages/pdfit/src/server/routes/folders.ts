@@ -1,17 +1,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { Router, type Request, type Response } from 'express';
-import { DestinationFileExistsError, sanitizeName } from '../services/filesystem.js';
+import { DestinationFileExistsError, sanitizeName, UPLOAD_STAGING_PREFIX } from '../services/filesystem.js';
 import { FILE_RENAME_PATH, parseRenamePdfRequest, type RenamedPdf } from '../../common/protocol/file-rename/index.js';
 import { LibraryOfflineError } from '../services/libraryVolume.js';
 import type { FilesystemService } from '../services/types.js';
+import type { WatcherController } from '../services/watcher.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
 import type { CoverOverrideStore } from '../covers/coverOverrideStore.js';
 
 type ReqWithParams = { params: Record<string, string> };
 
 const DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+function uploadedFilename(file: Express.Multer.File): string {
+  return sanitizeName(Buffer.from(file.originalname, 'latin1').toString('utf8'));
+}
 
 function createUpload(
   filesystem: FilesystemService,
@@ -24,10 +30,7 @@ function createUpload(
         const folder = sanitizeName(getFolderName(req as ReqWithParams));
         callback(null, filesystem.getFolderPath(folder));
       },
-      filename: (_req, file, callback) => {
-        const name = sanitizeName(Buffer.from(file.originalname, 'latin1').toString('utf8'));
-        callback(null, name);
-      },
+      filename: (_req, _file, callback) => callback(null, `${UPLOAD_STAGING_PREFIX}${randomUUID()}.part`),
     }),
     fileFilter: (_req, file, callback) => {
       callback(null, path.extname(file.originalname).toLowerCase() === '.pdf');
@@ -67,16 +70,16 @@ export function createFoldersRouter(
   listFolderBookCounts?: () => Promise<Record<string, number>>,
   listFolderColors?: () => Promise<Record<string, string>>,
   updateFolderColor?: (folder: string, color: string) => Promise<void>,
-  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder' | 'relocateBook'>,
+  metadataMutation?: Pick<MetadataStore, 'purgeFile' | 'purgeFolder' | 'relocateBook'> & Partial<Pick<WatcherController, 'commitUpload' | 'mutateFiles'>>,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   notifyChange?: (event: 'folders-changed' | 'tags-changed' | 'favorites-changed') => void,
   thumbnails?: FolderThumbnailProvider,
   /** Real-book covers chosen by the user; they replace the rendered first page. */
   covers?: CoverOverrideStore,
-  serializeRelocation: <T>(operation: () => Promise<T>) => Promise<T> = (operation) => operation(),
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
+  const mutateFiles = metadataMutation?.mutateFiles ?? (<T>(operation: () => Promise<T>) => operation());
 
   // Folder names last seen on disk. Key: folder name; scope: this router (one library root);
   // bound: the number of directories directly under the root; replaced wholesale on every
@@ -102,7 +105,7 @@ export function createFoldersRouter(
     res.status(status).json({ error: String(error) });
   };
 
-  const relocateBook = (folder: string, filename: string, destination: string, newName: string) => serializeRelocation(async () => {
+  const relocateBook = (folder: string, filename: string, destination: string, newName: string) => mutateFiles(async () => {
     const file = await filesystem.relocateFile(folder, filename, destination, newName);
     if (folder === destination && filename === newName) return file;
     let saved = file;
@@ -216,7 +219,7 @@ export function createFoldersRouter(
 
     try {
       const safeName = sanitizeName(newName.trim());
-      await filesystem.renameFolder(req.params.name, safeName);
+      await mutateFiles(() => filesystem.renameFolder(req.params.name, safeName));
       notifyChange?.('folders-changed');
       res.json({ name: safeName });
     } catch (error) {
@@ -226,8 +229,10 @@ export function createFoldersRouter(
 
   router.delete('/:name', async (req: Request, res: Response) => {
     try {
-      await filesystem.deleteFolder(req.params.name);
-      await metadataMutation?.purgeFolder(req.params.name);
+      await mutateFiles(async () => {
+        await filesystem.deleteFolder(req.params.name);
+        await metadataMutation?.purgeFolder(req.params.name);
+      });
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');
@@ -267,12 +272,32 @@ export function createFoldersRouter(
         res.status(400).json({ error: 'No PDF files selected.' });
         return;
       }
+      const folder = sanitizeName(req.params.name);
+      const staged = new Set(files.map((file) => file.path));
+      const persist = async () => {
+        const books = new Map<string, BookRecord>();
+        for (const file of files) {
+          const filename = uploadedFilename(file);
+          const stat = await filesystem.volume.run(() => fs.promises.stat(file.path));
+          await filesystem.volume.run(() => fs.promises.rename(file.path, filesystem.getFilePath(folder, filename)));
+          staged.delete(file.path);
+          books.set(filename, { folder, filename, size: stat.size, modified_at: stat.mtime.toISOString() });
+        }
+        return [...books.values()];
+      };
       try {
-        await refresh?.();
-        notifyChange?.('folders-changed');
-        res.json(files.map((file) => ({ name: file.filename, size: file.size })));
+        const books = metadataMutation?.commitUpload
+          ? await metadataMutation.commitUpload(persist)
+          : await persist();
+        if (!metadataMutation?.commitUpload) {
+          await refresh?.();
+          notifyChange?.('folders-changed');
+        }
+        res.json(books.map((book) => ({ name: book.filename, size: book.size, modifiedAt: book.modified_at })));
       } catch (error) {
-        res.status(500).json({ error: String(error) });
+        fail(res, error, 500);
+      } finally {
+        await Promise.allSettled([...staged].map((file) => filesystem.volume.run(() => fs.promises.unlink(file))));
       }
     },
   );
@@ -349,9 +374,11 @@ export function createFoldersRouter(
     try {
       const folder = decodeRouteParam(req.params.name);
       const filename = sanitizeName(decodeRouteParam(req.params.filename));
-      await filesystem.deleteFile(folder, filename);
-      await metadataMutation?.purgeFile(folder, filename);
-      await covers?.remove(folder, filename).catch(() => false);
+      await mutateFiles(async () => {
+        await filesystem.deleteFile(folder, filename);
+        await metadataMutation?.purgeFile(folder, filename);
+        await covers?.remove(folder, filename).catch(() => false);
+      });
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');
       notifyChange?.('favorites-changed');
@@ -378,10 +405,12 @@ export function createFoldersRouter(
       if (metadataMutation?.relocateBook) {
         await relocateBook(sanitizeName(fromFolder), name, sanitizeName(toFolder), name);
       } else {
-        await filesystem.moveFile(fromFolder, toFolder, name);
-        await covers?.move({ folder: fromFolder, filename: name }, { folder: toFolder, filename: name }).catch(() => false);
+        await mutateFiles(async () => {
+          await filesystem.moveFile(fromFolder, toFolder, name);
+          await covers?.move({ folder: fromFolder, filename: name }, { folder: toFolder, filename: name }).catch(() => false);
+          await metadataMutation?.purgeFile(fromFolder, name);
+        });
         await refresh?.();
-        await metadataMutation?.purgeFile(fromFolder, name);
       }
       notifyChange?.('folders-changed');
       notifyChange?.('tags-changed');

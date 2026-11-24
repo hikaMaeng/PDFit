@@ -73,10 +73,12 @@ its tags). A runtime whose metadata store has no favorites (`501`) shows neither
 ## Tag folders
 
 The folder-plus icon in the sidebar **태그** header (left of the index icon) asks for a name and creates a tag folder.
-Folders are listed directly below **미분류**, sorted by name in Unicode order, and the tags follow them. Drag a tag
-onto a folder to put it there: a tag that is in a folder is shown only inside that folder and disappears from the
-plain tag list below. A folder opens and closes with a click (the state is remembered in this browser), and that is all
-a folder does: the book list is still opened by clicking a tag, inside a folder or not.
+Folders sit directly below **미분류** and above ungrouped tags. Click a folder to expand or collapse it. Click a tag to
+open its book list. Use the pencil to edit the folder name and icon color. Its tags and this browser’s expanded or
+collapsed state are preserved. Use the up or down arrow to swap it with the next folder in that direction. Folders
+start in name order. After the first move, the library saves the order and lists new folders after the ordered ones.
+
+Drag a tag onto a folder to group it there. Grouped tags appear in their folders and disappear from the ungrouped list.
 
 A tag can be in several folders: drag it from inside one folder onto another. The folder-off button on a tag row inside
 a folder takes it out of that folder only; a tag that is in no folder shows in the plain list again. Deleting a folder

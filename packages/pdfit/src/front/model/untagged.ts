@@ -3,3 +3,4 @@
  * 실제 태그 경로(`/tag/:name`)와 섞이지 않도록 `/tag/` 밑이 아닌 별도 경로를 쓴다.
  */
 export const UNTAGGED_PATH = '/untagged';
+export const UNTAGGED_CHANGED_EVENT = 'untagged-changed';

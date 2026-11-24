@@ -53,13 +53,13 @@ Use **Delete tag** on the [sidebar tag row](../../../packages/pdfit/src/front/la
 
 ## Tag folders
 
-Tags inside a folder use a small indent. The book count sits next to the row actions so longer tag names have more room.
+Use the pencil beside a tag folder to change its name or icon color. Use **Default color** to restore the theme color. The up and down arrows swap the folder with its neighbor. The library remembers the order after reload. [Tag folder controls](../../../packages/pdfit/docs/usage.md#tag-folders)
 
 Drag a tag onto the folder title or anywhere in its expanded body, including the empty area and existing tag rows. An ungrouped tag has a **Move to tag folder** button beside **Delete tag**. Open the folder menu and pick a destination. The tag appears inside that folder and leaves the ungrouped list. Use **Remove from tag folder** to remove a membership.
 
 ## Cover view
 
-Drag a book's cover or title onto a tag in the left sidebar to add that tag to the book. You can also start the drag while the card's details are open.
+Drag a book's cover or title onto a tag in the left sidebar to add that tag to the book. Tags inside expanded folders also accept book drops. The new tag appears on the book in the current view, and a tagged book leaves the Untagged list. You can start the drag while the card's details are open.
 
 Hover over a cover or open **Show document info** to find **Auto-classify PDF** after the book's tags. The three-dot **File actions** menu contains **Rename file**, **Move to another folder**, and **Delete**. A rename changes the PDF's actual filename and keeps its tags, clips, reading state, and comments. If you omit the extension, PDFit adds it.
 
@@ -97,12 +97,20 @@ Open the paperclip beside a cover card's filename to see just that book's clips.
 
 In the viewer, **OCR** in the toolbar reads the page on screen the same way. A digital page answers at once. A scanned page goes to the AI server and can take minutes; the dialog says so after 4 s. Results are kept per page until the PDF changes, so asking again is instant. Closing the dialog stops waiting, but the server still finishes and keeps the result. A request that does not reach the server at all — the runtime is restarting, or a reverse proxy in front of it answers 502 — is retried for about 30 seconds, so a page read across a restart recovers on its own; only then does the dialog say the server could not be reached. Without an AI server, areas without PDF text show a hint to add one in Settings. Both features exist for local library files only.
 
+### Document scan
+
+In a local PDF viewer, enter a start page next to **Scan** immediately before **Contents**, then choose **Start**. The scan runs through the last page using the same OCR as **OCR** and skips pages whose text is already in the database. The progress bar shows the current document's in-flight page numbers and progress through the selected range. You can keep reading, switch documents, or close a viewer while the server runs the scan.
+
+**Settings → AI Servers → Concurrent OCR requests** sets the selected AI server's parallelism for all document scans in the PDFit runtime. Existing and new AI server entries start at 1 unless configured. A document has one active scan shared by every viewer of that document. Cancel or an OCR/storage error stops dispatching pages for that document. Pages already in OCR can finish and save their results. A restart clears active jobs, and saved text remains available on the next scan.
+
+Open **Scan** for a color-coded list of all pages. Green means the database has text for that page in the current file version. A page that produced empty text remains in the other group. See the [scan API](../../../packages/pdfit/docs/api.md#document-scan).
+
 ## Background tasks
 
 The standalone server runs periodic jobs on one shared schedule and one pool of worker
 threads. Cover thumbnails are the first job. Each run recomputes what is missing or
 out of date, replaces whatever was still waiting from the previous run, and works
-through it with a fixed number of workers. Page text for OCR (`page-text`) is the second job; it plans only clips left pending by a restart and pages a reader is waiting for.
+through it with a fixed number of workers. Page text for OCR (`page-text`) plans clips left pending by a restart and retains pending worker submissions for one-page OCR and document scans. Vision calls run outside the worker slots.
 
 | Variable | Default | Effect |
 | --- | --- | --- |

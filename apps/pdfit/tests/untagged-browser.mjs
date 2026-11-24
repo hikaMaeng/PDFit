@@ -34,11 +34,13 @@ try {
       assert.equal((await entry.innerText()).includes('미분류'), true, '항목 이름이 미분류여야 한다');
 
       // 첫 번째 항목인지: 태그 섹션 머리글 바로 다음 행이 미분류이고, 그 뒤에 실제 태그 행이 이어진다.
-      await page.waitForFunction(() => document.querySelectorAll('.pdfit-tag-row').length > 1, null, { timeout: 30000 }).catch(() => undefined);
+      const tagRows = page.getByTestId('lnb-tag-row').or(page.getByTestId('lnb-folder-tag-row'));
+      await tagRows.first().waitFor({ state: 'visible' });
       const order = await page.evaluate(() => {
-        // 미분류 행은 `.pdfit-tag-row`(실제 태그 행 전용 클래스)가 아니므로 DOM 순서로 비교한다.
-        const rows = [...document.querySelectorAll('[data-testid="lnb-untagged-row"], .pdfit-tag-row')];
-        return { firstIsUntagged: rows[0]?.getAttribute('data-testid') === 'lnb-untagged-row', rowCount: rows.length, realTagRows: document.querySelectorAll('.pdfit-tag-row').length, untaggedRows: document.querySelectorAll('[data-testid="lnb-untagged-row"]').length };
+        const tags = '[data-testid="lnb-tag-row"], [data-testid="lnb-folder-tag-row"]';
+        const untagged = '[data-testid="lnb-untagged-row"]';
+        const rows = [...document.querySelectorAll(`${untagged}, ${tags}`)];
+        return { firstIsUntagged: rows[0]?.matches(untagged), rowCount: rows.length, realTagRows: document.querySelectorAll(tags).length, untaggedRows: document.querySelectorAll(untagged).length };
       });
       assert.equal(order.firstIsUntagged, true, '"미분류"가 태그 목록의 첫 항목이어야 한다');
       assert.equal(order.untaggedRows, 1, '미분류 행은 정확히 하나여야 한다');
@@ -64,7 +66,7 @@ try {
       await page.screenshot({ path: shot('untagged-page.png') });
 
       // 다른 태그로 이동했다가 돌아와도 정상이며, 실제 태그 페이지는 그대로 동작한다.
-      const firstTag = page.locator('.pdfit-tag-row:not([data-testid="lnb-untagged-row"]) .MuiListItemButton-root').first();
+      const firstTag = tagRows.first().getByRole('button').first();
       await firstTag.click();
       await page.waitForURL('**/tag/**');
       // 라우터가 URL을 바꾼 직후 React가 다시 그리기까지 잠깐 걸리므로 선택 해제를 기다린다.

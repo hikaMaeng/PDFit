@@ -1,3 +1,5 @@
+import type { OcrScanJob } from '../../common/protocol/ocr/scan.js';
+
 /** Page OCR (local runtime): the PDF text layer, else the Settings vision model. */
 export interface PageOcrResult {
   text: string;
@@ -72,4 +74,31 @@ export async function recognizePageText(folder: string, filename: string, pageIn
       await sleep(RETRY_DELAYS_MS[index], signal);
     }
   }
+}
+
+
+export interface OcrScanBook { folder: string; filename: string }
+
+async function requestScan<T>(path: string, init?: RequestInit): Promise<T> {
+  const timeout = AbortSignal.timeout(15_000);
+  const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
+  const response = await fetch(`/api/ocr/scan${path}`, { ...init, signal });
+  if (!response.ok) throw new Error(`Scan request failed (${response.status}).`);
+  return response.json() as Promise<T>;
+}
+
+export function getOcrScan(book: OcrScanBook) {
+  return requestScan<{ job: OcrScanJob | null }>(`?${new URLSearchParams({ ...book })}`);
+}
+
+export function listOcrScanPages(book: OcrScanBook, signal: AbortSignal) {
+  return requestScan<{ pages: number[] }>(`/pages?${new URLSearchParams({ ...book })}`, { signal });
+}
+
+export function changeOcrScan(book: OcrScanBook, change: { startPage: number } | { id: string }) {
+  return requestScan<{ job: OcrScanJob | null }>('id' in change ? '/cancel' : '', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...book, ...change }),
+  });
 }

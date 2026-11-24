@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createLibraryVolumeGuard, type LibraryVolumeGuard } from './libraryVolume.js';
 import type { FilesystemService, FolderInfo, PdfInfo } from './types.js';
 
+export const UPLOAD_STAGING_PREFIX = '.pdfit-upload-';
+
 export function sanitizeName(name: string): string {
   return path.basename(name).replace(/[/\?%*:|"<>]/g, '_');
 }

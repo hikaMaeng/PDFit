@@ -4,6 +4,10 @@ import { translateDisplayTexts, type DisplayTranslationLanguage } from '../servi
 
 const DISPLAY_TRANSLATION_LANGUAGES = new Set<DisplayTranslationLanguage>(['en', 'ko', 'zh', 'es', 'hi', 'ar', 'fr', 'pt', 'ru', 'ms', 'bn', 'ja']);
 
+function validOcrConcurrency(value: unknown) {
+  return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 2_147_483_647);
+}
+
 export function createSettingsRouter(store: SettingsStore): Router {
   const router = Router();
 
@@ -16,16 +20,21 @@ export function createSettingsRouter(store: SettingsStore): Router {
   });
 
   router.post('/ai-servers', async (req: Request, res: Response) => {
-    const { name, type, url, headers = {}, models = {} } = req.body as {
+    const { name, type, url, headers = {}, models = {}, ocrConcurrency } = (req.body ?? {}) as {
       name?: string;
       type?: 'lm-studio' | 'openai-compat';
       url?: string;
       headers?: Record<string, string>;
       models?: Record<string, string>;
+      ocrConcurrency?: number;
     };
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required.' });
+      return;
+    }
+    if (!validOcrConcurrency(ocrConcurrency)) {
+      res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
       return;
     }
 
@@ -36,6 +45,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
         url,
         headers,
         models,
+        ocrConcurrency,
       });
       res.status(201).json({ id });
     } catch (error) {
@@ -50,8 +60,13 @@ export function createSettingsRouter(store: SettingsStore): Router {
       return;
     }
 
+    const patch = req.body ?? {};
+    if (!validOcrConcurrency(patch.ocrConcurrency)) {
+      res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
+      return;
+    }
     try {
-      const updated = await store.updateAiServer(id, req.body);
+      const updated = await store.updateAiServer(id, patch);
       if (!updated) {
         res.status(404).json({ error: 'server not found' });
         return;

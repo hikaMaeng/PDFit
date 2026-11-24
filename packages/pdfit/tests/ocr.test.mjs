@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import express from 'express';
 import { buildPdf } from './fixtures/pdfFixture.mjs';
 import pageTextTask, { joinTextItems, meaningfulLength } from '../dist/server/ocr/pdfPageTextTask.worker.js';
@@ -102,7 +103,7 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     const scheduler = inlineScheduler(() => service);
     service = createOcrService({
       resolveSourcePath: async (folder, filename) => files[`${folder}\u0000${filename}`] ?? null,
-      sourceStamp: async () => '1-1',
+      sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
       submit: scheduler.submit,
       resolveVisionServer: async () => vision,
       cacheRoot: path.join(base, 'ocr'),
@@ -139,13 +140,86 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
   }
 });
 
+test('document scan overlaps vision calls and serializes the result listener even when a DB write fails', async () => {
+  const { base } = await fixture();
+  const sourcePath = path.join(base, 'scan.pdf');
+  await fs.writeFile(sourcePath, buildPdf({ labels: ['', '', 'Do not dispatch'] }));
+  const visionCalls = [];
+  const allowFirstSave = Promise.withResolvers();
+  const saves = [];
+  const stored = new Set();
+  let activeSaves = 0;
+  let maxSaves = 0;
+  let service;
+  const { submit, submitted } = inlineScheduler(() => service);
+  const response = () => new Response(JSON.stringify({
+    choices: [{ message: { content: 'Scanned fixture text' } }],
+  }));
+  const waitFor = async (condition) => {
+    const deadline = Date.now() + 5_000;
+    while (!condition()) {
+      assert.ok(Date.now() < deadline, 'Timed out waiting for scan progress');
+      await delay(10);
+    }
+  };
+  service = createOcrService({
+    resolveSourcePath: async () => sourcePath,
+    sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
+    submit,
+    cacheRoot: path.join(base, 'ocr'),
+    resolveVisionServer: async () => ({ ...visionServer, ocrConcurrency: 2 }),
+    request: () => new Promise((resolve) => visionCalls.push(resolve)),
+    pageSearchIndex: {
+      listBooks: async () => [],
+      listPages: async (_folder, _filename, _stamp, pageIndex) => [...stored].filter((page) => pageIndex === undefined || page === pageIndex),
+      async save(_folder, _filename, _stamp, pageIndex) {
+        saves.push(pageIndex);
+        activeSaves += 1;
+        maxSaves = Math.max(maxSaves, activeSaves);
+        try {
+          if (saves.length === 1) {
+            await allowFirstSave.promise;
+            throw new Error('DB unavailable');
+          }
+          stored.add(pageIndex);
+        } finally {
+          activeSaves -= 1;
+        }
+      },
+    },
+  });
+  try {
+    service.scan.start('A', 'scan.pdf', 1);
+    await waitFor(() => visionCalls.length === 2);
+    assert.deepEqual(service.scan.get('A', 'scan.pdf').activePages, [1, 2]);
+    visionCalls[0](response());
+    await waitFor(() => saves.length === 1);
+    const [failedIndex] = saves;
+    visionCalls[1](response());
+    await delay(40);
+    assert.deepEqual(saves, [failedIndex], 'the second completed result waits for the single DB writer');
+    allowFirstSave.resolve();
+    await waitFor(() => service.scan.get('A', 'scan.pdf').status === 'failed');
+    assert.deepEqual(saves, [failedIndex, 1 - failedIndex]);
+    assert.deepEqual([...stored], [1 - failedIndex]);
+    assert.equal(maxSaves, 1);
+    assert.equal(service.scan.get('A', 'scan.pdf').failedPage, failedIndex + 1);
+    assert.ok(submitted.every(({ payload }) => payload.pageIndex !== 2));
+  } finally {
+    allowFirstSave.resolve();
+    for (const deliver of visionCalls) deliver(response());
+    await waitFor(() => service.scan.get('A', 'scan.pdf')?.activePages.length === 0);
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
+
 test('a waited-for page task is part of every plan, so a periodic plan cannot drop it', async () => {
   const cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfit-ocr-plan-'));
   try {
   const held = [];
   const service = createOcrService({
     resolveSourcePath: async () => '/x.pdf',
-    sourceStamp: async () => '1-1',
+    sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
     submit: (task) => { held.push(task); return 'queued'; },
     cacheRoot,
   });
@@ -183,7 +257,7 @@ test('clip OCR: text layer, then the clip image through the vision model, with f
     const scheduler = inlineScheduler(() => service);
     service = createOcrService({
       resolveSourcePath: async (folder, filename) => ({ 'text.pdf': textPdf, 'blank.pdf': blankPdf })[filename] ?? null,
-      sourceStamp: async () => '1-1',
+      sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
       submit: scheduler.submit,
       resolveVisionServer: async () => vision,
       cacheRoot: path.join(base, 'ocr'),
@@ -319,7 +393,7 @@ test('a garbled hidden OCR layer goes to the vision model on a fresh rendering; 
     const scheduler = inlineScheduler(() => service);
     service = createOcrService({
       resolveSourcePath: async (_folder, filename) => files[filename] ?? null,
-      sourceStamp: async () => '1-1',
+      sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
       submit: scheduler.submit,
       resolveVisionServer: async () => vision,
       cacheRoot: path.join(base, 'ocr'),

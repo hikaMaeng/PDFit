@@ -7,6 +7,7 @@ type BookKey = { folder: string; filename: string };
 export interface PageOcrSearchIndex {
   listBooks(): Promise<BookKey[]>;
   save(folder: string, filename: string, stamp: string, pageIndex: number, text: string): Promise<void>;
+  listPages?(folder: string, filename: string, stamp: string, pageIndex?: number): Promise<number[]>;
 }
 
 /** Reuse the old cache on the scheduler's first plan, without opening any PDFs. */
@@ -33,9 +34,10 @@ export async function restorePageOcrSearchIndex(cacheRoot: string, cacheVersion:
       throw error;
     }
     if (!record || typeof record !== 'object') continue;
-    const { text, source, pageIndex: recordedIndex } = record as Record<string, unknown>;
+    const { text, source, pageIndex: recordedIndex, metadataStamp } = record as Record<string, unknown>;
     if (typeof text === 'string' && recordedIndex === pageIndex && (source === 'text-layer' || source === 'vision')) {
-      await index.save(book.folder, book.filename, stamp, pageIndex, text);
+      const indexStamp = typeof metadataStamp === 'string' ? metadataStamp : stamp;
+      await index.save(book.folder, book.filename, indexStamp, pageIndex, text);
     }
   }
 }

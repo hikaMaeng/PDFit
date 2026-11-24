@@ -14,6 +14,7 @@ export interface AiServer {
   url: string;
   headers: Record<string, string>;
   models: AiServerModels;
+  ocrConcurrency: number;
   created_at: number;
   updated_at: number;
 }
@@ -24,6 +25,7 @@ export interface AiServerInput {
   url: string;
   headers?: Record<string, string>;
   models?: AiServerModels;
+  ocrConcurrency?: number;
 }
 
 // ─── AI 서버 API ───────────────────────────────────────────────

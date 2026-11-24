@@ -65,6 +65,7 @@ type Props = {
   onUnavailable?: () => void;
   uiHidden?: boolean;
   documentActions?: ReactNode;
+  scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
@@ -118,6 +119,7 @@ export default function PdfGpuViewer({
   onUnavailable,
   uiHidden = false,
   documentActions,
+  scanBook,
   bookmarks = [],
   onBookmarkCaptured,
   onBookmarkUpdated,
@@ -420,6 +422,7 @@ export default function PdfGpuViewer({
           zoomInput={zoomInput}
           colorAdjustments={colorAdjustments}
           documentActions={documentActions}
+          scanBook={scanBook}
           outlineOpen={outlineOpen}
           outlineDisabled={!state.pageCount}
           pageInput={pageInput}

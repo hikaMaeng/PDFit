@@ -1,15 +1,20 @@
-// Builds a small valid single-page PDF: a filled colour band and one line of text.
+// Builds a small valid PDF with a filled colour band and one line of text per page.
 // The cross-reference offsets are computed, so PDF.js opens it without recovery.
 // `hiddenText` draws the line with text rendering mode 3 (invisible), like an OCR layer over a scan.
-export function buildPdf({ label = 'PDFit', rgb = [0.1, 0.4, 0.8], width = 300, height = 400, hiddenText = false } = {}) {
-  const content = `${rgb.join(' ')} rg\n0 ${height - 120} ${width} 120 re f\n0 0 0 rg\nBT ${hiddenText ? '3 Tr ' : ''}/F1 24 Tf 20 ${height - 200} Td (${label.replace(/[()\\]/g, '')}) Tj ET\n`;
+export function buildPdf({ label = 'PDFit', labels = [label], rgb = [0.1, 0.4, 0.8], width = 300, height = 400, hiddenText = false } = {}) {
+  const kids = labels.map((_, index) => `${4 + index * 2} 0 R`).join(' ');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
-    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}endstream`,
+    `<< /Type /Pages /Kids [${kids}] /Count ${labels.length} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
   ];
+  labels.forEach((pageLabel, index) => {
+    const content = `${rgb.join(' ')} rg\n0 ${height - 120} ${width} 120 re f\n0 0 0 rg\nBT ${hiddenText ? '3 Tr ' : ''}/F1 24 Tf 20 ${height - 200} Td (${pageLabel.replace(/[()\\]/g, '')}) Tj ET\n`;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents ${5 + index * 2} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
+      `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}endstream`,
+    );
+  });
   let body = '%PDF-1.4\n';
   const offsets = [];
   objects.forEach((object, index) => {

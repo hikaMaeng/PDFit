@@ -13,6 +13,25 @@ export const toolbarLabels = {
   ocr: 'OCR',
   download: 'Download',
   contents: 'Contents',
+  scan: 'Scan',
   previous: 'Prev',
   next: 'Next',
+} as const;
+
+export const scanKeys = {
+  status: 'scanStatus',
+  startPage: 'scanStartPage',
+  start: 'scanStart',
+  preparing: 'scanPreparing',
+  queued: 'scanQueued',
+  progress: 'scanProgress',
+  cancelling: 'scanCancelling',
+  completed: 'scanCompleted',
+  cancelled: 'scanCancelled',
+  failed: 'scanFailed',
+  sourceChanged: 'scanSourceChanged',
+  requestFailed: 'scanRequestFailed',
+  saved: 'scanSaved',
+  unsaved: 'scanUnsaved',
+  pageStatus: 'scanPageStatus',
 } as const;

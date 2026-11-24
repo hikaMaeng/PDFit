@@ -6,11 +6,60 @@ export interface VisionOcrServer {
   baseUrl: string;
   model: string;
   headers?: Record<string, string>;
+  /** Maximum simultaneous OCR requests to this endpoint. */
+  ocrConcurrency?: number;
   /** Local reasoning models can need minutes per image. */
   timeoutMs?: number;
 }
 
 export type VisionImageType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+export function visionOcrConcurrency(server: VisionOcrServer | null): number {
+  const limit = server?.ocrConcurrency ?? 1;
+  return Number.isSafeInteger(limit) && limit > 0 ? limit : 1;
+}
+
+interface VisionQueue {
+  limit: number;
+  active: number;
+  pending: Array<{ priority: number; run(): Promise<void> }>;
+}
+
+/** Page, clip and scan OCR share the limit for each upstream endpoint. */
+export function createVisionOcrQueue(request: typeof fetch) {
+  const queues = new Map<string, VisionQueue>();
+
+  function pump(endpoint: string, queue: VisionQueue) {
+    while (queue.active < queue.limit) {
+      const next = queue.pending.shift();
+      if (!next) break;
+      queue.active += 1;
+      void next.run().finally(() => {
+        queue.active -= 1;
+        pump(endpoint, queue);
+      });
+    }
+    if (queue.active === 0 && !queue.pending.length) queues.delete(endpoint);
+  }
+
+  return (server: VisionOcrServer, image: { bytes: Buffer; type: VisionImageType }, priority: number) => {
+    const endpoint = chatCompletionsUrl(server.baseUrl);
+    const queue = queues.get(endpoint) ?? { limit: 1, active: 0, pending: [] };
+    queues.set(endpoint, queue);
+    queue.limit = visionOcrConcurrency(server);
+    return new Promise<string>((resolve, reject) => {
+      queue.pending.push({
+        priority,
+        async run() {
+          try { resolve(await recognizeImageText(server, image, request)); }
+          catch (error) { reject(error); }
+        },
+      });
+      queue.pending.sort((left, right) => right.priority - left.priority);
+      pump(endpoint, queue);
+    });
+  };
+}
 
 const OCR_INSTRUCTION = [
   'Transcribe every piece of text visible in this image exactly as written, in its original language.',

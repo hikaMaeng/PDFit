@@ -45,6 +45,7 @@ test('OCR cache import accepts matching text results and skips malformed and old
   try {
     const records = [
       ['책.pdf', 'v2-1000-2', 3, { text: '본문', source: 'text-layer', pageIndex: 3 }],
+      ['책.pdf', 'v2-1000-2', 4, { text: '정규화된 시각', source: 'vision', pageIndex: 4, metadataStamp: '1001-2' }],
       ['책.pdf', 'v1-1000-2', 3, { text: 'old', source: 'vision', pageIndex: 3 }],
       ['책.pdf', 'v2-1000-2', 5, { text: 'wrong page', source: 'vision', pageIndex: 6 }],
       ['unknown.pdf', 'v2-1000-2', 3, { text: 'unknown', source: 'text-layer', pageIndex: 3 }],
@@ -56,7 +57,9 @@ test('OCR cache import accepts matching text results and skips malformed and old
       listBooks: async () => [{ folder: 'A', filename: '책.pdf' }],
       save: async (...args) => { calls.push(args); },
     });
-    assert.deepEqual(calls, [['A', '책.pdf', '1000-2', 3, '본문']]);
+    assert.deepEqual(calls.sort((a, b) => a[3] - b[3]), [
+      ['A', '책.pdf', '1000-2', 3, '본문'], ['A', '책.pdf', '1001-2', 4, '정규화된 시각'],
+    ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
