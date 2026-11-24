@@ -1,4 +1,5 @@
 export enum RSC {
+  SIDEBAR_TAG_DRAG_LABEL = 'sidebar.tag.drag.label',
   SIDEBAR_TAGFOLDER_MOVE_BUTTON = 'sidebar.tagFolder.move.button',
   SIDEBAR_TAGFOLDER_NOFOLDERS_MESSAGE = 'sidebar.tagFolder.noFolders.message',
   SIDEBAR_TAGFOLDER_ASSIGNFAILED_ALERT = 'sidebar.tagFolder.assignFailed.alert',

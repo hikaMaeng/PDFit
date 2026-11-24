@@ -11,6 +11,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { isPendingUploadDriveFileId, openViewer, viewerUrl } from '../viewer/openViewer.js';
 import { DRAG_TYPE } from '../layout/LNB.js';
+import { LibraryDragHandle } from './LibraryDragHandle.js';
+import { RSC } from './resource.js';
 import TagChip from './TagChip.js';
 import { formatDocumentOpenedDate, getDocumentOpenedAt, subscribeDocumentOpenHistory } from '../model/documentOpenHistory.js';
 import { bookMetadataApi } from '../api/bookMetadata.js';
@@ -450,6 +452,7 @@ function PdfCoverItem(props: Props) {
   const lastPageLabel = lastPage !== null && (lastPage > 1 || openedAt) ? String(lastPage) : '—';
   const infoLabel = infoPinned ? t('hideCoverInfo') : t('showCoverInfo');
   const requestInfo = () => setInfoRequested(true);
+  const dragPayload = { folder: props.folder, filename: props.filename, driveFileId: props.driveFileId };
 
   return <Box component="article" data-testid="pdf-cover-card" sx={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', border: '1px solid', borderColor: props.selected ? 'primary.main' : 'divider', borderRadius: 1.5, bgcolor: 'background.paper', boxShadow: props.selected ? '0 0 0 1px #3b82f6' : '0 8px 20px rgba(0,0,0,.10)', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light' } }}>
     <Box
@@ -457,13 +460,14 @@ function PdfCoverItem(props: Props) {
       data-info-open={infoPinned ? 'true' : 'false'}
       draggable={!pending}
       onDragStart={(event) => {
-        if (pending || event.target !== event.currentTarget) return;
+        if (pending || event.defaultPrevented || event.target !== event.currentTarget) return;
         event.dataTransfer.effectAllowed = 'copyMove';
-        event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: props.folder, filename: props.filename, driveFileId: props.driveFileId }));
+        event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragPayload));
       }}
       onMouseEnter={requestInfo}
       sx={{
         position: 'relative',
+        userSelect: 'none',
         '& [data-cover-info]': { opacity: infoPinned ? 1 : 0, visibility: infoPinned ? 'visible' : 'hidden' },
         // Hover only exists on pointer devices; touch devices use the info button instead.
         '@media (hover: hover)': { '&:hover [data-cover-info]': { opacity: 1, visibility: 'visible' } },
@@ -509,6 +513,10 @@ function PdfCoverItem(props: Props) {
         </Box>
       </Box>
       <FavoriteToggle folder={props.folder} filename={props.filename} variant="card" disabled={pending} />
+      {!pending && <LibraryDragHandle type={DRAG_TYPE} payload={dragPayload}
+        label={t(RSC.LIBRARY_BOOK_DRAG_LABEL, { name: props.filename })} testId="pdf-cover-drag-handle"
+        sx={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', zIndex: 1,
+          width: 28, height: 24, borderRadius: '12px', color: '#fff', bgcolor: 'rgba(0,0,0,.55)' }} />}
       <IconButton
         data-testid="pdf-cover-info-toggle"
         aria-label={infoLabel}
