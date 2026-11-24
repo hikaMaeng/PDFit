@@ -16,13 +16,14 @@ async function withServer(store, bus, run) {
   finally { server.close(); await once(server, 'close'); }
 }
 
-const json = (body) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const json = (body, method = 'POST') => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 test('tag folder routes validate names, announce changes, and round-trip Korean names', async () => {
   const calls = [];
   const known = new Set();
+  const folder = { id: 'a1000000-0000-4000-8000-000000000000', name: '개발', color: null, tags: ['AI'] };
   const store = {
-    listTagFolders: async () => [{ name: '개발', tags: ['AI'] }],
+    listTagFolders: async () => [folder],
     createTagFolder: async (name) => { calls.push(['create', name]); if (known.has(name)) return false; known.add(name); return true; },
     deleteTagFolder: async (name) => { calls.push(['delete', name]); return true; },
     addTagToTagFolder: async (folder, tag) => { calls.push(['add', folder, tag]); return folder !== '없음'; },
@@ -32,7 +33,7 @@ test('tag folder routes validate names, announce changes, and round-trip Korean 
   const events = [];
   bus.on('change', (event) => events.push(event));
   await withServer(store, bus, async (base) => {
-    assert.deepEqual(await (await fetch(base)).json(), [{ name: '개발', tags: ['AI'] }]);
+    assert.deepEqual(await (await fetch(base)).json(), [folder]);
     assert.equal((await fetch(base, json({ name: '   ' }))).status, 400, '빈 이름은 거부한다');
     assert.equal((await fetch(base, json({ name: 'x'.repeat(101) }))).status, 400, '100자를 넘는 이름은 거부한다');
     assert.equal((await fetch(base, json({}))).status, 400);
@@ -61,7 +62,54 @@ test('tag folder routes report 501 for stores without tag folders', async () => 
     assert.equal((await fetch(`${base}/A`, { method: 'DELETE' })).status, 501);
     assert.equal((await fetch(`${base}/A/tags/x`, { method: 'PUT' })).status, 501);
     assert.equal((await fetch(`${base}/A/tags/x`, { method: 'DELETE' })).status, 501);
+    assert.equal((await fetch(`${base}/A/details`, json({}, 'PATCH'))).status, 501);
+    assert.equal((await fetch(`${base}/A/move`, json({}))).status, 501);
   });
+});
+
+test('tag folder edit and move validate requests and announce successful changes', async () => {
+  const id = 'a1000000-0000-4000-8000-000000000000';
+  const neighborId = 'b1000000-0000-4000-8000-000000000000';
+  const calls = [];
+  const events = [];
+  const bus = new EventEmitter();
+  bus.on('change', (event) => events.push(event));
+  await withServer({
+    editTagFolder: async (target, patch) => {
+      calls.push([target, patch]);
+      if (target !== id) return 'missing';
+      return patch.name === '중복' ? 'duplicate' : 'updated';
+    },
+    moveTagFolder: async (target, move) => {
+      calls.push([target, move]);
+      if (target !== id) return 'missing';
+      return move.direction === 'down' ? 'moved' : 'stale';
+    },
+  }, bus, async (base) => {
+    const edit = (body, target = id) => fetch(`${base}/${target}/details`, json(body, 'PATCH'));
+    const move = (body, target = id) => fetch(`${base}/${target}/move`, json(body));
+    for (const body of [{}, { name: ' ' }, { name: 'x'.repeat(101) }, { name: '..' }, { color: 'red' }]) {
+      assert.equal((await edit(body)).status, 400);
+    }
+    assert.equal((await edit({ name: '변경' }, 'invalid-id')).status, 400);
+    assert.equal((await edit({ name: '중복' })).status, 409);
+    assert.equal((await edit({ color: null }, neighborId)).status, 404);
+    assert.equal((await edit({ name: '  가/자료 %  ', color: '#EF4444' })).status, 204);
+    assert.equal((await move({ direction: 'left', neighborId })).status, 400);
+    assert.equal((await move({ direction: 'up', neighborId: id })).status, 400);
+    assert.equal((await move({ direction: 'up', neighborId: id }, neighborId)).status, 404);
+    assert.equal((await move({ direction: 'up', neighborId })).status, 409);
+    assert.equal((await move({ direction: 'down', neighborId })).status, 204);
+  });
+  assert.deepEqual(calls, [
+    [id, { name: '중복' }],
+    [neighborId, { color: null }],
+    [id, { name: '가/자료 %', color: '#ef4444' }],
+    [neighborId, { direction: 'up', neighborId: id }],
+    [id, { direction: 'up', neighborId }],
+    [id, { direction: 'down', neighborId }],
+  ]);
+  assert.deepEqual(events, ['tag-folders-changed', 'tag-folders-changed']);
 });
 
 // 실제 PostgreSQL: 한 태그가 여러 폴더에 속하고, 폴더 삭제는 태그를 남기며, 태그 삭제는 소속을 지운다.
@@ -110,6 +158,57 @@ test('PostgresMetadataStore tag folders hold tags in many folders', { skip: !pro
       assert.deepEqual(await view(), { 나중: [] });
       assert.equal((await client.query('SELECT 1 FROM tag_folder_tags')).rows.length, 0);
     } finally { client.release(); }
+  } finally {
+    await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await pool.end();
+  }
+});
+
+test('PostgresMetadataStore migrates legacy folders and persists edits and serialized moves', { skip: !process.env.PDFIT_TEST_DATABASE_URL }, async () => {
+  const schema = `tag_folder_edit_${process.pid}`;
+  const connectionString = process.env.PDFIT_TEST_DATABASE_URL;
+  const pool = new pg.Pool({ connectionString, options: `-c search_path=${schema}` });
+  try {
+    await pool.query(`CREATE SCHEMA ${schema}`);
+    await pool.query(`
+      CREATE TABLE tags (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT NOT NULL);
+      CREATE TABLE tag_folders (name TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+      CREATE TABLE tag_folder_tags (
+        folder_name TEXT NOT NULL REFERENCES tag_folders(name) ON DELETE CASCADE,
+        tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (folder_name, tag_id)
+      );
+      INSERT INTO tags (name, color) VALUES ('AI', '#22c55e');
+      INSERT INTO tag_folders (name) VALUES ('나'), ('가'), ('다');
+      INSERT INTO tag_folder_tags SELECT '나', id FROM tags WHERE name = 'AI';
+    `);
+    const store = new PostgresMetadataStore(pool, '.');
+    await store.ensureSchema();
+    const [first, second, third] = await store.listTagFolders();
+    assert.deepEqual([first.name, second.name, third.name], ['가', '나', '다']);
+    assert.equal(second.color, null);
+    assert.deepEqual(second.tags, ['AI']);
+    await store.ensureSchema();
+    assert.deepEqual(await store.listTagFolders(), [first, second, third]);
+
+    const duplicate = await store.editTagFolder(second.id, { name: first.name, color: '#ef4444' });
+    assert.equal(duplicate, 'duplicate');
+    assert.deepEqual(await store.listTagFolders(), [first, second, third]);
+    assert.deepEqual(await Promise.all([
+      store.moveTagFolder(second.id, { direction: 'up', neighborId: first.id }),
+      store.moveTagFolder(second.id, { direction: 'up', neighborId: first.id }),
+    ]), ['moved', 'stale']);
+    assert.equal(await store.editTagFolder(second.id, { name: '마/자료 %', color: '#ef4444' }), 'updated');
+    assert.equal(await store.createTagFolder('A'), true);
+    const ordered = await new PostgresMetadataStore(pool, '.').listTagFolders();
+    assert.deepEqual(ordered.slice(0, 3), [{ ...second, name: '마/자료 %', color: '#ef4444' }, first, third]);
+    assert.equal(ordered[3].name, 'A');
+    assert.equal(await store.moveTagFolder(second.id, { direction: 'down', neighborId: first.id }), 'moved');
+    assert.equal(await store.editTagFolder(second.id, { color: null }), 'updated');
+    assert.deepEqual(await store.listTagFolders(), [first, { ...second, name: '마/자료 %' }, third, ordered[3]]);
+    assert.equal(await store.deleteTagFolder('마/자료 %'), true);
+    assert.equal((await pool.query('SELECT 1 FROM tag_folder_tags')).rowCount, 0);
+    assert.equal((await pool.query('SELECT 1 FROM tags WHERE name = $1', ['AI'])).rowCount, 1);
   } finally {
     await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await pool.end();

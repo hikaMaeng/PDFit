@@ -674,16 +674,17 @@ pgvector 기반 동작(폴더·파일 목록, 태그, 검색, 북마크, 진행�
 
 ## 태그 폴더
 
-- 저장: `tag_folders(name PK, created_at)`, `tag_folder_tags(folder_name → tag_folders ON DELETE CASCADE, tag_id → tags ON DELETE CASCADE,
-  PK(folder_name, tag_id))`. `ensureSchema()`가 만든다. 한 태그는 여러 폴더에 속할 수 있다. 책 폴더(`folders`)와는 무관하다.
-  폴더를 지우면 소속 행만 사라지고 `tags`는 남는다. 태그를 지우면(`deleteTag`, `deleteAllTags`, 고아 태그 정리) 모든 폴더에서 소속도 사라진다.
-- 라우트: `routes/tagFolders.ts`(`/api/tag-folders`). 이름은 NFC로 정규화하고 앞뒤 공백을 다듬은 1~100자이며 같은 이름은 409다.
-  성공한 변경만 `tag-folders-changed`를 SSE로 알린다. 스토어에 메서드가 없으면 501이고 화면은 폴더 UI를 그리지 않는다
-  (Pro 저장소는 구현하지 않으므로 숨겨진다).
-- 프런트: `model/tagFoldersModel.ts`가 폴더 목록(이름 유니코드 순, 폴더 안 태그도 유니코드 순)을 들고 낙관적으로 바꾼다. 실패하면 서버 목록으로
-  되돌린다. `load()`는 사이드바 마운트, 새로고침, 주기 동기화, `tag-folders-changed`와 `tags-changed`에서 목록을 통째로 교체한다.
-  접힘 상태는 모델이 아니라 사이드바가 `localStorage`(`pdfit.lnb.collapsedTagFolders`, 접은 폴더 이름 배열)에 두며 폴더 목록을 받을 때 사라진 이름을 지운다.
-- 화면: `LNB.tsx`의 `renderTagFolder`/`renderTagRow`. 폴더 안에 있는 태그는 일반 목록(`rootTags`)에서 가린다. 태그 행은 `application/pdfit-tag`
+- [PostgreSQL 스토어](../src/server/postgres/index.ts#listTagFolders)는 `tag_folders`에 고정 UUID, 색상, 순서를 저장한다.
+  기존 행에는 UUID를 채우고 `tag_folder_tags.folder_name` 외래 키에 `ON UPDATE CASCADE`를 적용한다.
+  태그나 태그 폴더를 삭제하면 해당 소속 행이 함께 삭제된다.
+- [순서 변경](../src/server/postgres/index.ts#moveTagFolder)은 폴더 쓰기를 직렬화하고 같은 트랜잭션 안에서 이웃 ID를 확인한 뒤 두 폴더를 바꾼다.
+  순서가 없는 폴더는 저장된 순서 뒤에 기존 이름순으로 표시한다. 이동 시 현재 목록의 위치를 저장한다.
+- [라우터](../src/server/routes/tagFolders.ts#createTagFoldersRouter)는 [공용 프로토콜](../src/common/protocol/tagFolders/index.ts)의 요청을 검증하고,
+  성공한 변경에 `tag-folders-changed`를 보낸다. 저장소가 지원하지 않으면 501을 반환한다.
+- [프런트 모델](../src/front/model/tagFoldersModel.ts#tagFoldersModel)은 서버 순서대로 목록을 보관한다. 마운트, 새로고침, 주기 동기화,
+  `tag-folders-changed`, `tags-changed`에서 목록을 읽는다. [사이드바](../src/front/layout/LNB.tsx#readCollapsedTagFolders)는
+  `pdfit.lnb.collapsedTagFolders`의 기존 이름 배열을 `{ ids }`로 변환하고 사라진 폴더를 정리한다.
+- 폴더 안에 있는 태그는 일반 목록(`rootTags`)에서 가린다. 태그 행은 `application/pdfit-tag`
   드래그 데이터(`{ tag, fromFolder? }`)를 싣고, 폴더 행만 이를 받는다. 책 행을 태그에 놓는 기존 드롭(`application/pdf-item`)은 종류를
   확인한 뒤에만 반응하므로 두 드래그가 섞이지 않는다. 폴더를 누르면 접기·펴기만 하고 이동하지 않는다.
 

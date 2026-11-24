@@ -68,7 +68,9 @@ async function exercise(scenario) {
     if (path === '/api/tags/' + tag.name + '/books') return route.fulfill({ json: deleted ? [] : [book] });
     if (path === '/api/tags/untagged-count') return route.fulfill({ json: { count: Number(deleted) } });
     if (path === '/api/tags/untagged-books') return route.fulfill({ json: deleted ? [{ ...book, tags: [] }] : [] });
-    if (path === '/api/tag-folders') return route.fulfill({ json: mobile ? [{ name: 'Fixture Group', tags: deleted ? [] : [tag.name] }] : [] });
+    if (path === '/api/tag-folders') return route.fulfill({
+      json: mobile ? [{ id: 'e1000000-0000-4000-8000-000000000000', name: 'Fixture Group', color: null, tags: deleted ? [] : [tag.name] }] : [],
+    });
     if (path === '/api/settings/translations') return route.fulfill({ json: { translations: [] } });
     return route.fulfill({ json: [] });
   });

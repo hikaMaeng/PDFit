@@ -1,4 +1,9 @@
 export enum RSC {
+  TAGFOLDER_EDITOR_TITLE_TEXT = 'tagFolder.editor.title.text',
+  TAGFOLDER_EDITOR_COLOR_LABEL = 'tagFolder.editor.color.label',
+  TAGFOLDER_EDITOR_DEFAULT_BUTTON = 'tagFolder.editor.default.button',
+  TAGFOLDER_EDITOR_INVALID_ALERT = 'tagFolder.editor.invalid.alert',
+  TAGFOLDER_EDITOR_FAILED_ALERT = 'tagFolder.editor.failed.alert',
   TAG_MANAGE_RECENT_LABEL = 'tag.manage.recent.label',
   TAG_EDITOR_TITLE_TEXT = 'tag.editor.title.text',
   TAG_EDITOR_NAME_LABEL = 'tag.editor.name.label',

@@ -53,7 +53,7 @@ Use **Delete tag** on the [sidebar tag row](../../../packages/pdfit/src/front/la
 
 ## Tag folders
 
-Tags inside a folder use a small indent. The book count sits next to the row actions so longer tag names have more room.
+Use the pencil beside a tag folder to change its name or icon color. Use **Default color** to restore the theme color. The up and down arrows swap the folder with its neighbor. The library remembers the order after reload. [Tag folder controls](../../../packages/pdfit/docs/usage.md#tag-folders)
 
 Drag a tag onto the folder title or anywhere in its expanded body, including the empty area and existing tag rows. An ungrouped tag has a **Move to tag folder** button beside **Delete tag**. Open the folder menu and pick a destination. The tag appears inside that folder and leaves the ungrouped list. Use **Remove from tag folder** to remove a membership.
 
