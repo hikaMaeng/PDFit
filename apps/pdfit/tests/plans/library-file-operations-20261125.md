@@ -17,7 +17,7 @@ Free list and tag changes follow the PostgreSQL commit when the SMB operation is
 1. Run `node --test packages/pdfit/tests/library-file-operations.test.mjs`. Hold the disk step and verify rename, move and delete responses and list changes. Check tags, comments, the new read URL, duplicate admission, conflicting upload, and a concurrent full scan.
 2. Simulate SMB failure and recreate the task scheduler. Verify that the saved operation is retried and that the final file and PostgreSQL layout agree. Verify that a destination conflict preserves both files and restores the source projection. Verify that replacing a source externally during a pending delete preserves the replacement and updates the index.
 3. On deployed Free, check Docker health and the published health URL. Use browser controls to rename and delete a temporary PDF and check the list after each API response. Check move on the CIFS volume and ensure fixtures and pending operations are drained.
-4. Open the `이북` folder and search for `그림으로 배우는 생성형 AI.pdf`. Verify it is absent from the folder UI and server list after applying the delete request to its stale record.
+4. Search for the reported stale PDF in its original folder. Verify it is absent from the folder UI and server list after applying the delete request to its stale record.
 
 ## Evidence
 
