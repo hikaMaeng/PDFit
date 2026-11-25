@@ -3,9 +3,11 @@ import type { PdfitMessageKey } from '../../i18n/messages.js';
 export const RSC = {
   tools: 'annotationTools',
   movePalette: 'movePalette',
-  moveCaption: 'paletteMoveCaption',
+  collapsePalette: 'collapseAnnotationPalette',
+  expandPalette: 'expandAnnotationPalette',
   clips: 'viewerClipTool',
   clipPanel: 'bookBookmarks',
+  moveClipPanel: 'moveViewerClipList',
   dragToCapture: 'dragToCapture',
   clipsEmpty: 'clipBookEmpty',
   close: 'close',

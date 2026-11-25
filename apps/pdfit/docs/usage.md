@@ -85,7 +85,9 @@ The toolbar below the document title uses small English captions under its icons
 
 Select **Comments** on a library book to open its book comments in a narrow floating window. Drag the title using a mouse or touch, or focus the title and use the arrow keys. You can keep reading while the window is open. Each page shows up to five full posts. Scroll the posts to read longer entries. The book card and viewer share the same posts. Select **Close** or press the toolbar's **Comments** button again to dismiss the window.
 
-The left tool palette shows a caption under each icon in the interface language. Select **Clips** at the top to open the document's clip list and enable area selection. Drag a rectangle within one page to save one clip. The button turns off when you release a valid selection, and the list stays open. Press the lit **Clips** button again to cancel before selecting, or use **Close** in the list header to dismiss the list.
+The annotation tool palette and clip list float above the full-width PDF. Use the chevron at the top of the palette to collapse or expand the tools. Drag the grip at the top of the palette or the clip list's title to move that panel. You can also focus either grip and move it with the arrow keys. The browser remembers both positions.
+
+Select **Clips** to open the document's clip list and enable area selection. Drag a rectangle within one page to save a clip. The button turns off when you release a valid selection, and the list stays open. Press the lit **Clips** button again to cancel before selecting, or use **Close** in the list header to dismiss the list.
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
 
@@ -112,6 +114,8 @@ An explicit scan keeps running when you browse another page or close the dialog.
 ### Document scan
 
 In a local PDF viewer, enter a start page next to **Scan** immediately before **Contents**, then choose **Start**. The scan runs through the last page using the same OCR as **OCR** and skips pages whose text is already in the database. The progress bar shows the current document's in-flight page numbers and progress through the selected range. You can keep reading, switch documents, or close a viewer while the server runs the scan.
+
+The small percentage beside **Scan** shows the share of all pages in the PDF with saved text. It includes text saved before the current scan and updates as new pages are saved. The display rounds down to a whole percent, reaching 100% when every page has saved text.
 
 **Settings → AI Servers → Concurrent OCR requests** sets the selected AI server's parallelism for all document scans in the PDFit runtime. Existing and new AI server entries start at 1 unless configured. A document has one active scan shared by every viewer of that document. Cancel or an OCR/storage error stops dispatching pages for that document. Pages already in OCR can finish and save their results. A restart clears active jobs, and saved text remains available on the next scan.
 

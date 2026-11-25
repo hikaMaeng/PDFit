@@ -29,8 +29,8 @@ import {
 } from '../../viewer/spreadPairing.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import type { BookmarkRecord } from '../../../common/protocol/bookmarks/index.js';
-import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
-import { BOOKMARK_PANEL_WIDTH, BookmarkPanel } from '../PdfGpuViewer/BookmarkPanel.js';
+import { AnnotationControls } from '../PdfGpuViewer/AnnotationControls.js';
+import { BookmarkPanel } from '../PdfGpuViewer/BookmarkPanel.js';
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
@@ -857,8 +857,6 @@ export default function PdfViewer({
   const viewportScale = toPdfJsViewportScale(scale);
   const phW = bv ? Math.round(bv.width * viewportScale) : Math.round(595 * viewportScale);
   const phH = bv ? Math.round(bv.height * viewportScale) : Math.round(842 * viewportScale);
-  const railWidth = uiHidden ? 0 : ANNOTATION_RAIL_WIDTH;
-  const viewerLeftInset = annotation.clipPanelOpen ? `calc(${railWidth}px + ${BOOKMARK_PANEL_WIDTH})` : `${railWidth}px`;
 
   if (loading) {
     return (
@@ -926,6 +924,20 @@ export default function PdfViewer({
 
       {pageColors.definition}
       <Box sx={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+        {annotation.clipPanelOpen && (
+          <BookmarkPanel id={clipPanelId} armed={clipArmed} empty={bookmarks.length === 0} onClose={annotation.closeClipPanel}>
+            {bookmarks.map((bookmark) => (
+              <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
+                <Box sx={{ height: 92, position: 'relative', bgcolor: '#161618' }}>
+                  <Box component="img" src={bookmark.imageUrl} alt="" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  {onBookmarkDeleted && <IconButton aria-label={ui("북마크 삭제")} size="small" color="error" onClick={() => void onBookmarkDeleted(bookmark.id)} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(10,10,12,.72)' }}><DeleteOutlineIcon sx={{ fontSize: 18 }} /></IconButton>}
+                </Box>
+                <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.primary : theme.palette.grey[200] }}>p. {bookmark.pageIndex + 1}</Typography>
+              </Box>
+            ))}
+          </BookmarkPanel>
+        )}
       <Box
         ref={surfaceElementRef}
         data-testid="legacy-bookmark-capture-surface"
@@ -947,22 +959,7 @@ export default function PdfViewer({
         }}
         sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', touchAction: clipArmed || (viewMode !== 'scroll' && fitMode === 'height') ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default', '& [data-pdf-page] > canvas': { filter: pageColors.filter } }}
       >
-      {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
       <LegacyAnnotationLayer surfaceRef={surfaceRef} viewportRef={containerRef} pages={pages} visiblePages={annotationPageIndices} annotations={annotation.annotations} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
-
-      {annotation.clipPanelOpen && (
-        <BookmarkPanel id={clipPanelId} armed={clipArmed} empty={bookmarks.length === 0} onClose={annotation.closeClipPanel} left={railWidth}>
-          {bookmarks.map((bookmark) => (
-            <Box data-testid="legacy-bookmark-card" component="article" key={bookmark.id} sx={{ mb: 1, border: `2px solid ${bookmark.borderColor}`, borderRadius: 1, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#fff' : '#303034' }}>
-              <Box sx={{ height: 92, position: 'relative', bgcolor: '#161618' }}>
-                <Box component="img" src={bookmark.imageUrl} alt="" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                {onBookmarkDeleted && <IconButton aria-label={ui("북마크 삭제")} size="small" color="error" onClick={() => void onBookmarkDeleted(bookmark.id)} sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(10,10,12,.72)' }}><DeleteOutlineIcon sx={{ fontSize: 18 }} /></IconButton>}
-              </Box>
-              <Typography variant="caption" sx={{ display: 'block', px: 0.75, py: 0.5, color: (theme) => theme.palette.mode === 'light' ? theme.palette.text.primary : theme.palette.grey[200] }}>p. {bookmark.pageIndex + 1}</Typography>
-            </Box>
-          ))}
-        </BookmarkPanel>
-      )}
 
       {captureDrag && <Box data-testid="legacy-bookmark-drag-preview" sx={{ position: 'fixed', zIndex: 15, pointerEvents: 'none', left: Math.min(captureDrag.startX, captureDrag.endX), top: Math.min(captureDrag.startY, captureDrag.endY), width: Math.abs(captureDrag.endX - captureDrag.startX), height: Math.abs(captureDrag.endY - captureDrag.startY), border: '2px dashed #f59e0b', bgcolor: 'rgba(245,158,11,.18)' }} />}
       {(captureBusy || captureNotice) && <Box role="status" sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: captureNotice?.includes('저장되었습니다') ? 'rgba(20,83,45,.95)' : captureNotice ? 'rgba(127,29,29,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{captureNotice ?? ui("북마크를 저장하는 중입니다…")}</Box>}
@@ -970,7 +967,7 @@ export default function PdfViewer({
       {/* ── 스크롤 모드 ── */}
       {(continuousScroll || pageLayout === 'single') && (
         <Box ref={containerRef} data-testid="pdf-scroll-area" sx={{
-          height: '100%', width: `calc(100% - ${viewerLeftInset})`, ml: `${viewerLeftInset}`,
+          height: '100%', width: '100%',
           overflow: continuousScroll ? 'auto' : 'hidden',
           scrollbarGutter: continuousScroll ? 'stable' : undefined,
           overflowX: continuousScroll && fitMode === 'height' ? 'scroll' : undefined,
@@ -1028,7 +1025,7 @@ export default function PdfViewer({
       {!continuousScroll && pageLayout === 'double' && (
         <Box
           ref={containerRef} data-testid="pdf-scroll-area"
-          sx={{ height: '100%', width: `calc(100% - ${viewerLeftInset})`, ml: `${viewerLeftInset}`, overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}
+          sx={{ height: '100%', width: '100%', overflow: 'hidden', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, py: 3, px: `${PAGE_HORIZONTAL_PADDING}px`, boxSizing: 'border-box' }}
         >
           {/* 좌측 페이지 */}
           {pages[currentPage - 1] ? (

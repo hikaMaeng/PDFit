@@ -113,9 +113,13 @@ API remains the shared source of truth.
 
 ## Bookmark overlays
 
-`front/model/bookmarkModel.ts` holds the persistent clip list. The left palette's
-[Clips control](../src/front/components/PdfGpuViewer/AnnotationControls.tsx#AnnotationControls)
-arms capture and opens the document list beside the palette. The
+`front/model/bookmarkModel.ts` holds the persistent clip list. Both engines place the
+[collapsible palette](../src/front/components/PdfGpuViewer/AnnotationControls.tsx#AnnotationControls)
+and [clip list](../src/front/components/PdfGpuViewer/BookmarkPanel.tsx#BookmarkPanel)
+over the full-width viewer as siblings of its capture surface. The shared
+[drag hook](../src/front/components/PdfGpuViewer/useDraggablePalette.ts#useDraggablePalette)
+keeps each panel in bounds and saves its position independently in browser storage.
+The Clips control arms capture and opens the document list. The
 [tool model](../src/front/viewer/toolModel.ts#ViewerToolModel) returns to selection
 on a valid pointer release and leaves the list open. Pressing the active control
 again cancels capture and closes the list. The list header also closes it.

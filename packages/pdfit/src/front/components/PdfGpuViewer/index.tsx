@@ -34,7 +34,7 @@ import { BookmarkSidebar } from './BookmarkSidebar.js';
 import { BookmarkEditorDialog } from './BookmarkEditorDialog.js';
 import { BookmarkOverlayLayer } from './BookmarkOverlayLayer.js';
 import { usePdfBookmarks } from './usePdfBookmarks.js';
-import { ANNOTATION_RAIL_WIDTH, AnnotationControls } from './AnnotationControls.js';
+import { AnnotationControls } from './AnnotationControls.js';
 import { usePdfPan } from './usePdfPan.js';
 import { forwardPageModeWheel } from '../viewerWheel.js';
 import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
@@ -457,8 +457,7 @@ export default function PdfGpuViewer({
       {(state.loading || state.loadPhase === 'rendering') ? (
         <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
-      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', pl: uiHidden ? 0 : `${ANNOTATION_RAIL_WIDTH}px` }}>
-        {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
             {pageColors.definition}
@@ -468,6 +467,7 @@ export default function PdfGpuViewer({
           </Box>
         </Box>
         {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
+        {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         {floatingPanel}
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}

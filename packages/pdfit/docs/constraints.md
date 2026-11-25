@@ -34,6 +34,10 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
 * Both engines expose **Clips** in the **PDF annotation tools** complementary
   landmark. The control's `aria-pressed` reports capture mode and `aria-expanded`
   reports list visibility. The captured rectangle and thumbnail keep their existing format.
+  **Collapse tool palette**, **Expand tool palette**, and **Move tool palette**
+  belong to the same landmark. **Move clip list** and **Close** belong to the
+  clip list landmark. Panel visibility and position leave the PDF viewport width
+  and fit zoom intact.
 * Consumer: bookmark preview plus folder/tag `PdfListItem` rows. Invariants: a book key is
   exactly `(folder, filename)`; at most one named viewer is reused for that key; an explicit
   bookmark page is delivered as a message rather than by reloading the existing viewer; and

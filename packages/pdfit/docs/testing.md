@@ -106,6 +106,11 @@ Verify a visible drag preview, one successful POST, a card and overlay without
 reloading, and an inactive button with the list still open after pointer release.
 The list header's **Close** dismisses it. Keep PDFGPU checks for PATCH persistence
 through the editor, comment tooltip, and overlay coordinates after zoom.
+In both engines, check **Collapse tool palette** and **Expand tool palette** in
+**PDF annotation tools**, then move each panel using **Move tool palette** and
+**Move clip list**. Use the PDF viewport and rendered page bounds to verify that
+opening, moving, collapsing, and closing panels preserve width fit. The PDF.js
+viewport uses `pdf-scroll-area`.
 Remote-backed viewer verification must cover capture while the page is still in
 preview quality and confirm that detail readiness resumes the pending capture.
 The F04/F05 acceptance cases explicitly select GPU and PDF.js. Verify the GPU

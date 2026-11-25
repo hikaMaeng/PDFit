@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useId, useState, type MouseEvent } from 'react';
 import {
   Box,
   Button,
@@ -14,6 +14,8 @@ import {
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import BorderColorIcon from '@mui/icons-material/BorderColor';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CloudDoneOutlinedIcon from '@mui/icons-material/CloudDoneOutlined';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import DrawIcon from '@mui/icons-material/Draw';
@@ -60,9 +62,6 @@ type Props = {
   onRetry: () => void;
 };
 
-/** Horizontal space reserved for the default annotation palette. */
-export const ANNOTATION_RAIL_WIDTH = 80;
-
 const iconCaptionSx = {
   display: 'flex',
   flexDirection: 'column',
@@ -91,11 +90,13 @@ function RailCaption({ children }: { children: string }) {
   return <Box component="span" sx={{ maxWidth: '100%', fontSize: '0.625rem', lineHeight: 1.1, fontWeight: 500, textAlign: 'center', textTransform: 'none', overflowWrap: 'anywhere' }}>{children}</Box>;
 }
 
-/** Compact PDF-editor rail for annotation tools and styles. */
+/** Floating PDF annotation palette. See docs/internals.md#bookmark-overlays. */
 export function AnnotationControls(props: Props) {
   const { t, ui } = usePdfitI18n();
   const { tool, clipPanelOpen, clipPanelId, style, saveState, canUndo, canRedo, canRetry, onToolChange, onStyleChange, onUndo, onRedo, onRetry } = props;
   const [styleAnchor, setStyleAnchor] = useState<HTMLElement | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const toolsId = useId();
   const { paletteRef, position, dragHandleProps } = useDraggablePalette('pdfit.annotationPalette.position');
   const saveLabel = saveState === 'loading' ? ui("주석 불러오는 중") : saveState === 'saving' ? ui("주석 저장 중") : saveState === 'saved' ? ui("주석 저장됨") : ui("주석 저장 실패");
   const SaveIcon = saveState === 'error' ? ErrorOutlineIcon : saveState === 'saved' ? CloudDoneOutlinedIcon : SyncIcon;
@@ -107,15 +108,13 @@ export function AnnotationControls(props: Props) {
       ref={paletteRef}
       component="aside"
       aria-label={t(RSC.tools)}
-      onPointerDown={(event) => event.stopPropagation()}
-      onPointerUp={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
       sx={{
         position: 'absolute',
         left: position.x,
         top: position.y,
         width: 56,
-        maxHeight: 'calc(100% - 24px)',
+        boxSizing: 'border-box',
+        maxHeight: 'calc(100% - 16px)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -126,57 +125,67 @@ export function AnnotationControls(props: Props) {
         borderColor: 'divider',
         borderRadius: 1,
         boxShadow: 4,
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        scrollbarWidth: 'thin',
         zIndex: 10,
       }}
     >
-      {TOOLS.map(({ value, label, caption = label, icon: ToolIcon }) => (
-        <ToggleButton
-          key={value}
-          value={value}
-          selected={tool === value}
-          aria-label={t(label)}
-          aria-expanded={value === 'bookmark' ? clipPanelOpen : undefined}
-          aria-controls={value === 'bookmark' && clipPanelOpen ? clipPanelId : undefined}
-          onClick={() => onToolChange(value)}
-          sx={railButtonSx}
+      <Box sx={{ display: 'flex', width: '100%', flexShrink: 0, justifyContent: 'space-between' }}>
+        <IconButton
+          size="small"
+          aria-label={t(collapsed ? RSC.expandPalette : RSC.collapsePalette)}
+          aria-expanded={!collapsed}
+          aria-controls={toolsId}
+          onClick={() => { setCollapsed(!collapsed); setStyleAnchor(null); }}
+          sx={{ px: 0.25, minHeight: 28 }}
         >
-          <ToolIcon />
-          <RailCaption>{t(caption)}</RailCaption>
-        </ToggleButton>
-      ))}
-      <Divider flexItem sx={{ mx: 0.5, my: 0.125 }} />
-      <IconButton size="small" aria-label={t(RSC.undo)} disabled={!canUndo} onClick={onUndo} sx={railButtonSx}>
-        <UndoIcon />
-        <RailCaption>{t(RSC.undoCaption)}</RailCaption>
-      </IconButton>
-      <IconButton size="small" aria-label={t(RSC.redo)} disabled={!canRedo} onClick={onRedo} sx={railButtonSx}>
-        <RedoIcon />
-        <RailCaption>{t(RSC.redoCaption)}</RailCaption>
-      </IconButton>
-      <IconButton size="small" aria-label={t(RSC.style)} onClick={openStyle} sx={railButtonSx}>
-        <Box sx={{ position: 'relative', display: 'flex' }}>
-          <TuneIcon />
-          <Box sx={{ position: 'absolute', right: -2, bottom: -1, width: 7, height: 7, borderRadius: '50%', bgcolor: style.color, border: '1px solid', borderColor: 'background.paper' }} />
-        </Box>
-        <RailCaption>{t(RSC.styleCaption)}</RailCaption>
-      </IconButton>
-      <Box role="status" aria-label={saveLabel} sx={{ ...iconCaptionSx, width: '100%', flexShrink: 0, py: 0.25, color: saveState === 'error' ? 'error.main' : saveState === 'saved' ? 'success.main' : 'text.disabled' }}>
-        <SaveIcon sx={{ animation: saveState === 'loading' || saveState === 'saving' ? 'pdfit-spin 1.1s linear infinite' : undefined }} />
-        <RailCaption>{t(RSC.saveCaptions[saveState])}</RailCaption>
+          {collapsed ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowUpIcon fontSize="small" />}
+        </IconButton>
+        <IconButton
+          size="small"
+          aria-label={t(RSC.movePalette)}
+          {...dragHandleProps}
+          sx={{ px: 0.25, cursor: 'grab', touchAction: 'none', '&:active': { cursor: 'grabbing' } }}
+        >
+          <DragIndicatorIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+        </IconButton>
       </Box>
+      <Box id={toolsId} hidden={collapsed} sx={{ display: collapsed ? 'none' : 'flex', width: '100%', minHeight: 0, flexDirection: 'column', gap: 0.25, overflowY: 'auto', scrollbarWidth: 'thin' }}>
+        {TOOLS.map(({ value, label, caption = label, icon: ToolIcon }) => (
+          <ToggleButton
+            key={value}
+            value={value}
+            selected={tool === value}
+            aria-label={t(label)}
+            aria-expanded={value === 'bookmark' ? clipPanelOpen : undefined}
+            aria-controls={value === 'bookmark' && clipPanelOpen ? clipPanelId : undefined}
+            onClick={() => onToolChange(value)}
+            sx={railButtonSx}
+          >
+            <ToolIcon />
+            <RailCaption>{t(caption)}</RailCaption>
+          </ToggleButton>
+        ))}
+        <Divider flexItem sx={{ mx: 0.5, my: 0.125 }} />
+        <IconButton size="small" aria-label={t(RSC.undo)} disabled={!canUndo} onClick={onUndo} sx={railButtonSx}>
+          <UndoIcon />
+          <RailCaption>{t(RSC.undoCaption)}</RailCaption>
+        </IconButton>
+        <IconButton size="small" aria-label={t(RSC.redo)} disabled={!canRedo} onClick={onRedo} sx={railButtonSx}>
+          <RedoIcon />
+          <RailCaption>{t(RSC.redoCaption)}</RailCaption>
+        </IconButton>
+        <IconButton size="small" aria-label={t(RSC.style)} onClick={openStyle} sx={railButtonSx}>
+          <Box sx={{ position: 'relative', display: 'flex' }}>
+            <TuneIcon />
+            <Box sx={{ position: 'absolute', right: -2, bottom: -1, width: 7, height: 7, borderRadius: '50%', bgcolor: style.color, border: '1px solid', borderColor: 'background.paper' }} />
+          </Box>
+          <RailCaption>{t(RSC.styleCaption)}</RailCaption>
+        </IconButton>
+        <Box role="status" aria-label={saveLabel} sx={{ ...iconCaptionSx, width: '100%', flexShrink: 0, py: 0.25, color: saveState === 'error' ? 'error.main' : saveState === 'saved' ? 'success.main' : 'text.disabled' }}>
+          <SaveIcon sx={{ animation: saveState === 'loading' || saveState === 'saving' ? 'pdfit-spin 1.1s linear infinite' : undefined }} />
+          <RailCaption>{t(RSC.saveCaptions[saveState])}</RailCaption>
+        </Box>
 
-      <IconButton
-        size="small"
-        aria-label={t(RSC.movePalette)}
-        {...dragHandleProps}
-        sx={{ ...railButtonSx, cursor: 'grab', touchAction: 'none', '&:active': { cursor: 'grabbing' } }}
-      >
-        <DragIndicatorIcon sx={{ transform: 'rotate(90deg)' }} />
-        <RailCaption>{t(RSC.moveCaption)}</RailCaption>
-      </IconButton>
+      </Box>
 
       <Popover
         open={Boolean(styleAnchor)}

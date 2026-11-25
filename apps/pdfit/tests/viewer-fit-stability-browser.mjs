@@ -95,7 +95,9 @@ try {
   }
   for (const result of results) {
     assert.equal(result.fits, true, `${result.name} must match the scroll area`);
-    assert.equal(result.fitSizes.length, 1, `${result.name} must render one fitted size`);
+    const expectedChanges = result.name === 'width with bookmarks' ? 0 : 1;
+    assert.equal(result.fitSizes.length, expectedChanges, `${result.name} must render ${expectedChanges} new fitted sizes`);
+    if (expectedChanges === 0) assert.equal(result.frameCount, 1, 'opening the clip list must preserve viewport and page geometry');
   }
   assert.deepEqual(errors, []);
 } finally {

@@ -18,7 +18,7 @@ type Props = {
   onGoToPage: (page: number) => void;
 };
 
-/** Bookmark list shown beside the PDF viewport. */
+/** PDFGPU clip cards shown in the floating clip list. */
 export function BookmarkSidebar({ id, armed, onClose, bookmarks, recentId, deletingId, onEdit, onDelete, onGoToPage }: Props) {
   const { ui } = usePdfitI18n();
   return <BookmarkPanel id={id} armed={armed} empty={bookmarks.length === 0} onClose={onClose}>
