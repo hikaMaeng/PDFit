@@ -12,6 +12,7 @@ import { createFilesystemService } from '../../../packages/pdfit/dist/server/ser
 
 const deployed = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15203';
 const evidence = process.env.PDFIT_TEST_ARTIFACT_DIR;
+const initialView = process.env.PDFIT_TEST_LIBRARY_VIEW === 'list' ? 'list' : 'covers';
 const title = 'Early Cover';
 const filename = `${title}.pdf`;
 const folder = 'Cover fixtures';
@@ -96,7 +97,7 @@ const searching = dialog.getByText('Searching covers…', { exact: true });
 const openCover = page.getByTestId('pdf-cover-real-cover');
 
 try {
-  await page.addInitScript(() => localStorage.setItem('pdfit.library.view', 'covers'));
+  await page.addInitScript((view) => localStorage.setItem('pdfit.library.view', view), initialView);
   await page.goto(`${origin}/tag/${tag}`, { waitUntil: 'domcontentloaded' });
   await openCover.click();
   await candidate.waitFor();
@@ -142,10 +143,16 @@ try {
   const record = await applied.json();
   assert.equal(record.title, title);
   await dialog.waitFor({ state: 'hidden' });
-  await page.getByTestId('pdf-cover-thumbnail').locator(`img[src*="c=${record.version}"]`).waitFor();
+  const appliedImage = page.getByTestId('pdf-cover-thumbnail').locator(`img[src*="c=${record.version}"]`);
+  await appliedImage.waitFor();
   assert.equal((await store.get(folder, filename)).imageUrl, imageUrl);
   assert.equal(puts, 3);
   await shot('cover-applied');
+  await page.locator(`button[value="${initialView === 'list' ? 'covers' : 'list'}"]`).click();
+  await appliedImage.waitFor();
+  await appliedImage.evaluate((image) => image.decode());
+  await shot('cover-applied-other-view');
+  await page.locator(`button[value="${initialView}"]`).click();
 
   await openCover.click();
   await candidate.waitFor();

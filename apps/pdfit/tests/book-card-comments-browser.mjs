@@ -9,6 +9,7 @@ const origin = process.env.PDFIT_TEST_ORIGIN;
 if (!origin) throw new Error('Set PDFIT_TEST_ORIGIN to a disposable Free instance.');
 const artifacts = path.resolve(process.env.PDFIT_TEST_ARTIFACT_DIR ?? 'test/book-card-comments-browser');
 await mkdir(artifacts, { recursive: true });
+const libraryName = process.env.PDFIT_TEST_LIBRARY_NAME ?? 'Comment test library';
 const folder = process.env.PDFIT_TEST_FIXTURE_FOLDER ?? 'Fixture';
 const destination = process.env.PDFIT_TEST_DESTINATION_FOLDER ?? 'Destination';
 const original = 'Card fixture.pdf';
@@ -69,7 +70,7 @@ async function verifyLayout(browserPage, dialog) {
 
 try {
   const folders = await (await fetch('/api/folders')).json();
-  assert.ok(folders.some((item) => item.isRoot && item.name === 'Comment test library'), 'This scenario requires the disposable book-card fixture library.');
+  assert.ok(folders.some((item) => item.isRoot && item.name === libraryName), 'This scenario requires the disposable book-card fixture library.');
   const sourceHash = digest(await (await fetch(file(original))).body());
   const existingHash = digest(await (await fetch(file(conflict))).body());
   const state = { page: 2, scale: 1.15, fitMode: 'width', viewMode: 'scroll', inverted: false, uiHidden: false, scrollTop: 55 };

@@ -1,23 +1,29 @@
-import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 
-export const PDF_LIST_COLUMNS = '24px minmax(0, 2.75fr) 120px 76px 142px minmax(72px, .75fr)';
-export const PDF_LIST_MOBILE_COLUMNS = '20px minmax(0, 1.3fr) 120px 76px 142px 72px';
-export const PDF_LIST_FREE_COLUMNS = PDF_LIST_COLUMNS;
-export const PDF_LIST_FREE_MOBILE_COLUMNS = PDF_LIST_MOBILE_COLUMNS;
-export const PDF_LIST_COMPACT_MAX_WIDTH = 719;
-export const PDF_LIST_WIDE_LAYOUT_QUERY = '(min-width: 900px), (min-width: 720px) and (pointer: coarse)';
+const COMPACT_LIST = '@media (max-width: 599px)';
 
-/** Shared document headings and grid alignment; see docs/internals.md. */
-export default function PdfListHeader({ compactTagActions = false }: { compactTagActions?: boolean }) {
+export const PDF_LIST_GRID_SX = {
+  display: 'grid',
+  gridTemplateColumns: '48px minmax(0, 1fr) 88px 180px',
+  gridTemplateAreas: '"cover name size actions"',
+  alignItems: 'center',
+  columnGap: 1,
+  px: '18px',
+  [COMPACT_LIST]: {
+    gridTemplateColumns: '42px minmax(0, 1fr) 72px',
+    gridTemplateAreas: '"cover name size" "cover actions actions"',
+    px: '8px',
+  },
+} as const;
+
+export default function PdfListHeader() {
   const { t, ui } = usePdfitI18n();
-  return <Box data-testid="pdf-list-header" sx={{ display: 'grid', gridTemplateColumns: compactTagActions ? PDF_LIST_FREE_MOBILE_COLUMNS : PDF_LIST_MOBILE_COLUMNS, [`@media ${PDF_LIST_WIDE_LAYOUT_QUERY}`]: { gridTemplateColumns: compactTagActions ? PDF_LIST_FREE_COLUMNS : PDF_LIST_COLUMNS, px: '18px' }, columnGap: 1, px: '12px', py: 1, borderBottom: '1px solid', borderColor: 'divider', color: 'text.secondary' }}>
-    <Box />
-    <Typography variant="caption" fontWeight={650} sx={{ textAlign: 'left' }}>{ui('파일명')}</Typography>
-    <Typography variant="caption" fontWeight={650} sx={{ textAlign: 'left' }}>{t('tags')}</Typography>
-    <Typography variant="caption" fontWeight={650} sx={{ textAlign: 'left' }}>{t('documentInfo')}</Typography>
-    <Typography variant="caption" fontWeight={650} sx={{ textAlign: 'left' }}>{t('documentTime')}</Typography>
-    <Typography data-testid="pdf-file-size-header" variant="caption" fontWeight={650} sx={{ textAlign: 'left' }}>{t('fileSize')}</Typography>
+  return <Box data-testid="pdf-list-header" sx={{
+    ...PDF_LIST_GRID_SX, [COMPACT_LIST]: { ...PDF_LIST_GRID_SX[COMPACT_LIST], gridTemplateAreas: '"cover name size"' },
+    py: 1, borderBottom: '1px solid', borderColor: 'divider', color: 'text.secondary',
+  }}>
+    <Typography variant="caption" fontWeight={650} sx={{ gridArea: 'name' }}>{ui('파일명')}</Typography>
+    <Typography data-testid="pdf-file-size-header" variant="caption" fontWeight={650} sx={{ gridArea: 'size' }}>{t('fileSize')}</Typography>
   </Box>;
 }

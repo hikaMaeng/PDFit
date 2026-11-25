@@ -55,12 +55,48 @@ function RenameDialog({ book, onClose }: { book: Book; onClose: () => void }) {
   </Dialog>;
 }
 
-export default function BookFileActions({ book, disabled, onMove, onDelete }: {
+type BookFileActionsProps = {
   book: Book;
   disabled: boolean;
   onMove?: (folder: string, filename: string) => void;
   onDelete?: (folder: string, filename: string) => void;
-}) {
+};
+
+export function BookRenameButton({ book, disabled }: Pick<BookFileActionsProps, 'book' | 'disabled'>) {
+  const { t } = usePdfitI18n();
+  const [renaming, setRenaming] = useState(false);
+  const label = t(FILE_ACTION.RENAME);
+  return <>
+    <Tooltip title={label}><span>
+      <IconButton aria-label={label} aria-haspopup="dialog" size="small" disabled={disabled} onClick={() => setRenaming(true)}>
+        <DriveFileRenameOutlineIcon sx={{ fontSize: 18 }} />
+      </IconButton>
+    </span></Tooltip>
+    {renaming && <RenameDialog book={book} onClose={() => setRenaming(false)} />}
+  </>;
+}
+
+const operations = [
+  { handler: 'onMove', label: 'moveToFolder', Icon: DriveFileMoveIcon, color: 'inherit' },
+  { handler: 'onDelete', label: 'delete', Icon: DeleteOutlineIcon, color: 'error.main' },
+] as const;
+
+export function BookFileButtons(props: BookFileActionsProps) {
+  const { t } = usePdfitI18n();
+  return operations.map(({ handler, label, Icon, color }) => {
+    const action = props[handler];
+    if (!action) return null;
+    return <Tooltip key={handler} title={t(label)}><span>
+      <IconButton aria-label={t(label)} aria-haspopup="dialog" size="small" disabled={props.disabled}
+        onClick={() => action(props.book.folder, props.book.filename)} sx={{ '&:hover, &.Mui-focusVisible': { color } }}>
+        <Icon fontSize="small" />
+      </IconButton>
+    </span></Tooltip>;
+  });
+}
+
+export default function BookFileActions(props: BookFileActionsProps) {
+  const { book, disabled } = props;
   const { t } = usePdfitI18n();
   const menuId = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -78,14 +114,13 @@ export default function BookFileActions({ book, disabled, onMove, onDelete }: {
         <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon>
         <ListItemText>{t(FILE_ACTION.RENAME)}</ListItemText>
       </MenuItem>
-      {onMove && <MenuItem onClick={() => { setAnchor(null); onMove(book.folder, book.filename); }}>
-        <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
-        <ListItemText>{t('moveToFolder')}</ListItemText>
-      </MenuItem>}
-      {onDelete && <MenuItem sx={{ color: 'error.main' }} onClick={() => { setAnchor(null); onDelete(book.folder, book.filename); }}>
-        <ListItemIcon sx={{ color: 'inherit' }}><DeleteOutlineIcon fontSize="small" /></ListItemIcon>
-        <ListItemText>{t('delete')}</ListItemText>
-      </MenuItem>}
+      {operations.map(({ handler, label, Icon, color }) => {
+        const action = props[handler];
+        return action && <MenuItem key={handler} sx={{ color }} onClick={() => { setAnchor(null); action(book.folder, book.filename); }}>
+          <ListItemIcon sx={color === 'inherit' ? undefined : { color: 'inherit' }}><Icon fontSize="small" /></ListItemIcon>
+          <ListItemText>{t(label)}</ListItemText>
+        </MenuItem>;
+      })}
     </Menu>
     {renaming && <RenameDialog book={book} onClose={() => setRenaming(false)} />}
   </>;

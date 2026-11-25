@@ -2,6 +2,8 @@ import React from 'react';
 import { Chip, useTheme, type ChipProps } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import TagIcon from './HashTagIcon.js';
+import TagGlyph from './TagGlyph.js';
+import type { TagIconName } from '../../shared/tagDetails.js';
 import { tagColorForMode } from '../../shared/tagColor.js';
 
 interface TagChipProps {
@@ -14,20 +16,21 @@ interface TagChipProps {
   compact?: boolean;
   plain?: boolean;
   hashLabel?: boolean;
+  glyph?: TagIconName;
 }
 
 /** 목록, 표지, 관리창, 뷰어에서 동일한 태그 형식을 사용한다. */
-export default function TagChip({ tag, color, onDelete, onClick, disabled, size = 'small', compact = false, plain = false, hashLabel = false }: TagChipProps) {
+export default function TagChip({ tag, color, onDelete, onClick, disabled, size = 'small', compact = false, plain = false, hashLabel = false, glyph }: TagChipProps) {
   const theme = useTheme();
   const displayColor = tagColorForMode(color, theme.palette.mode);
 
   return (
     <Chip
       data-testid="pdf-tag-chip"
-      label={hashLabel ? `# ${tag}` : plain ? `#${tag}` : tag}
+      label={hashLabel ? `# ${tag}` : plain && !glyph ? `#${tag}` : tag}
       title={tag}
       translate="no"
-      icon={plain || hashLabel ? undefined : <TagIcon />}
+      icon={glyph ? <TagGlyph icon={glyph} /> : plain || hashLabel ? undefined : <TagIcon />}
       size={size}
       variant="outlined"
       disabled={disabled}
