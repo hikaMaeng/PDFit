@@ -5,6 +5,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { BOOK_COMMENT_LIMIT, bookCommentPageCount, type CommentBook } from '../../../common/protocol/book-comments/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
+import { BookCommentMarkdown } from './BookCommentMarkdown.js';
 import { bookCommentsModel, viewerBookCommentsModel } from './model.js';
 import { COMMENT } from './resource.js';
 import { useDraggablePalette } from '../PdfGpuViewer/useDraggablePalette.js';
@@ -72,11 +73,11 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
             <Button size="small" color="error" disabled={Boolean(error)} onClick={() => model.setMode('delete', entry.id)}>{t('delete')}</Button>
           </Stack>
         </Stack>
-        <Typography sx={{ mt: .5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{entry.body}</Typography>
+        <BookCommentMarkdown body={entry.body} />
       </Box>)}
       {mode === 'delete' && comment && <Box component="article" sx={{ mb: 2 }}>
         <Typography component="time" variant="caption" color="text.secondary" dateTime={comment.updatedAt}>{dateFormat.format(new Date(comment.updatedAt))}</Typography>
-        <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{comment.body}</Typography>
+        <BookCommentMarkdown body={comment.body} />
       </Box>}
       {mode === 'delete' && <Alert severity="warning">{t(COMMENT.DELETE_CONFIRM)}</Alert>}
     </DialogContent>

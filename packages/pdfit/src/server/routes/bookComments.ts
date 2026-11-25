@@ -44,7 +44,7 @@ export function createBookCommentsRouter(resolver: MetadataStoreResolver): Route
           const body: unknown = req.body?.body;
           if (typeof id !== 'string' || !BOOK_COMMENT_ID.test(id) || typeof body !== 'string' ||
             !body.trim() || body.length > BOOK_COMMENT_LIMIT || body.includes('\0')) { res.status(400).end(); return; }
-          const input = { id, body: body.trim() };
+          const input = { id, body };
           const saved = req.method === 'POST' ? await store.createBookComment(book, input) : await store.updateBookComment(book, input);
           if (!saved) { res.status(404).end(); return; }
           res.status(req.method === 'POST' ? 201 : 200).json(saved satisfies BookComment);

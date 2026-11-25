@@ -177,7 +177,7 @@ PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, fi
 ## Book file actions and comments
 
 - `PATCH /api/folders/files/rename` takes `{folder, filename, newName, driveFileId?}` and returns the renamed file metadata. It rejects invalid PDF names with `400` and existing destination names with `409`. The Free store relocates path-keyed metadata in one transaction. [Rename protocol](../src/common/protocol/file-rename/index.ts)
-- `GET /api/book-comments?folder=…&filename=…&page=1` returns `{comments, page, total}` with up to five full posts in descending creation order. `total` counts posts. A request past the end returns the last page. `POST` and `PATCH` use the same book query plus a UUID `id` and a JSON `{body}` of up to 10,000 characters. `DELETE` also uses the book and post ID. Posts follow the PDF through file rename and folder moves. [Comment protocol](../src/common/protocol/book-comments/index.ts)
+- `GET /api/book-comments?folder=…&filename=…&page=1` returns `{comments, page, total}` with up to five full posts in descending creation order. `total` counts posts. A request past the end returns the last page. `POST` and `PATCH` use the same book query plus a UUID `id` and a JSON `{body}` of up to 10,000 characters. The body must contain non-whitespace text. The API preserves its whitespace for Markdown. `DELETE` also uses the book and post ID. Posts follow the PDF through file rename and folder moves. [Comment protocol](../src/common/protocol/book-comments/index.ts)
 
 ## Bookmark endpoints
 

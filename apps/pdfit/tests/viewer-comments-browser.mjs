@@ -16,7 +16,36 @@ const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--use-
 const desktop = await browser.newContext({ baseURL: origin, viewport: { width: 1280, height: 850 }, locale: 'ko-KR' });
 const errors = [];
 const titles = Array.from({ length: 6 }, (_, index) => `Example reading note ${index + 1}`);
-const viewerNote = 'Written from the PDFGPU viewer';
+const noteTitle = 'Written from the PDFGPU viewer';
+const viewerNote = [
+  '    firstLine()',
+  '',
+  `## ${noteTitle}`,
+  '',
+  '**Bold** and *italic* with ~~old text~~ and `inline()`.',
+  '> Quoted passage',
+  '',
+  '- [x] Done',
+  '- [ ] Next step',
+  '',
+  '| Page | Topic |',
+  '| ---: | --- |',
+  '| 12 | Example |',
+  '',
+  '```js',
+  `console.log('${'wide-code-'.repeat(16)}');`,
+  '```',
+  '',
+  '[Reference](https://example.com/) and [Invalid URL](javascript:void(0)).',
+  '<span data-comment-raw>Raw HTML example</span>',
+  '',
+  '![PDFit icon](/brand/pdfit-favicon.png)',
+  '',
+  'A note[^source].',
+  '',
+  '[^source]: Edition details.',
+].join('\n');
+const editedNote = `${viewerNote.replace('Quoted passage', 'Edited passage')}\n\n`;
 const seedNotes = titles.map((title, index) => index === 1
   ? [title, ...Array.from({ length: 45 }, (_, detail) => `Detail ${detail + 1}`)].join('\n') : title);
 
@@ -24,6 +53,37 @@ function controls(page) { return page.getByRole('toolbar', { name: 'viewer contr
 function toggle(page) { return controls(page).getByRole('button', { name: '코멘트', exact: true }); }
 function panel(page) { return page.getByRole('dialog', { name: '코멘트', exact: true }); }
 function panelText(page, text) { return panel(page).getByText(text, { exact: true }); }
+function markdownPost(page) {
+  return panel(page).getByRole('article').filter({ has: page.getByRole('heading', { name: noteTitle, exact: true }) });
+}
+function editor(page) { return panel(page).getByRole('textbox', { name: '코멘트 본문' }); }
+async function assertMarkdown(page, quote) {
+  const post = markdownPost(page);
+  await post.getByRole('heading', { name: noteTitle, exact: true }).waitFor();
+  await post.getByRole('table').getByRole('columnheader', { name: 'Topic' }).waitFor();
+  await post.getByRole('cell', { name: 'Example', exact: true }).waitFor();
+  assert.equal(await post.locator('strong').textContent(), 'Bold');
+  assert.equal(await post.locator('em').textContent(), 'italic');
+  assert.equal(await post.locator('del').textContent(), 'old text');
+  assert.equal(await post.locator('blockquote').innerText(), quote);
+  assert.equal(await post.getByRole('checkbox').first().isChecked(), true);
+  assert.equal(await post.getByRole('checkbox').last().isChecked(), false);
+  assert.equal(await post.getByRole('checkbox').first().isDisabled(), true);
+  assert.equal(await post.getByRole('link', { name: 'Reference', exact: true }).getAttribute('href'), 'https://example.com/');
+  assert.equal(await post.getByText('Invalid URL', { exact: true }).getAttribute('href'), null);
+  assert.equal(await post.locator('[data-comment-raw]').count(), 0);
+  assert.match(await post.innerText(), /<span data-comment-raw>Raw HTML example<\/span>/);
+  assert.equal(await post.getByRole('img', { name: 'PDFit icon', exact: true }).getAttribute('src'), '/brand/pdfit-favicon.png');
+  const reference = post.getByRole('link', { name: '1', exact: true });
+  const label = post.getByRole('heading', { name: '각주', exact: true });
+  assert.equal(await reference.getAttribute('aria-describedby'), await label.getAttribute('id'));
+  assert.equal(await reference.evaluate((node) => Boolean(document.getElementById(node.hash.slice(1)))), true);
+  assert.equal(await post.getByRole('link', { name: /각주 참조/ }).evaluate((node) => Boolean(document.getElementById(node.hash.slice(1)))), true);
+  await post.locator('pre').filter({ hasText: 'firstLine()' }).waitFor();
+  assert.equal(await post.locator('pre').filter({ hasText: 'console.log' }).evaluate((node) => node.scrollWidth > node.clientWidth), true);
+  assert.equal(await panel(page).getByTestId('book-comments-content').evaluate((node) => node.scrollWidth === node.clientWidth), true);
+}
+
 async function post(body) {
   const r = await desktop.request.post(`${commentPath}&id=${randomUUID()}`, { data: { body } });
   assert.equal(r.status(), 201, await r.text());
@@ -57,7 +117,7 @@ try {
     assert.ok(next.comments.length > 0);
     oldNotes.push(...next.comments);
   }
-  assert.ok(oldNotes.every(({ body }) => seedNotes.includes(body) || body === viewerNote));
+  assert.ok(oldNotes.every(({ body }) => seedNotes.includes(body) || [noteTitle, viewerNote, editedNote].includes(body)));
   for (const { id } of oldNotes) {
     assert.equal((await desktop.request.delete(`${commentPath}&id=${id}`)).status(), 204);
   }
@@ -70,6 +130,7 @@ try {
   await panelText(page, titles[5]).waitFor();
   assert.equal(await panel(page).getAttribute('aria-modal'), 'false');
   assert.equal(await panel(page).getByRole('article').count(), 5);
+  assert.equal(await panel(page).getByRole('article').filter({ hasText: titles[1] }).locator('br').count(), 45);
   await assertFits(page);
   const start = await panel(page).boundingBox();
   const handle = await page.getByTestId('viewer-comments-drag-handle').boundingBox();
@@ -106,9 +167,11 @@ try {
   await panelText(page, titles[0]).waitFor();
   assert.equal(await panel(page).getByRole('article').count(), 1);
   await panel(page).getByRole('button', { name: '새 코멘트', exact: true }).click();
-  await panel(page).getByRole('textbox', { name: '코멘트 본문' }).fill(viewerNote);
+  await editor(page).fill(viewerNote);
+  assert.equal(await editor(page).evaluate((node) => node.tagName), 'TEXTAREA');
   await panel(page).getByRole('button', { name: '저장', exact: true }).click();
-  await panelText(page, viewerNote).waitFor();
+  await assertMarkdown(page, 'Quoted passage');
+  assert.equal((await (await desktop.request.get(commentPath)).json()).comments[0].body, viewerNote);
   await page.screenshot({ path: path.join(artifacts, 'pdfgpu-comments.png'), animations: 'disabled' });
   await panel(page).getByRole('button', { name: '닫기', exact: true }).click();
   await panel(page).waitFor({ state: 'hidden' });
@@ -117,15 +180,32 @@ try {
 
   await page.goto(`/folder/${folder}`);
   await page.getByTestId('pdf-cover-card').getByRole('button', { name: '코멘트', exact: true }).click();
-  await panelText(page, viewerNote).waitFor();
+  await assertMarkdown(page, 'Quoted passage');
   assert.equal(await panel(page).getAttribute('aria-modal'), 'true');
+  await markdownPost(page).getByRole('button', { name: '수정', exact: true }).click();
+  assert.equal(await editor(page).inputValue(), viewerNote);
+  await editor(page).fill(editedNote);
+  await page.screenshot({ path: path.join(artifacts, 'cover-markdown-edit.png'), animations: 'disabled' });
+  await panel(page).getByRole('button', { name: '저장', exact: true }).click();
+  await assertMarkdown(page, 'Edited passage');
+  assert.equal((await (await desktop.request.get(commentPath)).json()).comments[0].body, editedNote);
+  await markdownPost(page).getByRole('button', { name: '삭제', exact: true }).click();
+  await assertMarkdown(page, 'Edited passage');
+  await page.screenshot({ path: path.join(artifacts, 'cover-markdown-delete-preview.png'), animations: 'disabled' });
+  await panel(page).getByRole('button', { name: '취소', exact: true }).click();
+  await panel(page).getByRole('button', { name: '닫기', exact: true }).click();
+  await page.getByRole('button', { name: '목록 보기', exact: true }).click();
+  await page.getByRole('listitem').filter({ has: page.getByRole('link', { name: filename, exact: true }) })
+    .getByRole('button', { name: '코멘트', exact: true }).click();
+  await assertMarkdown(page, 'Edited passage');
+  await page.screenshot({ path: path.join(artifacts, 'list-markdown.png'), animations: 'disabled' });
 
   const touch = await browser.newContext({ baseURL: origin, viewport: { width: 390, height: 844 }, locale: 'ko-KR', isMobile: true, hasTouch: true });
   const mobile = await watch(touch);
   await mobile.goto(viewerPath);
   await mobile.getByTestId('pdf-scroll-area').waitFor();
   await toggle(mobile).tap();
-  await panelText(mobile, viewerNote).waitFor();
+  await assertMarkdown(mobile, 'Edited passage');
   const initialTouch = await panel(mobile).boundingBox();
   const touchGrip = await mobile.getByTestId('viewer-comments-drag-handle').boundingBox();
   const cdp = await touch.newCDPSession(mobile);
@@ -143,10 +223,11 @@ try {
     return frame && frame.right <= window.innerWidth + 1 && frame.bottom <= window.innerHeight + 1;
   });
   await assertFits(mobile);
+  await assertMarkdown(mobile, 'Edited passage');
   await mobile.screenshot({ path: path.join(artifacts, 'touch-comments.png'), animations: 'disabled' });
   await touch.close();
   assert.deepEqual(errors, []);
-  console.log('PASS PDF.js and PDFGPU non-modal comments, mouse/keyboard/touch drag, viewer paging, both close controls and shared card posts');
+  console.log('PASS PDF.js, PDFGPU, cover and list Markdown; raw textarea and persisted source; delete preview; GFM and narrow layout; comment paging and drag');
 } finally {
   await desktop.tracing.stop({ path: path.join(artifacts, 'trace.zip') }).catch(() => undefined);
   await browser.close();

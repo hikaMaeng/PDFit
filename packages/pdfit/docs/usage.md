@@ -86,6 +86,18 @@ a folder takes it out of that folder only; a tag that is in no folder shows in t
 Deleting a tag removes it from every folder. A runtime whose metadata store has no
 tag folders (`501`) shows neither the button nor the folders.
 
+## Book comments Markdown
+
+Open **Comments** from a cover card, a library list row, or the PDF.js or PDFGPU
+viewer toolbar. Enter Markdown in the comment text area. Saving stores the
+source text and reopening the editor returns that text.
+
+The shared [comment renderer](../src/front/components/book-comments/BookCommentMarkdown.tsx#BookCommentMarkdown)
+formats existing and new posts in the reading view and delete confirmation.
+It supports line breaks, headings, emphasis, links, images, quotes, lists,
+code blocks, and GitHub-style tables, task lists, strikethrough, and footnotes.
+Task lists display their saved checked state. Raw HTML is displayed as text.
+
 ## Book clips
 
 The paperclip at the right of a cover card's filename shows the saved clip count
