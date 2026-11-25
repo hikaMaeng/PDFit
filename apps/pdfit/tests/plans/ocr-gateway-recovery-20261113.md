@@ -37,8 +37,8 @@ nginx-proxy(`pdfit.neurondev.net` → `host.docker.internal:15203`) 에러 로�
 
 1. `npm run deploy:standalone`
 2. `node apps/pdfit/tests/ocr-gateway-recovery-browser.mjs`
-   - 1단계: 뷰어를 연다.
-   - 2단계: `/api/ocr/page` 의 첫 두 번만 nginx 502 본문(`text/html`)으로 가로막고, 패널이 `failed` 를
+   - 1단계: 뷰어를 열고 페이지 표시가 나올 때까지 기다린다.
+   - 2단계: OCR 창에서 ‘스캔하기’ 또는 ‘다시 읽기’를 누른다. `POST /api/ocr/page`의 첫 두 번만 nginx 502 본문(`text/html`)으로 가로막고, 패널이 `failed`를
      거치지 않고 `done` 으로 끝나는지, 요청이 502·502·성공 3회로 나가는지, 첫 시도와 성공 사이가
      2.8초 이상인지 본다.
    - 3단계: 모든 시도를 막고, 요청이 6회(첫 시도 + 재시도 5회) 나간 뒤 실패 문구가 한국어

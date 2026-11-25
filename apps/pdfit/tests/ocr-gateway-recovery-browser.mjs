@@ -49,8 +49,11 @@ const browser = await chromium.launch({ channel, headless: true });
 const context = await browser.newContext({ locale, viewport: { width: 1600, height: 1000 } });
 
 // 독서 상태 쓰기는 서버로 보내지 않는다.
-await context.route('**/api/progress/**', (route) => route.fulfill({ status: 204, body: '' }));
-await context.route('**/api/viewer-state/**', (route) => route.fulfill({ status: 204, body: '' }));
+const blockStateWrites = (route) => route.request().method() === 'GET'
+  ? route.continue()
+  : route.fulfill({ status: 204 });
+await context.route('**/api/progress/**', blockStateWrites);
+await context.route('**/api/viewer-state/**', blockStateWrites);
 
 let gatewayFailuresLeft = 0;
 const ocrAttempts = [];
@@ -106,7 +109,7 @@ const closeDialog = async () => {
 try {
   await runStep('1_open_viewer', async () => {
     await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.getByTestId('page-ocr-open').waitFor({ state: 'visible', timeout: 60_000 });
+    await page.getByRole('toolbar', { name: 'viewer controls' }).getByTestId('viewer-page-indicator').waitFor({ timeout: 60_000 });
     return { url: viewerUrl, screenshot: await snap('viewer.png') };
   });
 

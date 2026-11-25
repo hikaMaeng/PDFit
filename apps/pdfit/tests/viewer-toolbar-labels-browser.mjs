@@ -97,7 +97,7 @@ async function verifyToolbar() {
         });
         assert.equal(layout.overflow, 0);
         assert.equal(layout.rows, width === 1440 ? 1 : 3, `${width}px toolbar rows`);
-        assert.deepEqual(layout.captions.map(({ text }) => text), ['1 Page', '2 Pages', 'Scroll', 'Fit Width', 'Fit Height', 'Zoom −', 'Zoom +', 'Image', 'Clips', 'OCR', 'Download', 'Contents', 'Prev', 'Next']);
+        assert.deepEqual(layout.captions.map(({ text }) => text), ['1 Page', '2 Pages', 'Scroll', 'Fit Width', 'Fit Height', 'Zoom −', 'Zoom +', 'Image', 'OCR', 'Download', 'Contents', 'Prev', 'Next']);
         assert.ok(layout.captions.every(({ fontSize, inside, underIcon }) => fontSize === '10px' && inside && underIcon));
         await page.screenshot({ path: fileURLToPath(new URL(`${engine}-${width}.png`, output)) });
         sizes.push({ width, rows: layout.rows, height: layout.height });
@@ -155,7 +155,7 @@ async function verifyPageOcr(page, open, viewerPageInput, output, engine) {
 
   await open.click();
   await unscanned(second).waitFor();
-  await second.screenshot({ path: fileURLToPath(new URL(`${engine}-ocr-unscanned-375.png`, output)) });
+  await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${engine}-ocr-unscanned-375.png`, output)) });
   assert.deepEqual(requests, [{ method: 'GET', pageIndex: 1 }]);
   await previous(second).click();
   const first = dialogFor(1);
@@ -194,7 +194,7 @@ async function verifyPageOcr(page, open, viewerPageInput, output, engine) {
   assert.equal((await text(second).innerText()).trim(), 'Toolbar fixture Page 2 of 3');
   assert.deepEqual(requests.filter(({ method }) => method === 'POST'), [{ method: 'POST', pageIndex: 1 }]);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await second.screenshot({ path: fileURLToPath(new URL(`${engine}-ocr-scanned-1440.png`, output)) });
+  await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${engine}-ocr-scanned-1440.png`, output)) });
 
   await next(second).click();
   await unscanned(third).waitFor();
