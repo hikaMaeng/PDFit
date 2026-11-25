@@ -96,7 +96,7 @@ async function verifyToolbar() {
           return { rows: rows.size, height: rect.height, overflow: element.scrollWidth - element.clientWidth, captions };
         });
         assert.equal(layout.overflow, 0);
-        assert.equal(layout.rows, width === 1440 ? 1 : 3, `${width}px toolbar rows`);
+        assert.equal(layout.rows, width === 1440 ? 1 : 4, `${width}px toolbar rows`);
         assert.deepEqual(layout.captions.map(({ text }) => text), ['1 Page', '2 Pages', 'Scroll', 'Fit Width', 'Fit Height', 'Zoom −', 'Zoom +', 'Image', 'OCR', 'Download', 'Comments', 'Scan', 'Contents', 'Prev', 'Next']);
         assert.ok(layout.captions.every(({ fontSize, inside, underIcon }) => fontSize === '10px' && inside && underIcon));
         await page.screenshot({ path: fileURLToPath(new URL(`${engine}-${width}.png`, output)) });
