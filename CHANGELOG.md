@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-11-25
+
+- Show the percentage of the whole PDF with saved OCR text beside the viewer's **Scan** button.
+- Move and collapse the floating annotation tools, and reposition the clip list while reading.
+- Render Markdown in book comments in the library and viewer.
+
 ## [0.4.17] - 2026-11-25
 
 - Show book covers, favorites, rename, and tag icons in library list rows. Open comments, clips, cover replacement, move, and delete from the same row.
