@@ -9,7 +9,7 @@ import { meaningfulLength } from './pdfPageTextTask.worker.js';
 import { createVisionOcrQueue, visionOcrConcurrency, type VisionImageType, type VisionOcrServer } from './visionOcr.js';
 import { thumbnailIdentityHash } from '../thumbnails/thumbnailStore.js';
 import { restorePageOcrSearchIndex, type PageOcrSearchIndex } from './pageOcrSearchIndex.js';
-import { createOcrScan, OcrScanError, type OcrDocument, type OcrScanService } from './ocrScan.js';
+import { createOcrScan, OcrScanError, type OcrDocument, type OcrScanService, type OcrScanTrace } from './ocrScan.js';
 
 export const PAGE_TEXT_TASK_TYPE = 'page-text';
 export const PAGE_TEXT_TASK_SCRIPT_URL = new URL(import.meta.url.endsWith('.ts') ? './pdfPageTextTask.worker.ts' : './pdfPageTextTask.worker.js', import.meta.url);
@@ -127,10 +127,11 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
 
   const runVision = createVisionOcrQueue(request);
   const resolveVision = () => options.resolveVisionServer?.().catch(() => null) ?? Promise.resolve(null);
-  const vision = async (image: { bytes: Buffer; type: VisionImageType }, priority: number): Promise<string | null> => {
+  const vision = async (image: { bytes: Buffer; type: VisionImageType }, priority: number, trace?: OcrScanTrace): Promise<string | null> => {
+    trace?.('vision-config');
     const server = await resolveVision();
     if (!server) return null;
-    return runVision(server, image, priority);
+    return runVision(server, image, priority, trace);
   };
 
   async function finishBookmark(payload: PageTextOcrPayload, outcome: TaskOutcome<PageTextWorkerResult>) {
@@ -261,23 +262,25 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     }
   }
 
-  async function readPage(document: OcrDocument, pageIndex: number, background: boolean): Promise<PageOcrResult> {
+  async function readPage(document: OcrDocument, pageIndex: number, background: boolean, trace?: OcrScanTrace): Promise<PageOcrResult> {
     const started = Date.now();
     const { folder, filename, sourcePath, stamp, cacheStamp } = document;
     const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
     const cachePath = path.join(options.cacheRoot, cacheName);
+    trace?.('page-cache-read');
     const cached = await readCachedPage(cachePath, stamp, pageIndex).catch(() => null);
     if (cached && (!background || cached.text.trim())) return { ...cached, cached: true, durationMs: Date.now() - started };
 
     const key = `page:${cacheName.replace(/\.json$/, '')}`;
     const priority = background ? DEFAULT_TASK_PRIORITY : INTERACTIVE_PRIORITY;
+    trace?.('page-text');
     const result = await runPageText(key, { sourcePath, pageIndex, render: PAGE_RENDER, folder, filename }, priority);
     if (!('text' in result)) throw new Error('Missing page OCR result.');
     let text = result.text;
     let source: PageOcrResult['source'] = 'text-layer';
     const hasLayerText = meaningfulLength(text) > 0;
     if (!hasLayerText || result.untrusted) {
-      const recognized = result.image ? await vision({ bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' }, priority) : null;
+      const recognized = result.image ? await vision({ bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' }, priority, trace) : null;
       if (recognized !== null) { text = recognized; source = 'vision'; }
       // Without a vision server a garbled layer is still returned as the layer's text.
       else if (!hasLayerText) { text = ''; source = 'none'; }
@@ -319,15 +322,20 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       return result.pageCount;
     },
     listIndexedPages: ({ folder, filename, stamp }, pageIndex) => queryIndexedPages(folder, filename, stamp, pageIndex),
-    async recognizePage(document, pageIndex) {
-      const result = await readPage(document, pageIndex, true);
+    async recognizePage(document, pageIndex, trace) {
+      const result = await readPage(document, pageIndex, true, trace);
       if (result.source === 'none') throw new OcrScanError('unavailable', 'No vision model could read the page.');
+      trace('persist-queued', { source: result.source, cached: result.cached });
       const received = scanResults.then(async () => {
+        trace('verify-source');
         await assertCurrent(document);
+        trace('cache-write');
         await cachePage(document, result, false);
         if (!result.text.trim()) return;
         const { folder, filename, stamp } = document;
+        trace('index-write');
         await pageSearchIndex.save(folder, filename, stamp, pageIndex, result.text);
+        trace('index-confirm');
         if (!(await queryIndexedPages(folder, filename, stamp, pageIndex)).length) throw new Error('Page OCR text was not saved.');
       });
       scanResults = received.catch(() => undefined);

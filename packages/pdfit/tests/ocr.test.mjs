@@ -162,6 +162,7 @@ test('document scan overlaps vision calls and serializes the result listener eve
   const sourcePath = path.join(base, 'scan.pdf');
   await fs.writeFile(sourcePath, buildPdf({ labels: ['', '', 'Do not dispatch'] }));
   const visionCalls = [];
+  const logs = [];
   const allowFirstSave = Promise.withResolvers();
   const saves = [];
   const stored = new Set();
@@ -186,6 +187,7 @@ test('document scan overlaps vision calls and serializes the result listener eve
     cacheRoot: path.join(base, 'ocr'),
     resolveVisionServer: async () => ({ ...visionServer, ocrConcurrency: 2 }),
     request: () => new Promise((resolve) => visionCalls.push(resolve)),
+    log: (line) => logs.push(line),
     pageSearchIndex: {
       listBooks: async () => [],
       listPages: async (_folder, _filename, _stamp, pageIndex) => [...stored].filter((page) => pageIndex === undefined || page === pageIndex),
@@ -206,7 +208,7 @@ test('document scan overlaps vision calls and serializes the result listener eve
     },
   });
   try {
-    service.scan.start('A', 'scan.pdf', 1);
+    const { id } = service.scan.start('A', 'scan.pdf', 1);
     await waitFor(() => visionCalls.length === 2);
     assert.deepEqual(service.scan.get('A', 'scan.pdf').activePages, [1, 2]);
     visionCalls[0](response());
@@ -225,10 +227,74 @@ test('document scan overlaps vision calls and serializes the result listener eve
     const cached = await service.getCachedPage('A', 'scan.pdf', 1 - failedIndex);
     assert.equal(cached?.text, 'Scanned fixture text');
     assert.equal(cached?.source, 'vision');
+    const events = logs.filter((line) => line.startsWith('scan ')).map((line) => JSON.parse(line.slice(5)));
+    assert.ok(events.every((event) => event.jobId === id));
+    const failure = events.find(({ event }) => event === 'work.failed');
+    assert.deepEqual([failure.phase, failure.page, failure.stopsDispatch], ['index-write', failedIndex + 1, true]);
+    assert.equal(events.at(-1).status, 'failed');
   } finally {
     allowFirstSave.resolve();
     for (const deliver of visionCalls) deliver(response());
     await waitFor(() => service.scan.get('A', 'scan.pdf')?.activePages.length === 0);
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
+
+test('scan logs distinguish parallel vision deadlines from queue wait and correlate the stop and drain', async () => {
+  const { base } = await fixture();
+  const sourcePath = path.join(base, 'scan.pdf');
+  await fs.writeFile(sourcePath, buildPdf({ labels: ['', '', 'Do not dispatch'] }));
+  const requests = [];
+  const events = [];
+  let service;
+  const { submit } = inlineScheduler(() => service);
+  service = createOcrService({
+    resolveSourcePath: async () => sourcePath,
+    sourceStamps: async () => ({ cacheStamp: '1-1', stamp: '1-1' }),
+    submit,
+    cacheRoot: path.join(base, 'ocr'),
+    resolveVisionServer: async () => ({ ...visionServer, baseUrl: 'http://user:secret@ai.test/private?key=secret', ocrConcurrency: 2 }),
+    request: async () => {
+      const request = Promise.withResolvers();
+      requests.push(request);
+      return request.promise;
+    },
+    log: (line) => {
+      if (line.startsWith('scan ')) events.push(JSON.parse(line.slice(5)));
+    },
+    pageSearchIndex: { listBooks: async () => [], listPages: async () => [], save: async () => {} },
+  });
+  const waitFor = async (condition) => {
+    const deadline = Date.now() + 5_000;
+    while (!condition()) {
+      assert.ok(Date.now() < deadline, 'Timed out waiting for scan diagnostics');
+      await delay(10);
+    }
+  };
+  const timeout = () => new DOMException('unlogged upstream details', 'TimeoutError');
+  try {
+    const { id } = service.scan.start('A', 'scan.pdf', 1);
+    await waitFor(() => requests.length === 2);
+    requests[0].reject(timeout());
+    await waitFor(() => service.scan.get('A', 'scan.pdf').status === 'stopping');
+    requests[1].reject(timeout());
+    await waitFor(() => service.scan.get('A', 'scan.pdf').status === 'failed');
+
+    assert.ok(events.every((event) => event.jobId === id));
+    assert.deepEqual(events.filter(({ event }) => event === 'page.dispatched').map(({ page }) => page), [1, 2]);
+    const started = events.filter(({ event, phase }) => event === 'page.phase' && phase === 'vision-request');
+    assert.equal(started.length, 2);
+    assert.ok(started.every(({ endpoint, timeoutMs, previousPhase }) => endpoint === 'http://ai.test' && timeoutMs === 5_000 && previousPhase === 'vision-queued'));
+    assert.deepEqual(started.map(({ visionActive }) => visionActive), [1, 2]);
+    const failures = events.filter(({ event }) => event === 'work.failed');
+    assert.deepEqual(failures.map(({ phase, errorName, stopsDispatch }) => [phase, errorName, stopsDispatch]), [
+      ['vision-request', 'TimeoutError', true], ['vision-request', 'TimeoutError', false],
+    ]);
+    assert.equal(events.at(-1).event, 'job.finished');
+    assert.equal(events.at(-1).failedPage, failures[0].page);
+    assert.doesNotMatch(JSON.stringify(events), /secret|unlogged upstream details/);
+  } finally {
+    for (const request of requests) request.reject(timeout());
     await fs.rm(base, { recursive: true, force: true });
   }
 });

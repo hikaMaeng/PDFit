@@ -13,6 +13,8 @@ export interface VisionOcrServer {
 }
 
 export type VisionImageType = 'image/jpeg' | 'image/png' | 'image/webp';
+type VisionOcrTrace = (phase: 'vision-queued' | 'vision-request' | 'vision-response', details: Record<string, unknown>) => void;
+const VISION_TIMEOUT_MS = 300_000;
 
 export function visionOcrConcurrency(server: VisionOcrServer | null): number {
   const limit = server?.ocrConcurrency ?? 1;
@@ -42,7 +44,7 @@ export function createVisionOcrQueue(request: typeof fetch) {
     if (queue.active === 0 && !queue.pending.length) queues.delete(endpoint);
   }
 
-  return (server: VisionOcrServer, image: { bytes: Buffer; type: VisionImageType }, priority: number) => {
+  return (server: VisionOcrServer, image: { bytes: Buffer; type: VisionImageType }, priority: number, trace?: VisionOcrTrace) => {
     const endpoint = chatCompletionsUrl(server.baseUrl);
     const queue = queues.get(endpoint) ?? { limit: 1, active: 0, pending: [] };
     queues.set(endpoint, queue);
@@ -51,11 +53,15 @@ export function createVisionOcrQueue(request: typeof fetch) {
       queue.pending.push({
         priority,
         async run() {
-          try { resolve(await recognizeImageText(server, image, request)); }
+          try {
+            trace?.('vision-request', { endpoint: new URL(endpoint).origin, model: server.model, timeoutMs: server.timeoutMs ?? VISION_TIMEOUT_MS, visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
+            resolve(await recognizeImageText(server, image, request, trace));
+          }
           catch (error) { reject(error); }
         },
       });
       queue.pending.sort((left, right) => right.priority - left.priority);
+      trace?.('vision-queued', { visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
       pump(endpoint, queue);
     });
   };
@@ -82,7 +88,9 @@ export async function recognizeImageText(
   server: VisionOcrServer,
   image: { bytes: Buffer; type: VisionImageType },
   request: typeof fetch = fetch,
+  trace?: VisionOcrTrace,
 ): Promise<string> {
+  const signal = AbortSignal.timeout(server.timeoutMs ?? VISION_TIMEOUT_MS);
   const response = await request(chatCompletionsUrl(server.baseUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...server.headers },
@@ -97,10 +105,15 @@ export async function recognizeImageText(
         ],
       }],
     }),
-    signal: AbortSignal.timeout(server.timeoutMs ?? 300_000),
+    signal,
   });
+  trace?.('vision-response', { httpStatus: response.status });
   if (!response.ok) throw new Error(`Vision OCR request failed (${response.status}).`);
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }> };
+  const payload = await response.json().catch((error) => {
+    // Fetch can report AbortError while reading the body after the deadline.
+    if (trace) signal.throwIfAborted();
+    throw error;
+  }) as { choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }> };
   const choice = payload.choices?.[0];
   if (!choice || typeof choice.message?.content !== 'string') throw new Error('Vision OCR returned no message.');
   if (choice.finish_reason === 'length' && !choice.message.content.trim()) throw new Error('Vision OCR ran out of tokens before answering.');

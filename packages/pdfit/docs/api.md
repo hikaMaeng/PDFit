@@ -328,6 +328,8 @@ The [PDFit dispatcher](../src/server/ocr/ocrScan.ts) rotates through ready docum
 
 Job snapshots expose `id`, `status`, `startPage`, `pageCount`, 1-based `activePages`, and `processedPages` (including skipped DB hits). The worker determines the page count. The first error records `failure` and `failedPage` and stops new dispatch for that document. `stopping` or `cancelling` indicates that admitted work is draining before `failed` or `cancelled`. Jobs and progress are in process memory. Text is committed page by page to PostgreSQL and survives a restart.
 
+For Free, `docker logs --timestamps pdfit-pdfit-1` includes `[ocr] scan` JSON records from the [dispatcher](../src/server/ocr/ocrScan.ts) and [vision request queue](../src/server/ocr/visionOcr.ts). Filter by the `jobId` from the scan API to follow dispatch, page stages, cancellation, and the terminal result. `work.failed` with `stopsDispatch: true` marks the first error. Later failures belong to work already admitted. The page phases distinguish PDF worker wait, vision queue wait, the upstream request before response headers, response parsing, and cache or index persistence. The vision dispatch records the endpoint origin, model, timeout, and queue occupancy. Logs exclude request and response bodies and configured headers. Save incident logs before recreating the container.
+
 Clip bookmarks (`POST /api/bookmarks/:folder/:filename`, local files only) are queued
 after the clip is saved. The `201` response carries `ocr.status: "pending"`. When
 OCR finishes, `ocr` is `{ status, text, source, error, updatedAt }` (`updatedAt` ISO 8601):

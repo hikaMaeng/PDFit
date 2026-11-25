@@ -12,6 +12,8 @@ Set `PDFIT_TEST_ORIGIN` to the instance's loopback URL and `PDFIT_TEST_OUTPUT` t
 
 Run `npm run test:ocr` for the held-vision regression. Two vision calls overlap while the first DB save blocks the scan result listener. A failed save stops further dispatch for that document and releases the listener for the next admitted result.
 
+For scan diagnostics, the OCR tests also inject two upstream timeouts and check the recorded queue and request phases, first failure, drain and terminal state. Capture `docker logs --timestamps <fixture-container>` during the browser scenario. Match each `[ocr] scan` record to its job ID. Verify that an HTTP 502 records `vision-response`, that the first error stops dispatch, that admitted work drains, and that cancellation and successful retry produce distinct terminal results.
+
 1. Create an AI server without a concurrency field. Confirm default 1, validation of limits, and persistence of an edit to 2 in Settings.
 2. Read page 2 with regular OCR and verify its database status. In the PDF.js toolbar, check Scan before Contents and open the dialog. All five pages appear with contrasting saved and unsaved colors and accessible status names.
 3. Start on page 2. The toolbar shows `3,4 총 2건` while the start controls are hidden. Open the summary and confirm only pages 3 and 4 appear. Escape closes the dialog and restores focus to the summary. Move the reader to a different page while vision responses are held. A duplicate start returns the same job. Page 2 stays skipped and page 1 stays outside the scan range.
