@@ -8,6 +8,7 @@ export { PdfitFrontProvider };
 export type PdfitServiceExtension = PdfitFrontExtension;
 
 export interface PdfitViewerExtension {
+  bookBotEnabled?: boolean;
   appName?: string;
   appVersion?: string;
   basename?: string;

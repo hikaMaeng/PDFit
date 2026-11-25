@@ -71,7 +71,7 @@ function ButtonContent({ icon, caption }: { icon: ReactNode; caption: string }) 
   </Box>;
 }
 
-function ToolbarButton({ icon, caption, label, tooltip = label, ...props }: IconButtonProps & { icon: ReactNode; caption: string; label: string; tooltip?: string; 'data-testid'?: string }) {
+export function ToolbarButton({ icon, caption, label, tooltip = label, ...props }: IconButtonProps & { icon: ReactNode; caption: string; label: string; tooltip?: string; 'data-testid'?: string }) {
   const button = <IconButton size="small" aria-label={label} sx={buttonStyle} {...props}><ButtonContent icon={icon} caption={caption} /></IconButton>;
   return <Tooltip title={tooltip} describeChild arrow>{props.disabled ? <span>{button}</span> : button}</Tooltip>;
 }

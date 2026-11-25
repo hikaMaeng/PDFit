@@ -67,7 +67,7 @@ const OCR_INSTRUCTION = [
   'Output only the transcribed text. If the image contains no text, output nothing.',
 ].join(' ');
 
-function chatCompletionsUrl(baseUrl: string): string {
+export function chatCompletionsUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`;
   return url.toString();

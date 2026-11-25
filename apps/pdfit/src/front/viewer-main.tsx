@@ -6,6 +6,7 @@ const App = createPdfitViewerApp({
   appName: 'PDFit Viewer',
   appVersion: __APP_VERSION__,
   displayTranslation: { translate: translateDisplayTexts },
+  bookBotEnabled: true,
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

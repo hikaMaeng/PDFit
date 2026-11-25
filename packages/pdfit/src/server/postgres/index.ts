@@ -19,6 +19,8 @@ import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest,
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 import { bookClipCountsSchema } from './bookClipCounts.js';
 import { bookCommentsSchema, createPostgresBookComments } from './bookComments.js';
+import { bookBotSchema, createPostgresBookBot } from './bookBot.js';
+import type { BookBotStore } from '../book-bot/types.js';
 import { createPostgresLibraryFileOperations, libraryFileOperationsSchema } from './libraryFileOperations.js';
 import type { LibraryFileOperationStore } from '../../shared/libraryFileOperations.js';
 import type { RenamedPdf } from '../../common/protocol/file-rename/index.js';
@@ -65,10 +67,12 @@ import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } fro
 
 export class PostgresMetadataStore implements MetadataStore {
   readonly bookComments: NonNullable<MetadataStore['bookComments']>;
+  readonly bookBot: BookBotStore;
   readonly libraryFileOperations: LibraryFileOperationStore;
 
   constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {
     this.bookComments = createPostgresBookComments(db);
+    this.bookBot = createPostgresBookBot(db, this, bookmarkAssetRoot);
     this.libraryFileOperations = createPostgresLibraryFileOperations(db, {
       relocate: (client, source, folder, file) => this.relocateBookInTransaction(client, source.folder, source.filename, folder, file),
       purge: async (client, { folder, filename }) => {
@@ -982,6 +986,7 @@ export class PostgresMetadataStore implements MetadataStore {
       ALTER TABLE book_outlines ADD COLUMN IF NOT EXISTS is_manually_edited BOOLEAN;
       ${contentSearchSchema}
       ${bookCommentsSchema}
+      ${bookBotSchema}
       ${libraryFileOperationsSchema}
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.

@@ -34,6 +34,7 @@ Server:
 
 * `server/api/*`: folders, tags, progress, viewer-state, events router factories
 * `server/bootstrap/*`: common router assembly and `createPdfitServer(options)`
+* The [viewer Bot](book-bot.md) uses shared chat protocol, presentation, context preparation, and PostgreSQL storage. Free binds the viewer and the AI Settings resolver.
 * `server/postgres`: shared PostgreSQL metadata store
 * `server/routes/metadataStoreResolver.ts`: request-scoped account adapter for the same metadata routers
 

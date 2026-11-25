@@ -37,6 +37,8 @@ import { outlinesApi } from '../api/outlines.js';
 import type { PdfOutlineStorage } from '../viewer/storedOutline.js';
 import { FloatingBookComments } from '../components/book-comments/BookCommentsDialog.js';
 import { viewerBookCommentsModel } from '../components/book-comments/model.js';
+import { BookBotButton, BookBotPanel } from '../components/book-bot/BookBot.js';
+import { getBookBotModel } from '../components/book-bot/model.js';
 
 function DisplayFolderName({ value }: { value: string }) {
   return <>{useTranslatedDisplayText(value)}</>;
@@ -59,7 +61,7 @@ function decodeRouteParam(value: string | undefined): string {
 export default function PdfViewerPage() {
   const { t, ui } = usePdfitI18n();
   const isTabletTouch = useMediaQuery('(min-width: 720px) and (pointer: coarse)');
-  const { bookMetadataEnabled, bookResearchAccess } = usePdfitFrontConfig();
+  const { bookMetadataEnabled, bookResearchAccess, bookBotEnabled } = usePdfitFrontConfig();
   const { folder, filename } = useParams<{ folder: string; filename: string }>();
   const { search } = useLocation();
 
@@ -74,6 +76,8 @@ export default function PdfViewerPage() {
   const pendingUpload = isPendingUploadDriveFileId(driveFileId);
   const commentsButtonId = useId();
   const commentsPanelId = useId();
+  const botButtonId = useId();
+  const botPanelId = useId();
   const commentsBookKey = JSON.stringify([folderName, fileName, driveFileId, sample, pendingUpload]);
   const [openCommentsKey, setOpenCommentsKey] = useState<string | null>(null);
   const commentsOpen = openCommentsKey === commentsBookKey;
@@ -324,8 +328,14 @@ export default function PdfViewerPage() {
     setOpenCommentsKey(null);
     document.getElementById(commentsButtonId)?.focus();
   };
-  const floatingPanel = commentsOpen ? <FloatingBookComments id={commentsPanelId} book={commentsBook} onClose={closeComments} /> : undefined;
-  const documentActions: RenderViewerDocumentActions = (page = 1, pageCount = 0) => <ViewerDocumentActions
+  const bot = bookBotEnabled && localOcr && stateLoaded ? {
+    model: getBookBotModel(commentsBook), buttonId: botButtonId, panelId: botPanelId,
+  } : null;
+  const floatingPanel = commentsOpen || bot ? <>
+    {commentsOpen && <FloatingBookComments id={commentsPanelId} book={commentsBook} onClose={closeComments} />}
+    {bot && <BookBotPanel {...bot} documentUrl={pdfUrl} />}
+  </> : undefined;
+  const documentActions: RenderViewerDocumentActions = (page = 1, pageCount = 0) => <><ViewerDocumentActions
     onOcr={localOcr ? () => pageOcrModel.open(folderName, fileName, page, pageCount) : undefined}
     ocrDisabled={pageCount === 0}
     onDownload={() => setExportOpen(true)}
@@ -336,7 +346,7 @@ export default function PdfViewerPage() {
         setOpenCommentsKey(commentsBookKey);
       },
     } : undefined}
-  />;
+  />{bot && <BookBotButton {...bot} />}</>;
 
   return (
     <Box component="main" sx={{ display: 'flex', flexDirection: 'column', height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, minHeight: 0, overflow: 'hidden' }}>

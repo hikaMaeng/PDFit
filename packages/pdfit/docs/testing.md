@@ -161,3 +161,7 @@ mock authentication and a mock Spreadsheet snapshot to verify first hydration, r
 without another request, and reconstruction after database deletion without Google API calls.
 
 Title-based automatic tagging is covered by `npm run test:ai-tags`. The suite verifies filename-to-title derivation, prompt data isolation, fenced JSON handling, tag bounds and de-duplication, and persistence through the shared Express route.
+
+## Viewer Bot
+
+See the [Bot browser contract and fixture coverage](book-bot.md#verification).

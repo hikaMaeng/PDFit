@@ -58,14 +58,27 @@ const migrated = await migrateSqliteMetadata(path.join(path.dirname(booksRoot), 
 if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
+const resolveChatModel = async () => {
+  const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+  return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers } : null;
+};
+// Both OCR and Bot clip descriptions can use a multimodal LLM when no vision model is set.
+const resolveVisionModel = async () => {
+  const servers = await settingsStore.listAiServers();
+  const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
+  const model = server?.models.vision || server?.models.llm;
+  return server && model ? {
+    baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency, timeoutMs: 300_000,
+  } : null;
+};
 // Tag classification uses the first Settings AI server that has an LLM model, read on every
 // request so a server added or changed in Settings applies without a restart. SERVICE_AI_*
 // still wins when set. Local reasoning models can need minutes per reply.
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
   resolveAiServer: async () => {
-    const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+    const model = await resolveChatModel();
     // 600 s: the 4-6 tag prompt took 113-141 s on a shared local reasoning model and once passed 300 s.
-    return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers, timeoutMs: 600_000, reasoningEffort: 'low' } : null;
+    return model ? { ...model, timeoutMs: 600_000, reasoningEffort: 'low' } : null;
   },
 });
 const app = createPdfitServer({
@@ -81,20 +94,15 @@ const app = createPdfitServer({
   viewerIndexFile: path.join('viewer', 'index.html'),
   maxUploadBytes,
   suggestBookTags,
+  bookBot: {
+    store: metadataStore.bookBot,
+    resolveModel: resolveChatModel,
+    resolveVision: resolveVisionModel,
+  },
   backgroundTasks: {
     thumbnailRoot: thumbnailsRoot,
     ...taskSchedulerOptions,
-    // Clips and pages without a PDF text layer are read by a vision model: a Settings server
-    // with a `vision` model first, otherwise the first one with an `llm` model (multimodal
-    // models such as Qwen accept images there too).
-    resolveVisionServer: async () => {
-      const servers = await settingsStore.listAiServers();
-      const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
-      const model = server?.models.vision || server?.models.llm;
-      return server && model ? {
-        baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency, timeoutMs: 300_000,
-      } : null;
-    },
+    resolveVisionServer: resolveVisionModel,
   },
 });
 

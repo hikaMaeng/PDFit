@@ -13,6 +13,7 @@ PostgreSQL metadata contracts.
 | Internals | docs/internals.md |
 | Offline library volume | docs/offline-library.md |
 | Content search and indexes | docs/content-search.md |
+| Viewer Bot | docs/book-bot.md |
 | Testing | docs/testing.md |
 
 Primary exports are `@pdfit/pdfit/client/service`, `@pdfit/pdfit/client/viewer`, `@pdfit/pdfit/client/shared`, `@pdfit/pdfit/front/model/languagePreference`, `@pdfit/pdfit/server`, and `@pdfit/pdfit/server/postgres`.

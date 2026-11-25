@@ -91,6 +91,16 @@ Select **Clips** to open the document's clip list and enable area selection. Dra
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
 
+## Viewer Bot
+
+Choose **Bot** in the viewer toolbar to open a floating chat for the current book. Drag the header or focus it and use the arrow keys to move the chat. Ask a question or request a summary. The reply can cite the PDF page number and distinguish your comments from the book's text.
+
+Bot opens the most recently started chat for this book. **Chat history** shows each saved title and start time. Choose an earlier row to continue that conversation or **New chat** to start another. The title comes from the first completed exchange.
+
+In **Settings → AI Servers**, set an LLM model for chat. The configured AI server receives the question, conversation and relevant book material. Bot reads the saved or embedded contents, scanned page text, saved clips, clip OCR and notes, and book comments. Clip image descriptions use the configured vision model or an LLM that supports images. Use **Scan** to make more page text available.
+
+See [context and storage](../../../packages/pdfit/docs/book-bot.md).
+
 ## Table of contents
 
 The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and closes the dialog.

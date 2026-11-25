@@ -25,6 +25,7 @@ export interface PdfitServerOptions {
   suggestBookTags?: import('../services/tagSuggestion.js').BookTagSuggestionProvider;
   /** Local runtime only: periodic background jobs such as thumbnail generation. */
   backgroundTasks?: PdfitBackgroundTaskOptions;
+  bookBot?: import('../book-bot/router.js').BookBotOptions;
   commonRouters?: PdfitServerRouterMount[];
   configureApp?: (app: Express) => void;
   defaultMiddlewareEnabled?: boolean;
@@ -75,6 +76,7 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
       maxUploadBytes: options.maxUploadBytes,
       suggestBookTags: options.suggestBookTags,
       backgroundTasks: options.backgroundTasks,
+      bookBot: options.bookBot,
     }).routers;
   })();
 

@@ -260,6 +260,10 @@ oldest dropped first, pruned after each download and at start; concurrent previe
 one download). Applying a candidate reads the staged file instead of downloading again,
 also after a restart. Without a staging directory the images are kept in memory instead.
 
+## Book Bot
+
+See the [session and turn API](book-bot.md#api).
+
 ## OCR (local runtime)
 
 Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps:

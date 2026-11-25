@@ -36,6 +36,8 @@ import { createOcrRouter } from '../routes/ocr.js';
 import type { VisionOcrServer } from '../ocr/visionOcr.js';
 import { thumbnailSourceStamp } from '../thumbnails/thumbnailStore.js';
 import type { BookmarkOcrQueue } from '../api/bookmarks/index.js';
+import { BOOK_BOT_PATH } from '../../common/protocol/book-bot/index.js';
+import { createBookBotRouter, type BookBotOptions } from '../book-bot/router.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -101,6 +103,7 @@ export function createPdfitCommonRouterAssembly(options: {
   maxUploadBytes?: number;
   suggestBookTags?: BookTagSuggestionProvider;
   backgroundTasks?: PdfitBackgroundTaskOptions;
+  bookBot?: BookBotOptions;
 }): PdfitCommonRouterAssembly {
   const filesystem = createFilesystemService(options.booksRoot, options.booksRootName);
   filesystem.ensureBooksRoot();
@@ -220,6 +223,11 @@ export function createPdfitCommonRouterAssembly(options: {
         hasFile: async (folder, filename) => (await options.metadataStore.listBooksByFolder(folder)).some((book) => book.filename === filename),
       }) }] : []),
       ...(ocr ? [{ path: '/api/ocr', router: createOcrRouter(ocr) }] : []),
+      ...(options.bookBot ? [{ path: BOOK_BOT_PATH, router: createBookBotRouter({
+        ...options.bookBot,
+        getCachedPageText: async ({ folder, filename }, page) =>
+          (await ocr?.getCachedPage(folder, filename, page - 1).catch(() => null))?.text ?? null,
+      }) }] : []),
       ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, async () => ({
         thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null },
         ...(fileOperations && { libraryFileOperations: await fileOperations.status() }),

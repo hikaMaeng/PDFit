@@ -62,6 +62,7 @@ export interface PdfitFrontRuntimeConfig {
   bookMetadataEnabled?: boolean;
   serverThumbnails?: boolean;
   contentSearch?: PdfitFrontExtension['contentSearch'];
+  bookBotEnabled?: boolean;
   bookResearchAccess?: PdfitFrontExtension['bookResearchAccess'];
   themeOptions?: ThemeOptions;
   languagePreference?: PdfitFrontExtension['languagePreference'];

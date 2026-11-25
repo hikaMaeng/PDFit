@@ -34,6 +34,7 @@ export function createPdfitViewerApp(extension: PdfitViewerExtension = {}) {
     displayTranslation: extension.displayTranslation,
     bookMetadataEnabled: extension.bookMetadataEnabled,
     bookResearchAccess: extension.bookResearchAccess,
+    bookBotEnabled: extension.bookBotEnabled,
   };
 
   return function PdfitViewerApp() {
