@@ -52,6 +52,10 @@ try {
       const targetFolder = folderRow(target.name);
       const toggle = targetFolder.getByRole('button', { name: target.name, exact: true });
       const sourceTag = sourceFolder.getByText(tag, { exact: true });
+      await sourceTag.waitFor({ timeout: 5000 });
+      assert.equal(await page.getByTestId('lnb-tag-drag-handle').count(), 0);
+      assert.equal(await page.getByRole('img', { name: /태그를 폴더로 드래그/ }).count(), 0);
+      const initialUrl = page.url();
       let drop = toggle;
       if (scenario === 'empty body' || refreshDuringDrop) drop = targetFolder.getByText('태그를 끌어다 놓으세요.', { exact: true });
       if (scenario === 'member row') drop = targetFolder.getByText(existing, { exact: true });
@@ -60,8 +64,7 @@ try {
         page.waitForResponse((response) => new URL(response.url()).pathname === membershipPath && response.request().method() === 'PUT', { timeout: 5000 }),
         (async () => {
           if (touch) {
-            const grip = sourceFolder.getByRole('img', { name: `${tag} 태그를 폴더로 드래그`, exact: true });
-            const pointer = await startPointerDrag(page, grip, { touch });
+            const pointer = await startPointerDrag(page, sourceTag, { touch, holdMs: 450 });
             await pointer.over(drop);
             if (evidenceDir) await page.screenshot({ path: join(evidenceDir, 'folder-phone-touch-drag.png') });
             await pointer.drop();
@@ -76,6 +79,7 @@ try {
         })(),
       ]);
       assert.equal(response.status(), 200);
+      assert.equal(page.url(), initialUrl);
       if (scenario === 'collapsed title') {
         assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
         await toggle.click();
@@ -86,7 +90,7 @@ try {
       if (touch) await openDrawer();
       await targetFolder.getByText(tag, { exact: true }).waitFor({ timeout: 5000 });
       assert.deepEqual(errors, []);
-      if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `folder-${scenario.replaceAll(' ', '-')}.png`) });
+      if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `folder-${scenario.replaceAll(' ', '-')}.png`), animations: 'disabled' });
       console.log(`${scenario}: folder PUT ${response.status()}, both memberships visible, destination survives reload`);
     } catch (error) {
       if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `folder-${scenario.replaceAll(' ', '-')}-failure.png`) });

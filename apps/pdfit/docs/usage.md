@@ -61,7 +61,7 @@ Drag a tag onto the folder title or anywhere in its expanded body, including the
 
 Drag a book's cover or title onto a tag in the left sidebar to add it. You can also drag the grip at the top of a book card with a mouse, finger, or pen. On narrow screens the sidebar opens as you drag. Hold over a collapsed tag folder to open it, then release on the tag. The new tag appears on the book, and a tagged book leaves the Untagged list.
 
-Drag a sidebar tag or its grip onto a tag folder's heading or body. If the tag already belongs to a folder, this adds it to the destination as well.
+Drag a sidebar tag by its name onto a tag folder's heading or body. On a touchscreen, press and hold the name before dragging. If the tag already belongs to a folder, this adds it to the destination as well.
 
 Hover over a cover or open **Show document info** to find **Auto-classify PDF** after the book's tags. The three-dot **File actions** menu contains **Rename file**, **Move to another folder**, and **Delete**. A rename changes the PDF's actual filename and keeps its tags, clips, reading state, and comments. If you omit the extension, PDFit adds it.
 

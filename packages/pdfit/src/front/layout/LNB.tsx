@@ -77,7 +77,7 @@ import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n.js'
 import { RSC } from './resource.js';
 import { pdfitAppearancePreferenceModel } from '../model/appearancePreference.js';
 import { synchronizeLibraryMetadata } from '../model/libraryMetadataSync.js';
-import { LibraryDragHandle } from '../components/LibraryDragHandle.js';
+import { useLibraryPointerDrag } from '../components/LibraryDragHandle.js';
 
 export const LNB_WIDTH = 288;
 
@@ -168,6 +168,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   useSyncExternalStore(tagFoldersModel.subscribe, tagFoldersModel.getVersion, tagFoldersModel.getVersion);
   const tagFolders = tagFoldersModel.list();
   const tagFoldersAvailable = tagFoldersModel.isAvailable();
+  const tagDrag = useLibraryPointerDrag();
   const [collapsedTagFolders, setCollapsedTagFolders] = useState(readCollapsedTagFolders);
   const [dragOverTagFolder, setDragOverTagFolder] = useState<string | null>(null);
   const tagFolderMenuId = useId();
@@ -719,6 +720,13 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
           disableGutters
           selected={activeTag === tag.name}
           onClick={() => { go(path); onMobileClose(); }}
+          onPointerDown={(event) => {
+            if (tagFoldersAvailable && event.pointerType !== 'mouse') tagDrag.start(event, true);
+          }}
+          onPointerMove={(event) => tagDrag.move(event, tagFoldersModel.dragType, dragPayload, true)}
+          onPointerUp={tagDrag.end}
+          onPointerCancel={tagDrag.cancel}
+          onLostPointerCapture={tagDrag.cancel}
           sx={{
             borderRadius: 1,
             paddingInlineStart: folderName === undefined ? 1.5 : 2.25,
@@ -751,9 +759,6 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             disableTypography
           />
         </ListItemButton>
-        {tagFoldersAvailable && <LibraryDragHandle type={tagFoldersModel.dragType} payload={dragPayload}
-          label={t(RSC.SIDEBAR_TAG_DRAG_LABEL, { name: tag.name })} testId="lnb-tag-drag-handle"
-          sx={{ width: 22, alignSelf: 'stretch', color: sidebarTextSecondary }} />}
         <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
           {folderName !== undefined && (
             <Tooltip title={t('removeTagFromFolder')} placement="right" arrow>

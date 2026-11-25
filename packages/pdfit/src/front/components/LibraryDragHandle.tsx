@@ -6,6 +6,7 @@ interface PointerDrag {
   id: number;
   startX: number;
   startY: number;
+  startTime: number;
   x: number;
   y: number;
   transfer?: DataTransfer;
@@ -42,14 +43,7 @@ function followPointer(drag: PointerDrag) {
   drag.frame = requestAnimationFrame(() => followPointer(drag));
 }
 
-/** Pointer capture keeps a grip drag alive when the drawer opens over the card. */
-export function LibraryDragHandle({ type, payload, label, testId, sx }: {
-  type: string;
-  payload: object;
-  label: string;
-  testId: string;
-  sx?: SxProps<Theme>;
-}) {
+export function useLibraryPointerDrag() {
   const dragRef = useRef<PointerDrag>();
 
   function finish(drop: boolean) {
@@ -69,12 +63,17 @@ export function LibraryDragHandle({ type, payload, label, testId, sx }: {
 
   useEffect(() => () => finish(false), []);
 
-  function start(event: PointerEvent<HTMLSpanElement>) {
-    if (!event.isPrimary || event.button !== 0) return;
-    event.preventDefault();
-    const handle = event.currentTarget;
+  function start(event: PointerEvent<HTMLElement>, hold = false) {
+    if (!event.isPrimary || event.button !== 0 || dragRef.current) return;
+    if (!hold) event.preventDefault();
+    const source = event.currentTarget;
     const id = event.pointerId;
-    handle.setPointerCapture(id);
+    if (!hold) source.setPointerCapture(id);
+    // A swipe can scroll the sidebar until a long press has started a drag.
+    const preventScroll = (touch: TouchEvent) => {
+      if (dragRef.current?.transfer && touch.cancelable) touch.preventDefault();
+    };
+    if (hold) source.addEventListener('touchmove', preventScroll, { passive: false });
     const cancelOnEscape = (key: KeyboardEvent) => {
       if (key.key !== 'Escape' || !dragRef.current?.transfer) return;
       key.preventDefault();
@@ -83,22 +82,27 @@ export function LibraryDragHandle({ type, payload, label, testId, sx }: {
     };
     window.addEventListener('keydown', cancelOnEscape, true);
     dragRef.current = {
-      id, startX: event.clientX, startY: event.clientY,
+      id, startX: event.clientX, startY: event.clientY, startTime: event.timeStamp,
       x: event.clientX, y: event.clientY, target: null, accepted: false, frame: 0,
       release: () => {
         window.removeEventListener('keydown', cancelOnEscape, true);
-        if (handle.hasPointerCapture(id)) handle.releasePointerCapture(id);
+        source.removeEventListener('touchmove', preventScroll);
+        if (source.hasPointerCapture(id)) source.releasePointerCapture(id);
       },
     };
   }
 
-  function move(event: PointerEvent<HTMLSpanElement>) {
+  function move(event: PointerEvent<HTMLElement>, type: string, payload: object, hold = false) {
     const drag = dragRef.current;
     if (drag?.id !== event.pointerId) return;
     drag.x = event.clientX;
     drag.y = event.clientY;
     if (!drag.transfer) {
       if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
+      if (hold && event.timeStamp - drag.startTime < 350) {
+        finish(false);
+        return;
+      }
       drag.transfer = new DataTransfer();
       drag.transfer.setData(type, JSON.stringify(payload));
       sendDragEvent(window, 'dragstart', drag);
@@ -108,16 +112,30 @@ export function LibraryDragHandle({ type, payload, label, testId, sx }: {
     }
   }
 
+  function end(event: PointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (drag?.id !== event.pointerId) return;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    finish(true);
+  }
+
+  return { start, move, end, cancel: () => finish(false) };
+}
+
+/** Pointer capture keeps a grip drag alive when the drawer opens over the card. */
+export function LibraryDragHandle({ type, payload, label, testId, sx }: {
+  type: string;
+  payload: object;
+  label: string;
+  testId: string;
+  sx?: SxProps<Theme>;
+}) {
+  const drag = useLibraryPointerDrag();
+
   return <Box component="span" role="img" aria-label={label} title={label} data-testid={testId}
-    onPointerDown={start} onPointerMove={move}
-    onPointerUp={(event) => {
-      const drag = dragRef.current;
-      if (drag?.id !== event.pointerId) return;
-      drag.x = event.clientX;
-      drag.y = event.clientY;
-      finish(true);
-    }}
-    onPointerCancel={() => finish(false)} onLostPointerCapture={() => finish(false)}
+    onPointerDown={(event) => drag.start(event)} onPointerMove={(event) => drag.move(event, type, payload)}
+    onPointerUp={drag.end} onPointerCancel={drag.cancel} onLostPointerCapture={drag.cancel}
     onDragStart={(event) => event.preventDefault()}
     onContextMenu={(event) => event.preventDefault()} onClick={(event) => event.stopPropagation()}
     sx={[{ display: 'inline-grid', placeItems: 'center', flexShrink: 0, cursor: 'grab', touchAction: 'none', userSelect: 'none', '&:active': { cursor: 'grabbing' } }, ...(Array.isArray(sx) ? sx : [sx ?? {}])]}>

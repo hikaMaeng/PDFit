@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { setTimeout as wait } from 'node:timers/promises';
 
-export async function startPointerDrag(page, source, { touch = false } = {}) {
+export async function startPointerDrag(page, source, { touch = false, holdMs = 0 } = {}) {
   if (touch) await source.tap({ trial: true, timeout: 5000 });
   else await source.click({ trial: true, timeout: 5000 });
   const box = await source.boundingBox();
@@ -18,6 +19,7 @@ export async function startPointerDrag(page, source, { touch = false } = {}) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
   }
+  if (holdMs) await wait(holdMs);
   await move({ x: point.x, y: point.y + 14 });
   return {
     async over(target) {

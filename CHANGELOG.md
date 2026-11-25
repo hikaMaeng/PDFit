@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-11-25
+
+- Drag sidebar tags directly by their names. On touchscreens, press and hold a tag name to drag it into a folder.
+
 ## [0.4.14] - 2026-11-25
 
 - Open the book's comments from either viewer toolbar and move the floating window while reading. The viewer and cover card share the same posts.

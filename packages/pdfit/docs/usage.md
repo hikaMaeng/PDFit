@@ -78,12 +78,12 @@ open its book list. Use the pencil to edit the folder name and icon color. Its t
 collapsed state are preserved. Use the up or down arrow to swap it with the next folder in that direction. Folders
 start in name order. After the first move, the library saves the order and lists new folders after the ordered ones.
 
-Drag a tag onto a folder to group it there. Grouped tags appear in their folders and disappear from the ungrouped list.
+Drag a tag by its name onto a folder to group it there. On a touchscreen, press and hold the name before dragging. Grouped tags appear in their folders and disappear from the ungrouped list.
 
 A tag can be in several folders: drag it from inside one folder onto another. The folder-off button on a tag row inside
 a folder takes it out of that folder only; a tag that is in no folder shows in the plain list again. Deleting a folder
 (trash button, with confirmation) removes its tags from the folder and nothing else; the tags and their books stay.
-Deleting a tag removes it from every folder. Dragging needs a mouse or trackpad. A runtime whose metadata store has no
+Deleting a tag removes it from every folder. A runtime whose metadata store has no
 tag folders (`501`) shows neither the button nor the folders.
 
 ## Book clips

@@ -137,6 +137,11 @@ try {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert.ok((await panel(mobile).boundingBox()).y > initialTouch.y + 20, 'touch drag moves the panel');
   await mobile.setViewportSize({ width: 320, height: 670 });
+  await mobile.waitForFunction(() => {
+    const frame = document.querySelector('[data-testid="viewer-comments-drag-handle"]')
+      ?.closest('[role="dialog"]')?.getBoundingClientRect();
+    return frame && frame.right <= window.innerWidth + 1 && frame.bottom <= window.innerHeight + 1;
+  });
   await assertFits(mobile);
   await mobile.screenshot({ path: path.join(artifacts, 'touch-comments.png'), animations: 'disabled' });
   await touch.close();
