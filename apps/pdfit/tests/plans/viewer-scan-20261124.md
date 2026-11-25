@@ -14,6 +14,8 @@ Run `npm run test:ocr` for the held-vision regression. Two vision calls overlap 
 
 For scan diagnostics, the OCR tests also inject two upstream timeouts and check the recorded queue and request phases, first failure, drain and terminal state. Capture `docker logs --timestamps <fixture-container>` during the browser scenario. Match each `[ocr] scan` record to its job ID. Verify that an HTTP 502 records `vision-response`, that the first error stops dispatch, that admitted work drains, and that cancellation and successful retry produce distinct terminal results.
 
+For the model deadline, build Free and run `node --test apps/pdfit/tests/ai-model-timeout.test.mjs`. Confirm that OCR, Bot, translation, and both automatic-tag configurations use 1,200,000 ms. The delayed HTTP fixture compares the AI transport with a short-deadline dispatcher and checks cancellation.
+
 1. Create an AI server without a concurrency field. Confirm default 1, validation of limits, and persistence of an edit to 2 in Settings.
 2. Read page 2 with regular OCR and verify its database status. In the PDF.js toolbar, check Scan before Contents and open the dialog. All five pages appear with contrasting saved and unsaved colors and accessible status names.
 3. Start on page 2. The toolbar shows `3,4 총 2건` while the start controls are hidden. Open the summary and confirm only pages 3 and 4 appear. Escape closes the dialog and restores focus to the summary. Move the reader to a different page while vision responses are held. A duplicate start returns the same job. Page 2 stays skipped and page 1 stays outside the scan range.

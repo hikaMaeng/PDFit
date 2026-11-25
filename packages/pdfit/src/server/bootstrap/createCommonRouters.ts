@@ -69,6 +69,7 @@ export interface PdfitBackgroundTaskOptions extends PdfitTaskSchedulerOptions {
    * Without it, such areas are marked `unavailable`; text-layer OCR still runs.
    */
   resolveVisionServer?: () => Promise<VisionOcrServer | null>;
+  requestVision?: typeof fetch;
 }
 
 /** Builds the canonical PDFit metadata, bookmark, viewer-state, and event routes. */
@@ -167,6 +168,7 @@ export function createPdfitCommonRouterAssembly(options: {
       },
       submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
       resolveVisionServer: background.resolveVisionServer,
+      request: background.requestVision,
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
       pageSearchIndex: store.savePageOcrText ? {
         listBooks: () => store.listTrackedBooks(),

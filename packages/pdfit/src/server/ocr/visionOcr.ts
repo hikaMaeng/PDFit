@@ -1,3 +1,5 @@
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from '../services/aiModelRequest.js';
+
 /**
  * OCR through an OpenAI-compatible vision model. Used only for areas that have no PDF
  * text layer (scanned pages); digital PDFs are read from the text layer instead.
@@ -14,7 +16,6 @@ export interface VisionOcrServer {
 
 export type VisionImageType = 'image/jpeg' | 'image/png' | 'image/webp';
 type VisionOcrTrace = (phase: 'vision-queued' | 'vision-request' | 'vision-response', details: Record<string, unknown>) => void;
-const VISION_TIMEOUT_MS = 300_000;
 
 export function visionOcrConcurrency(server: VisionOcrServer | null): number {
   const limit = server?.ocrConcurrency ?? 1;
@@ -54,7 +55,7 @@ export function createVisionOcrQueue(request: typeof fetch) {
         priority,
         async run() {
           try {
-            trace?.('vision-request', { endpoint: new URL(endpoint).origin, model: server.model, timeoutMs: server.timeoutMs ?? VISION_TIMEOUT_MS, visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
+            trace?.('vision-request', { endpoint: new URL(endpoint).origin, model: server.model, timeoutMs: server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS, visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
             resolve(await recognizeImageText(server, image, request, trace));
           }
           catch (error) { reject(error); }
@@ -73,12 +74,6 @@ const OCR_INSTRUCTION = [
   'Output only the transcribed text. If the image contains no text, output nothing.',
 ].join(' ');
 
-export function chatCompletionsUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`;
-  return url.toString();
-}
-
 /** Removes a wrapping code fence some models add around plain output. */
 export function cleanOcrOutput(content: string): string {
   return content.replace(/^\s*```[a-z]*\s*\n?/i, '').replace(/\n?\s*```\s*$/, '').replace(/\r\n/g, '\n').trim();
@@ -90,7 +85,7 @@ export async function recognizeImageText(
   request: typeof fetch = fetch,
   trace?: VisionOcrTrace,
 ): Promise<string> {
-  const signal = AbortSignal.timeout(server.timeoutMs ?? VISION_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS);
   const response = await request(chatCompletionsUrl(server.baseUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...server.headers },

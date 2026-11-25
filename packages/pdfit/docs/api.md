@@ -264,6 +264,10 @@ also after a restart. Without a staging directory the images are kept in memory 
 
 See the [session and turn API](book-bot.md#api).
 
+## AI model requests
+
+The Free runtime uses the [20-minute model deadline](../src/server/services/aiModelRequest.ts#AI_MODEL_REQUEST_TIMEOUT_MS) for document, page and clip OCR, Book Bot, display translation, and automatic tagging from either Settings or environment configuration. The [Free AI transport](../../../apps/pdfit/src/server/services/aiModelFetch.ts#fetchAiModel) also permits 20 minutes for response headers or an idle response body. A Bot turn shares one 20-minute budget across its model calls. The upstream OCR deadline starts when a request leaves the vision queue.
+
 ## OCR (local runtime)
 
 Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps:

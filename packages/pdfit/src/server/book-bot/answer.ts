@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { chatCompletionsUrl } from '../ocr/visionOcr.js';
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from '../services/aiModelRequest.js';
 import type { BookBotTurn } from '../../common/protocol/book-bot/index.js';
 import type { BookBotModelConfig, BookBotSource, BookBotStore } from './types.js';
 
@@ -28,7 +28,7 @@ function completion(server: BookBotModelConfig, request: typeof fetch): Complete
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...server.headers },
       body: JSON.stringify({ model: server.model, messages, temperature: 0.2, max_tokens: maxTokens }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(300_000)]),
+      signal,
     });
     if (!response.ok) throw new Error(`completion status ${response.status}`);
     const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }> };
@@ -106,7 +106,7 @@ interface AnswerOptions {
 
 // See docs/book-bot.md#answer-context.
 export async function answerBookQuestion({ model, vision, source, store, question, turns, pageText, request }: AnswerOptions) {
-  const signal = AbortSignal.timeout(20 * 60_000);
+  const signal = AbortSignal.timeout(AI_MODEL_REQUEST_TIMEOUT_MS);
   const complete = completion(model, request);
   const title = source.title;
   const context: Array<{ label: string; text: string }> = [];

@@ -1,3 +1,5 @@
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from '@pdfit/pdfit/server';
+import { fetchAiModel } from './aiModelFetch.js';
 import type { AiServer } from './settingsStore.js';
 
 const LANGUAGE_NAMES = {
@@ -7,12 +9,6 @@ const LANGUAGE_NAMES = {
 } as const;
 
 export type DisplayTranslationLanguage = keyof typeof LANGUAGE_NAMES;
-
-function chatCompletionsUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`;
-  return url.toString();
-}
 
 function parseTranslationResult(content: string, expectedLength: number): string[] {
   const normalized = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -28,7 +24,7 @@ export async function translateDisplayTexts(server: AiServer, texts: string[], l
   const model = server.models.llm;
   if (!model) throw new Error('The selected AI server has no LLM model configured.');
 
-  const response = await fetch(chatCompletionsUrl(server.url), {
+  const response = await fetchAiModel(chatCompletionsUrl(server.url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...server.headers },
     body: JSON.stringify({
@@ -42,7 +38,7 @@ export async function translateDisplayTexts(server: AiServer, texts: string[], l
         { role: 'user', content: JSON.stringify(texts) },
       ],
     }),
-    signal: AbortSignal.timeout(300_000),
+    signal: AbortSignal.timeout(AI_MODEL_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`AI translation request failed (${response.status}).`);

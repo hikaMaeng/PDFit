@@ -1,4 +1,5 @@
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY } from '../../shared/tagTaxonomy.js';
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from './aiModelRequest.js';
 
 export interface BookTagSuggestionRequest {
   title: string;
@@ -193,12 +194,6 @@ export function createYes24PublicPageTagSuggestionProvider(request: typeof fetch
   };
 }
 
-function chatCompletionsUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`;
-  return url.toString();
-}
-
 /** Converts a PDF filename into the untrusted book-title value sent to the model. */
 export function bookTitleFromFilename(filename: string): string {
   return filename
@@ -315,7 +310,7 @@ export function createOpenAiCompatibleTagSuggestionProvider(
           { role: 'user', content: JSON.stringify({ title, bookstoreMetadata, bookstoreTaxonomy: BOOKSTORE_TAG_TAXONOMY, availableTags: availableTags.slice(0, 200), currentTags }) },
         ],
       }),
-      signal: AbortSignal.timeout(config.timeoutMs ?? 20_000),
+      signal: AbortSignal.timeout(config.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`AI tag request failed (${response.status}).`);
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
@@ -540,6 +535,8 @@ export function createYes24TagSuggestionProvider(
 }
 
 export interface TagSuggestionRuntimeOptions {
+  /** Transport for model inference. Bookstore and subject lookups use the main request function. */
+  requestAi?: typeof fetch;
   /**
    * AI server resolved on every request, for example from the Settings database, so a
    * server added or changed there applies without a restart. Used only when SERVICE_AI_*
@@ -570,6 +567,7 @@ export function createTagSuggestionProviderFromEnvironment(
   const apiKey = environment.SERVICE_AI_API_KEY?.trim();
   const yes24ApiKey = environment.YES24_API_KEY?.trim();
   const localClassifier = createLocalTitleTagSuggestionProvider();
+  const requestAi = options.requestAi ?? request;
   let environmentClassifier: BookTagSuggestionProvider | null = null;
   if (baseUrl || model || apiKey) {
     if (!baseUrl || !model || !apiKey) {
@@ -581,7 +579,7 @@ export function createTagSuggestionProviderFromEnvironment(
     }
     environmentClassifier = createOpenAiCompatibleTagSuggestionProvider(
       { baseUrl, model, headers: { Authorization: `Bearer ${apiKey}` } },
-      request,
+      requestAi,
     );
   }
   const publicLookup = createYes24PublicBookLookup(request);
@@ -589,7 +587,7 @@ export function createTagSuggestionProviderFromEnvironment(
   const resolveClassifier = async (): Promise<BookTagSuggestionProvider | null> => {
     if (environmentClassifier) return environmentClassifier;
     const server = options.resolveAiServer ? await options.resolveAiServer().catch(() => null) : null;
-    return server ? createOpenAiCompatibleTagSuggestionProvider(server, request) : null;
+    return server ? createOpenAiCompatibleTagSuggestionProvider(server, requestAi) : null;
   };
 
   return async (input) => {

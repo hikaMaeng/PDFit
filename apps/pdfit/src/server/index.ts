@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { createPdfitServer, createTagSuggestionProviderFromEnvironment, readPdfitTaskSchedulerEnvironment } from '@pdfit/pdfit/server';
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
 import { createSettingsRouter } from './routes/settings.js';
+import { fetchAiModel } from './services/aiModelFetch.js';
 import { PostgresSettingsStore } from './services/settingsStore.js';
 
 function readPort(value: string | undefined): number {
@@ -68,17 +69,17 @@ const resolveVisionModel = async () => {
   const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
   const model = server?.models.vision || server?.models.llm;
   return server && model ? {
-    baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency, timeoutMs: 300_000,
+    baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency,
   } : null;
 };
 // Tag classification uses the first Settings AI server that has an LLM model, read on every
 // request so a server added or changed in Settings applies without a restart. SERVICE_AI_*
 // still wins when set. Local reasoning models can need minutes per reply.
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
+  requestAi: fetchAiModel,
   resolveAiServer: async () => {
     const model = await resolveChatModel();
-    // 600 s: the 4-6 tag prompt took 113-141 s on a shared local reasoning model and once passed 300 s.
-    return model ? { ...model, timeoutMs: 600_000, reasoningEffort: 'low' } : null;
+    return model ? { ...model, reasoningEffort: 'low' } : null;
   },
 });
 const app = createPdfitServer({
@@ -98,11 +99,13 @@ const app = createPdfitServer({
     store: metadataStore.bookBot,
     resolveModel: resolveChatModel,
     resolveVision: resolveVisionModel,
+    request: fetchAiModel,
   },
   backgroundTasks: {
     thumbnailRoot: thumbnailsRoot,
     ...taskSchedulerOptions,
     resolveVisionServer: resolveVisionModel,
+    requestVision: fetchAiModel,
   },
 });
 
