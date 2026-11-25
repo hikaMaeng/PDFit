@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-11-25
+
+- Show book covers, favorites, rename, and tag icons in library list rows. Open comments, clips, cover replacement, move, and delete from the same row.
+- Show comment counts on library books. The badge displays up to 9+ and its tooltip gives the exact count.
+- Label automatic book classification **AI auto tagging**.
+
 ## [0.4.16] - 2026-11-25
 
 - Open the viewer's OCR dialog on the current PDF page. Browse saved page text with the dialog arrows, and scan an unscanned page from the dialog.

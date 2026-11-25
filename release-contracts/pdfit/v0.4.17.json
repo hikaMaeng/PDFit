@@ -1,0 +1,11 @@
+{
+  "pdfitVersion": "0.4.17",
+  "pdfgpu": {
+    "packageName": "@pdfgpu/core",
+    "packageVersion": "0.1.12-pdfit.1",
+    "sourceSpec": "file:vendor/pdfgpu-core-0.1.12-pdfit.1.tgz",
+    "sourceCommit": "8fcc221743031b73378df6732f9d5633a0e81fb7",
+    "tarball": "pdfgpu-core-0.1.12-pdfit.1.tgz",
+    "tarballSha256": "4464cedbf7a28ae68f05f89843a252e44ba4fbea0bb38177fd067dc566440323"
+  }
+}
