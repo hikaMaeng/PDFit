@@ -93,7 +93,13 @@ async function verifyScan() {
   const button = (page, name) => page.getByRole('button', { name, exact: true });
   const startInput = (page) => page.getByRole('spinbutton', { name: '스캔 시작 페이지' });
   const progress = (page, pattern) => page.getByRole('progressbar', { name: pattern });
+  const coverage = (page) => page.getByRole('meter', { name: '스캔 완료 페이지 비율' });
   const shot = (page, filename) => page.screenshot({ path: path.join(output, filename), animations: 'disabled' });
+  const expectCoverage = (page, percent) => until(
+    () => coverage(page).filter({ hasText: new RegExp(`^${percent}%$`) }).count(),
+    (count) => count === 1,
+    `Toolbar shows ${percent}%`,
+  );
   async function viewer(context, filename, engine = 'legacy', initialPage = 1) {
     const page = await context.newPage();
     page.on('pageerror', (error) => pageErrors.push(`${engine}/${filename}: ${error.message}`));
@@ -145,9 +151,19 @@ async function verifyScan() {
     assert.deepEqual(await pages('Mixed.pdf'), [1]);
 
     const mixed = await viewer(context, 'Mixed.pdf');
-    const scanRight = await button(mixed, '스캔 상태').boundingBox();
+    await expectCoverage(mixed, 20);
+    const scanButton = await button(mixed, '스캔 상태').boundingBox();
+    const scanCoverage = await coverage(mixed).boundingBox();
+    const scanInput = await startInput(mixed).boundingBox();
+    const scanStart = await button(mixed, '시작').boundingBox();
     const contents = await mixed.getByTestId('viewer-outline-open').boundingBox();
-    assert.ok(scanRight && contents && scanRight.x < contents.x && Math.abs(scanRight.y - contents.y) < 4);
+    assert.ok(scanButton && scanCoverage && scanInput && scanStart && contents);
+    assert.ok(scanButton.x < scanCoverage.x && scanCoverage.x < scanInput.x && scanInput.x < scanStart.x && scanStart.x < contents.x);
+    assert.ok(Math.abs(scanButton.y - contents.y) < 4);
+    const fontSize = (locator) => locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+    assert.ok(await fontSize(coverage(mixed)) < await fontSize(startInput(mixed)));
+    assert.ok(await fontSize(coverage(mixed)) < await fontSize(button(mixed, '시작')));
+    await mixed.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-toolbar.png') });
     await button(mixed, '스캔 상태').click();
     const initial = mixed.getByRole('dialog', { name: '스캔 상태' });
     const saved = initial.getByRole('listitem', { name: '2페이지, 텍스트 저장됨' });
@@ -162,6 +178,7 @@ async function verifyScan() {
     await start(mixed, 2);
     await calls(2);
     await progress(mixed, /5페이지 중 3, 4페이지 스캔 중/).waitFor();
+    await expectCoverage(mixed, 20);
     assert.equal(await startInput(mixed).count(), 0);
     assert.equal(await button(mixed, '시작').count(), 0);
     const mixedJob = await job('Mixed.pdf');
@@ -175,12 +192,17 @@ async function verifyScan() {
     steps.push('Two pages displayed together, DB index skipped, viewer navigated while OCR was held');
 
     const other = await viewer(context, 'Other.pdf', 'gpu');
+    await expectCoverage(other, 0);
     await start(other, 1);
     await progress(other, /스캔 대기 중/).waitFor();
     await other.close();
     assert.equal(outstanding.length, 2);
     outstanding[0].respond();
     await calls(3);
+    const savedDuringScan = await pages('Mixed.pdf');
+    assert.equal(savedDuringScan.length, 3);
+    assert.ok(savedDuringScan.includes(4), 'The text-layer tail saved while the second vision request was held.');
+    await expectCoverage(mixed, 60);
     const otherJob = await waitJob('Other.pdf', (value) => value.activePages.includes(1));
     const reopened = await viewer(context, 'Other.pdf', 'gpu');
     await progress(reopened, /4페이지 중 1페이지 스캔 중/).waitFor();
@@ -189,10 +211,12 @@ async function verifyScan() {
     await waitJob('Other.pdf', (value) => value.status === 'cancelling');
     outstanding[2].respond();
     await waitJob('Other.pdf', (value) => value.status === 'cancelled');
+    await expectCoverage(reopened, 25);
     outstanding[1].respond();
     const completed = await waitJob('Mixed.pdf', (value) => value.status === 'completed');
     assert.equal(completed.processedPages, 4);
     assert.deepEqual(await pages('Mixed.pdf'), [1, 2, 3, 4]);
+    await expectCoverage(mixed, 80);
     assert.deepEqual(await pages('Other.pdf'), [0]);
     assert.equal(peak, 2);
     assert.equal(outstanding.length, 3);
@@ -217,6 +241,7 @@ async function verifyScan() {
     const retained = await pages('Failure.pdf');
     assert.equal(retained.length, 1);
     assert.equal(retained[0], stopped.activePages[0] - 1);
+    await expectCoverage(failure, 33);
     await button(failure, '스캔 상태').click();
     const failureDialog = failure.getByRole('dialog', { name: '스캔 상태' });
     await failureDialog.getByText(`${failed.failedPage}페이지에서 스캔이 중단됐습니다.`).waitFor();
@@ -232,6 +257,7 @@ async function verifyScan() {
     outstanding[5].respond();
     await waitJob('Failure.pdf', (value) => value.id === resumed.id && value.status === 'completed');
     assert.deepEqual(await pages('Failure.pdf'), [0, 1, 2]);
+    await expectCoverage(failure, 100);
     assert.equal(outstanding.length, 6);
     assert.ok(outstanding.every(({ model, image }) => model === 'vision-fixture' && image));
     steps.push('Vision failure stopped dispatch; one saved page was skipped on retry; stale cancel left the new job running');
@@ -243,8 +269,11 @@ async function verifyScan() {
     await button(mixed.getByRole('dialog', { name: '스캔 상태' }), '닫기').click();
     const width = await mixed.getByRole('toolbar').evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     assert.ok(width.scroll <= width.client, JSON.stringify(width));
+    await expectCoverage(mixed, 80);
+    await mixed.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-toolbar-mobile.png') });
     assert.deepEqual(pageErrors, []);
     steps.push('320px toolbar fits and the status dialog opens without browser page errors');
+    steps.push('Small whole-document coverage appears beside Scan before the start page and updates from saved pages at idle, during scans, after cancellation or failure, and at completion');
 
     await api(`${settingsUrl}/${activeServerId}`, 'DELETE');
     activeServerId = undefined;

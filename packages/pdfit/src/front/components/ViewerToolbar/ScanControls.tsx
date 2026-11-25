@@ -1,9 +1,9 @@
-import { memo, useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { memo, useId, useState, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress, TextField, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import DocumentScannerOutlinedIcon from '@mui/icons-material/DocumentScannerOutlined';
 import { isOcrScanActive, type OcrScanJob } from '../../../common/protocol/ocr/scan.js';
-import { listOcrScanPages, type OcrScanBook } from '../../api/ocr.js';
+import type { OcrScanBook } from '../../api/ocr.js';
 import { usePdfitI18n, type PdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { getOcrScanModel } from '../../model/ocrScanModel.js';
 import { scanKeys, toolbarLabels } from './resource.js';
@@ -16,31 +16,17 @@ function scanNotice(job: OcrScanJob | null, requestFailed: boolean, t: PdfitI18n
   return null;
 }
 
-function ScanPagesDialog({ book, pageCount, revision, notice, failure, onClose }: {
-  book: OcrScanBook;
+function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, onClose }: {
   pageCount: number;
-  revision: string;
+  pages: ReadonlySet<number> | null;
+  failed: boolean;
   notice: string | null;
   failure: OcrScanJob['failure'];
+  onRetry: () => void;
   onClose: () => void;
 }) {
   const { t } = usePdfitI18n();
   const title = useId();
-  const [pages, setPages] = useState<Set<number> | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [retry, setRetry] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void listOcrScanPages(book, controller.signal)
-      .then(({ pages: indexed }) => {
-        if (controller.signal.aborted) return;
-        setPages(new Set(indexed));
-        setFailed(false);
-      })
-      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
-    return () => controller.abort();
-  }, [book, revision, retry]);
 
   const saved = t(scanKeys.saved);
   const unsaved = t(scanKeys.unsaved);
@@ -55,7 +41,7 @@ function ScanPagesDialog({ book, pageCount, revision, notice, failure, onClose }
       {notice && <Typography variant="body2" sx={{ mb: 1 }} role="status">{notice}</Typography>}
       {failure === 'unavailable' && <Alert severity="warning" sx={{ mb: 1 }}>{t('ocrUnavailable')}</Alert>}
       {failure === 'source-changed' && <Alert severity="warning" sx={{ mb: 1 }}>{t(scanKeys.sourceChanged)}</Alert>}
-      {failed && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => setRetry(retry + 1)}>{t('retry')}</Button>}>
+      {failed && <Alert severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>{t('retry')}</Button>}>
         {t(scanKeys.requestFailed)}
       </Alert>}
       {!pages && !failed && <Typography role="status" variant="body2">{t('loading')}</Typography>}
@@ -82,7 +68,7 @@ function ScanPagesDialog({ book, pageCount, revision, notice, failure, onClose }
 
 // see apps/pdfit/docs/usage.md#document-scan
 export const ScanControls = memo(function ScanControls({ folder, filename, pageCount }: OcrScanBook & { pageCount: number }) {
-  const { t } = usePdfitI18n();
+  const { t, language } = usePdfitI18n();
   const model = getOcrScanModel(folder, filename);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -98,17 +84,23 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
   const pages = job?.activePages.join(', ');
   const progressLabel = pages && total ? t(scanKeys.progress, { pages, total }) : t(total ? scanKeys.queued : scanKeys.preparing);
   const progress = job && total && total >= job.startPage ? Math.floor(100 * job.processedPages / (total - job.startPage + 1)) : undefined;
+  const scannedPercent = model.scannedPercent(pageCount);
 
   return <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 0.25 }}>
     <Tooltip title={error ? notice : t(scanKeys.status)} arrow describeChild>
       <IconButton size="small" color={error ? 'error' : 'default'} aria-label={t(scanKeys.status)} aria-haspopup="dialog" aria-expanded={dialogOpen}
-        onClick={() => setDialogOpen(true)} sx={{ minWidth: 36, minHeight: 36, px: 0.75, py: 0.25, borderRadius: 1 }}>
+        onClick={() => { setDialogOpen(true); void model.refreshPages(); }} sx={{ minWidth: 36, minHeight: 36, px: 0.75, py: 0.25, borderRadius: 1 }}>
         <Box component="span" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
           <DocumentScannerOutlinedIcon sx={{ fontSize: 17 }} />
           <Box component="span" lang="en" translate="no" aria-hidden="true" sx={{ fontSize: '0.625rem', lineHeight: 1, fontWeight: 500 }}>{toolbarLabels.scan}</Box>
         </Box>
       </IconButton>
     </Tooltip>
+    {scannedPercent !== null && <Typography component="span" role="meter" aria-label={t(scanKeys.coverage)}
+      aria-valuemin={0} aria-valuemax={100} aria-valuenow={scannedPercent} color="text.secondary"
+      sx={{ fontSize: '0.6875rem', fontVariantNumeric: 'tabular-nums', minWidth: '4ch', px: 0.25, textAlign: 'center', whiteSpace: 'nowrap' }}>
+      {new Intl.NumberFormat(language, { style: 'percent' }).format(scannedPercent / 100)}
+    </Typography>}
     {active ? <>
       <Tooltip title={cancelling ? t(scanKeys.cancelling) : progressLabel} arrow>
         <Box sx={{ width: 82, flexShrink: 0 }}>
@@ -131,8 +123,7 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
         sx={{ '& input': { MozAppearance: 'textfield', '&::-webkit-inner-spin-button, &::-webkit-outer-spin-button': { WebkitAppearance: 'none', margin: 0 } } }} />
       <Button type="submit" size="small" color="inherit" sx={{ minWidth: 0, px: 0.5, textTransform: 'none' }} disabled={!validPage}>{t(scanKeys.start)}</Button>
     </Box>}
-    {dialogOpen && <ScanPagesDialog book={model.book} pageCount={pageCount}
-      revision={job ? `${job.id}:${job.status}:${job.processedPages}` : ''}
+    {dialogOpen && <ScanPagesDialog pageCount={pageCount} pages={model.pages} failed={model.pagesFailed} onRetry={model.refreshPages}
       notice={notice ?? (active ? progressLabel : null)} failure={job?.failure} onClose={() => setDialogOpen(false)} />}
   </Box>;
 });

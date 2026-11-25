@@ -1,4 +1,5 @@
 export const scanMessages = {
+  scanCoverage: ['Percentage of pages scanned', '스캔 완료 페이지 비율', '已扫描页面比例', 'Porcentaje de páginas escaneadas', 'स्कैन किए गए पृष्ठों का प्रतिशत', 'نسبة الصفحات الممسوحة ضوئيًا', 'Pourcentage de pages numérisées', 'Percentual de páginas digitalizadas', 'Процент отсканированных страниц', 'Peratusan halaman diimbas', 'স্ক্যান করা পৃষ্ঠার শতাংশ', 'スキャン済みページの割合'],
   scanStatus: ['Scan status', '스캔 상태', '扫描状态', 'Estado del escaneo', 'स्कैन की स्थिति', 'حالة المسح', 'État de la numérisation', 'Status da digitalização', 'Состояние сканирования', 'Status imbasan', 'স্ক্যানের অবস্থা', 'スキャン状況'],
   scanStartPage: ['Scan start page', '스캔 시작 페이지', '扫描起始页', 'Página inicial del escaneo', 'स्कैन का प्रारंभिक पृष्ठ', 'صفحة بدء المسح', 'Page de début de la numérisation', 'Página inicial da digitalização', 'Начальная страница сканирования', 'Halaman mula imbasan', 'স্ক্যানের শুরুর পৃষ্ঠা', 'スキャン開始ページ'],
   scanStart: ['Start', '시작', '开始', 'Iniciar', 'शुरू करें', 'بدء', 'Démarrer', 'Iniciar', 'Начать', 'Mula', 'শুরু', '開始'],

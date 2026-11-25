@@ -21,6 +21,7 @@ export const toolbarLabels = {
 
 export const scanKeys = {
   status: 'scanStatus',
+  coverage: 'scanCoverage',
   startPage: 'scanStartPage',
   start: 'scanStart',
   preparing: 'scanPreparing',

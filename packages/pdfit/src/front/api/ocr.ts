@@ -98,7 +98,7 @@ export function getOcrScan(book: OcrScanBook) {
   return requestScan<{ job: OcrScanJob | null }>(`?${new URLSearchParams({ ...book })}`);
 }
 
-export function listOcrScanPages(book: OcrScanBook, signal: AbortSignal) {
+export function listOcrScanPages(book: OcrScanBook, signal?: AbortSignal) {
   return requestScan<{ pages: number[] }>(`/pages?${new URLSearchParams({ ...book })}`, { signal });
 }
 

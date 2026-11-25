@@ -19,7 +19,8 @@ Run `npm run test:ocr` for the held-vision regression. Two vision calls overlap 
 5. Return an AI error with two requests in flight. Confirm that dispatch stops for the affected document, admitted work drains, and the modal names the failed page. Retry with concurrency 1 and confirm that saved pages are skipped. A cancellation with the prior job ID leaves the new job running.
 6. Open the page list at 320px and verify the toolbar fits. Record browser page errors, maximum simultaneous AI calls, server health, mounted fixture files, and screenshots of Settings, progress, page status, failure, and mobile.
 7. Remove the fixture AI server and start on an image-only page. Confirm the scan stops there and preserves already saved text.
+8. Check the smaller whole-document percentage between Scan and the start page. Keep one OCR response pending and verify 20% changes to 60% after the first vision response and the embedded-text tail are saved. Check 80% after a scan that starts on page 2, 25% after cancellation, 33% after one page of a three-page PDF is saved, and 100% after all pages are saved. Check 0% on the second document and confirm the percentage fits at 320px.
 
 ## Browser locators
 
-Use the localized names for the Scan status button and dialog, scan start page spinbutton, Start and Cancel buttons, and progress bar. The page grid exposes a list item for each page, named with its page number and saved-text status. The existing `viewer-outline-open` identifies Contents.
+Use the localized names for the Scan status button and dialog, the scan coverage meter, scan start page spinbutton, Start and Cancel buttons, and progress bar. The page grid exposes a list item for each page, named with its page number and saved-text status. The existing `viewer-outline-open` identifies Contents.
