@@ -27,6 +27,8 @@ export const scanKeys = {
   preparing: 'scanPreparing',
   queued: 'scanQueued',
   progress: 'scanProgress',
+  activePages: 'scanActivePages',
+  activeCount: 'scanActiveCount',
   cancelling: 'scanCancelling',
   completed: 'scanCompleted',
   cancelled: 'scanCancelled',

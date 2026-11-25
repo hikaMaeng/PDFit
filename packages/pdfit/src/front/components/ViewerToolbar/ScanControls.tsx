@@ -1,5 +1,5 @@
 import { memo, useId, useState, useSyncExternalStore } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, ButtonBase, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress, TextField, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import DocumentScannerOutlinedIcon from '@mui/icons-material/DocumentScannerOutlined';
 import { isOcrScanActive, type OcrScanJob } from '../../../common/protocol/ocr/scan.js';
@@ -66,14 +66,46 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
   </Dialog>;
 }
 
+function ActiveScanPagesDialog({ id, pages, notice, onClose }: {
+  id: string;
+  pages: readonly number[];
+  notice: string | null;
+  onClose: () => void;
+}) {
+  const { t, language } = usePdfitI18n();
+  const title = useId();
+  const formatNumber = new Intl.NumberFormat(language, { useGrouping: false });
+
+  return <Dialog open onClose={onClose} aria-labelledby={title} PaperProps={{ id, sx: {
+    width: 272, maxWidth: 'calc(100% - 32px)', maxHeight: 'min(316px, calc(100% - 32px))', m: 2,
+  } }}>
+    <DialogTitle id={title} sx={{ px: 2, py: 1.25, fontSize: '1rem' }}>{t(scanKeys.activePages)}</DialogTitle>
+    <DialogContent dividers sx={{ p: 2 }}>
+      {notice && <Typography role="status" variant="body2" sx={{ mb: pages.length ? 1 : 0 }}>{notice}</Typography>}
+      {pages.length > 0 && <Box component="ul" role="list" aria-labelledby={title} sx={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))', gap: 0.75, listStyle: 'none', m: 0, p: 0,
+      }}>
+        {pages.map((page) => <Box component="li" key={page} sx={{
+          display: 'grid', placeItems: 'center', aspectRatio: '1', border: '1px solid', borderColor: 'primary.main',
+          borderRadius: 0.5, bgcolor: 'action.hover', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
+        }}>{formatNumber.format(page)}</Box>)}
+      </Box>}
+    </DialogContent>
+    <DialogActions><Button onClick={onClose}>{t('close')}</Button></DialogActions>
+  </Dialog>;
+}
+
 // see apps/pdfit/docs/usage.md#document-scan
 export const ScanControls = memo(function ScanControls({ folder, filename, pageCount }: OcrScanBook & { pageCount: number }) {
   const { t, language } = usePdfitI18n();
   const model = getOcrScanModel(folder, filename);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [activeDialogOpen, setActiveDialogOpen] = useState(false);
+  const activeDialogId = useId();
   const [pageInput, setPageInput] = useState('1');
-  const { job, pending, failed } = model;
+  const { pending, failed } = model;
+  const job = pending === 'start' ? null : model.job;
   const active = isOcrScanActive(job) || pending === 'start';
   const cancelling = job?.status === 'cancelling' || pending === 'cancel';
   const startPage = Number(pageInput);
@@ -81,8 +113,14 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
   const error = failed || job?.status === 'failed' || job?.status === 'stopping';
   const notice = scanNotice(job, failed, t);
   const total = job?.pageCount;
-  const pages = job?.activePages.join(', ');
-  const progressLabel = pages && total ? t(scanKeys.progress, { pages, total }) : t(total ? scanKeys.queued : scanKeys.preparing);
+  const activePages = job?.activePages ?? [];
+  const formatNumber = new Intl.NumberFormat(language, { useGrouping: false });
+  const activeCount = formatNumber.format(activePages.length);
+  const countLabel = t(scanKeys.activeCount, { count: activeCount });
+  const pagePreview = activePages.slice(0, 2).map((page) => formatNumber.format(page)).join(',');
+  const waitingLabel = active ? t(total ? scanKeys.queued : scanKeys.preparing) : countLabel;
+  const progressLabel = notice ?? (cancelling ? t(scanKeys.cancelling) : activePages.length
+    ? t(scanKeys.progress, { count: activeCount }) : waitingLabel);
   const progress = job && total && total >= job.startPage ? Math.floor(100 * job.processedPages / (total - job.startPage + 1)) : undefined;
   const scannedPercent = model.scannedPercent(pageCount);
 
@@ -102,17 +140,25 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
       {new Intl.NumberFormat(language, { style: 'percent' }).format(scannedPercent / 100)}
     </Typography>}
     {active ? <>
-      <Tooltip title={cancelling ? t(scanKeys.cancelling) : progressLabel} arrow>
-        <Box sx={{ width: 82, flexShrink: 0 }}>
-          <Typography variant="caption" component="div" sx={{
-            textAlign: 'center', fontVariantNumeric: 'tabular-nums', maxHeight: '2.25em', overflowY: 'auto', overflowWrap: 'anywhere',
-          }}>
-            {pages || '…'}
-          </Typography>
-          <LinearProgress variant={progress === undefined ? 'indeterminate' : 'determinate'} value={progress}
-            aria-label={progressLabel} aria-valuetext={cancelling ? t(scanKeys.cancelling) : progressLabel} />
-        </Box>
-      </Tooltip>
+      <Box sx={{ width: 82, flexShrink: 0 }}>
+        <Tooltip title={progressLabel} arrow describeChild>
+          <ButtonBase aria-haspopup="dialog" aria-expanded={activeDialogOpen} aria-controls={activeDialogOpen ? activeDialogId : undefined}
+            onClick={() => setActiveDialogOpen(true)} sx={{
+              width: '100%', minHeight: 24, gap: '3px', borderRadius: 0.5, whiteSpace: 'nowrap',
+              fontSize: '0.6875rem', fontVariantNumeric: 'tabular-nums',
+              '&:hover, &.Mui-focusVisible': { bgcolor: 'action.hover' },
+            }}>
+            {activePages.length > 0 ? <>
+              <Box component="bdi" dir="ltr" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {pagePreview}{activePages.length > 2 && '…'}
+              </Box>{' '}
+              <Box component="span" sx={{ flexShrink: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{countLabel}</Box>
+            </> : <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{progressLabel}</Box>}
+          </ButtonBase>
+        </Tooltip>
+        <LinearProgress variant={progress === undefined ? 'indeterminate' : 'determinate'} value={progress}
+          aria-label={progressLabel} />
+      </Box>
       <Button size="small" color="inherit" sx={{ minWidth: 0, px: 0.5, textTransform: 'none' }} disabled={job?.status !== 'running' || cancelling}
         onClick={() => { if (job) void model.change({ id: job.id }); }}>{t('cancel')}</Button>
     </> : <Box component="form" sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}
@@ -125,5 +171,7 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
     </Box>}
     {dialogOpen && <ScanPagesDialog pageCount={pageCount} pages={model.pages} failed={model.pagesFailed} onRetry={model.refreshPages}
       notice={notice ?? (active ? progressLabel : null)} failure={job?.failure} onClose={() => setDialogOpen(false)} />}
+    {activeDialogOpen && <ActiveScanPagesDialog id={activeDialogId} pages={activePages}
+      notice={notice ?? (cancelling || !activePages.length ? progressLabel : null)} onClose={() => setActiveDialogOpen(false)} />}
   </Box>;
 });

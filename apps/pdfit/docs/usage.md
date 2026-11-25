@@ -113,7 +113,7 @@ An explicit scan keeps running when you browse another page or close the dialog.
 
 ### Document scan
 
-In a local PDF viewer, enter a start page next to **Scan** immediately before **Contents**, then choose **Start**. The scan runs through the last page using the same OCR as **OCR** and skips pages whose text is already in the database. The progress bar shows the current document's in-flight page numbers and progress through the selected range. You can keep reading, switch documents, or close a viewer while the server runs the scan.
+In a local PDF viewer, enter a start page next to **Scan** immediately before **Contents**, then choose **Start**. The scan runs through the last page using the same OCR as **OCR** and skips pages whose text is already in the database. Above the progress bar, a fixed-width button shows up to two in-flight page numbers and the total in flight. Open it to see every in-flight page in a compact grid that updates as the scan runs. The progress bar measures progress through the selected range. You can keep reading, switch documents, or close a viewer while the server runs the scan.
 
 The small percentage beside **Scan** shows the share of all pages in the PDF with saved text. It includes text saved before the current scan and updates as new pages are saved. The display rounds down to a whole percent, reaching 100% when every page has saved text.
 

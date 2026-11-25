@@ -11,6 +11,7 @@ const fixtures = {
   'Mixed.pdf': ['Outside start', 'Seed text', '', '', 'Tail text'],
   'Other.pdf': ['', '', '', 'Finish text'],
   'Failure.pdf': ['', '', 'Blocked tail'],
+  'Parallel.pdf': Array.from({ length: 40 }, (_, index) => `Page ${index + 1}`),
 };
 
 if (process.argv[2] === '--fixtures') {
@@ -177,7 +178,15 @@ async function verifyScan() {
 
     await start(mixed, 2);
     await calls(2);
-    await progress(mixed, /5페이지 중 3, 4페이지 스캔 중/).waitFor();
+    await progress(mixed, '2페이지 스캔 중').waitFor();
+    const mixedSummary = button(mixed, '3,4 총 2건');
+    await mixedSummary.click();
+    const activeDialog = mixed.getByRole('dialog', { name: '진행 중인 페이지' });
+    await activeDialog.getByRole('list').waitFor();
+    assert.deepEqual(await activeDialog.getByRole('listitem').allTextContents(), ['3', '4']);
+    await mixed.keyboard.press('Escape');
+    await activeDialog.waitFor({ state: 'hidden' });
+    assert.equal(await mixedSummary.evaluate((element) => element === document.activeElement), true);
     await expectCoverage(mixed, 20);
     assert.equal(await startInput(mixed).count(), 0);
     assert.equal(await button(mixed, '시작').count(), 0);
@@ -205,7 +214,7 @@ async function verifyScan() {
     await expectCoverage(mixed, 60);
     const otherJob = await waitJob('Other.pdf', (value) => value.activePages.includes(1));
     const reopened = await viewer(context, 'Other.pdf', 'gpu');
-    await progress(reopened, /4페이지 중 1페이지 스캔 중/).waitFor();
+    await progress(reopened, '1페이지 스캔 중').waitFor();
     assert.equal((await job('Other.pdf')).id, otherJob.id);
     await button(reopened, '취소').click();
     await waitJob('Other.pdf', (value) => value.status === 'cancelling');
@@ -274,6 +283,58 @@ async function verifyScan() {
     assert.deepEqual(pageErrors, []);
     steps.push('320px toolbar fits and the status dialog opens without browser page errors');
     steps.push('Small whole-document coverage appears beside Scan before the start page and updates from saved pages at idle, during scans, after cancellation or failure, and at completion');
+
+    const parallel = await context.newPage();
+    parallel.on('pageerror', (error) => pageErrors.push(`Parallel.pdf: ${error.message}`));
+    await parallel.setViewportSize({ width: 320, height: 730 });
+    const sample = { id: 'layout-fixture', status: 'running', startPage: 1, pageCount: 40, activePages: [1], processedPages: 0 };
+    let scanStatus = sample;
+    await parallel.route('**/api/ocr/scan?*', (route) => route.fulfill({ json: { job: scanStatus } }));
+    await parallel.goto(`${origin}/viewer/Scan/Parallel.pdf?engine=legacy`);
+    const singleSummary = button(parallel, '1 총 1건');
+    await singleSummary.waitFor();
+    const singleBox = await singleSummary.boundingBox();
+    assert.ok(singleBox);
+    sample.activePages = [1, 2, 7, 9];
+    const quartetSummary = button(parallel, '1,2… 총 4건');
+    await quartetSummary.waitFor();
+    await parallel.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-active-summary.png') });
+    await quartetSummary.focus();
+    await parallel.keyboard.press('Enter');
+    const parallelDialog = parallel.getByRole('dialog', { name: '진행 중인 페이지' });
+    const tiles = parallelDialog.getByRole('listitem');
+    await parallelDialog.getByRole('list', { name: '진행 중인 페이지' }).waitFor();
+    assert.deepEqual(await tiles.allTextContents(), ['1', '2', '7', '9']);
+    const square = await tiles.getByText('1', { exact: true }).boundingBox();
+    assert.ok(square && Math.abs(square.width - square.height) <= 2);
+    await shot(parallel, 'scan-active-page-modal.png');
+
+    sample.activePages = Array.from({ length: 32 }, (_, index) => index + 9);
+    await until(() => tiles.count(), (count) => count === 32, 'Open modal refreshes to 32 active pages');
+    assert.deepEqual(await tiles.allTextContents(), sample.activePages.map(String));
+    const dialogBox = await parallelDialog.boundingBox();
+    assert.ok(dialogBox && dialogBox.width <= 272 && dialogBox.height <= 316);
+    await tiles.getByText('40', { exact: true }).scrollIntoViewIfNeeded();
+    const scrollBottom = await tiles.getByText('40', { exact: true }).boundingBox();
+    assert.ok(scrollBottom && scrollBottom.y + scrollBottom.height <= dialogBox.y + dialogBox.height);
+    await shot(parallel, 'scan-active-page-modal-scroll.png');
+    await button(parallelDialog, '닫기').click();
+    const manySummary = button(parallel, '9,10… 총 32건');
+    await manySummary.waitFor();
+    const manyBox = await manySummary.boundingBox();
+    assert.equal(manyBox?.width, singleBox.width);
+    assert.equal(manyBox?.height, singleBox.height);
+    const activeWidth = await parallel.getByRole('toolbar').evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }));
+    assert.ok(activeWidth.scroll <= activeWidth.client, JSON.stringify(activeWidth));
+    await manySummary.click();
+    scanStatus = null;
+    await parallelDialog.getByRole('status').getByText('총 0건', { exact: true }).waitFor();
+    assert.equal(await tiles.count(), 0);
+    await button(parallelDialog, '닫기').click();
+    await startInput(parallel).waitFor();
+    await parallel.close();
+    assert.deepEqual(pageErrors, []);
+    steps.push('Synthetic status at 320px verified exact 1,2… 총 4건 text, keyboard opening, square live tiles, internal scrolling, identical summary size at 1 and 32 active pages, and empty tiles after job loss');
 
     await api(`${settingsUrl}/${activeServerId}`, 'DELETE');
     activeServerId = undefined;
