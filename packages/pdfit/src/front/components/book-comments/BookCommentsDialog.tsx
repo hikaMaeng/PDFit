@@ -1,15 +1,22 @@
-import { useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, Typography } from '@mui/material';
+import { useId, useLayoutEffect, useRef, useSyncExternalStore, type HTMLAttributes } from 'react';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { BOOK_COMMENT_LIMIT, bookCommentPageCount, type CommentBook } from '../../../common/protocol/book-comments/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { bookCommentsModel as model } from './model.js';
+import { bookCommentsModel, viewerBookCommentsModel } from './model.js';
 import { COMMENT } from './resource.js';
+import { useDraggablePalette } from '../PdfGpuViewer/useDraggablePalette.js';
 
-export default function BookCommentsDialog({ book, onClose }: { book: CommentBook; onClose: () => void }) {
+type BoardProps = { book: CommentBook; onClose: () => void };
+
+function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardProps & {
+  titleId: string;
+  model: typeof bookCommentsModel;
+  dragHandle?: Pick<HTMLAttributes<HTMLElement>, 'onPointerDown' | 'onKeyDown'>;
+}) {
   const { language, t } = usePdfitI18n();
-  const titleId = useId();
   const formId = useId();
   const content = useRef<HTMLDivElement>(null);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
@@ -22,19 +29,19 @@ export default function BookCommentsDialog({ book, onClose }: { book: CommentBoo
 
   useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [mode, page?.page]);
 
-  return <Dialog open fullWidth maxWidth={false} onClose={saving ? undefined : onClose} aria-labelledby={titleId}
-    PaperProps={{ sx: {
-      m: { xs: 1, sm: 2, md: 3 },
-      width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 32px)', md: 'calc(100% - 48px)' },
-      height: { xs: 'calc(100dvh - 16px)', sm: 'calc(100dvh - 32px)', md: 'calc(100dvh - 48px)' },
-      maxWidth: 1200,
-      maxHeight: 'none',
-      overflow: 'hidden',
-    } }}>
-    <DialogTitle id={titleId} sx={{ display: 'flex', alignItems: 'start', gap: 1, px: { xs: 2, sm: 3 }, py: { xs: 1.5, sm: 2 } }}>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        {t(COMMENT.BUTTON)}
-        <Typography component="div" variant="body2" color="text.secondary" noWrap title={book.filename}>{book.filename}</Typography>
+  return <>
+    <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', alignItems: dragHandle ? 'center' : 'start', gap: 1, px: { xs: 2, sm: 3 },
+      py: dragHandle ? { xs: 1, sm: 1.5 } : { xs: 1.5, sm: 2 } }}>
+      <Box {...dragHandle} tabIndex={dragHandle ? 0 : undefined} title={dragHandle ? t(COMMENT.MOVE) : undefined}
+        aria-keyshortcuts={dragHandle ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined}
+        data-testid={dragHandle ? 'viewer-comments-drag-handle' : undefined}
+        sx={{ display: 'flex', alignItems: 'center', gap: .75, flex: 1, minWidth: 0, touchAction: dragHandle ? 'none' : undefined,
+          cursor: dragHandle ? 'grab' : undefined, userSelect: dragHandle ? 'none' : undefined, '&:active': { cursor: dragHandle ? 'grabbing' : undefined } }}>
+        {dragHandle && <DragIndicatorIcon color="action" fontSize="small" />}
+        <Box sx={{ minWidth: 0 }}>
+          <Box component="span" id={titleId}>{t(COMMENT.BUTTON)}</Box>
+          <Typography component="div" variant="body2" color="text.secondary" noWrap title={book.filename}>{book.filename}</Typography>
+        </Box>
       </Box>
       <IconButton aria-label={t('close')} onClick={onClose} disabled={saving}><CloseIcon /></IconButton>
     </DialogTitle>
@@ -87,5 +94,37 @@ export default function BookCommentsDialog({ book, onClose }: { book: CommentBoo
         ? <Button variant="contained" disabled={saving} type="submit" form={formId}>{t('save')}</Button>
         : <Button variant="contained" color="error" disabled={saving} onClick={() => void model.save()}>{t('delete')}</Button>}
     </DialogActions>}
+  </>;
+}
+
+export default function BookCommentsDialog(props: BoardProps) {
+  const titleId = useId();
+  return <Dialog open fullWidth maxWidth={false} onClose={() => { if (!bookCommentsModel.saving) props.onClose(); }} aria-labelledby={titleId}
+    PaperProps={{ 'aria-modal': true, sx: {
+      m: { xs: 1, sm: 2, md: 3 },
+      width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 32px)', md: 'calc(100% - 48px)' },
+      height: { xs: 'calc(100dvh - 16px)', sm: 'calc(100dvh - 32px)', md: 'calc(100dvh - 48px)' },
+      maxWidth: 1200,
+      maxHeight: 'none',
+      overflow: 'hidden',
+    } }}>
+    <BookCommentsBoard {...props} titleId={titleId} model={bookCommentsModel} />
   </Dialog>;
+}
+
+const topRight = { x: Number.MAX_SAFE_INTEGER, y: 12 };
+
+export function FloatingBookComments({ id, ...props }: BoardProps & { id: string }) {
+  const titleId = useId();
+  const { paletteRef, position, dragHandleProps } = useDraggablePalette('pdfit.viewerComments.position', topRight);
+  return <Paper ref={paletteRef} id={id} role="dialog" aria-modal={false} aria-labelledby={titleId} elevation={12}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.key === 'Escape' && !viewerBookCommentsModel.saving) props.onClose();
+    }}
+    sx={{ position: 'absolute', left: position.x, top: position.y, zIndex: 25, display: 'flex', flexDirection: 'column',
+      width: 'min(480px, calc(100% - 16px))', height: 'min(620px, calc(100% - 16px))',
+      border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+    <BookCommentsBoard {...props} titleId={titleId} model={viewerBookCommentsModel} dragHandle={dragHandleProps} />
+  </Paper>;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useId, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, IconButton, Snackbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -34,6 +34,8 @@ import { folderLibraryModel } from '../model/folderLibraryModel.js';
 import { subscribeTagDetailsChanges } from '../model/tagDetailsEvents.js';
 import { outlinesApi } from '../api/outlines.js';
 import type { PdfOutlineStorage } from '../viewer/storedOutline.js';
+import { FloatingBookComments } from '../components/book-comments/BookCommentsDialog.js';
+import { viewerBookCommentsModel } from '../components/book-comments/model.js';
 
 function DisplayFolderName({ value }: { value: string }) {
   return <>{useTranslatedDisplayText(value)}</>;
@@ -69,6 +71,15 @@ export default function PdfViewerPage() {
   const driveFileId = requestedDriveFileId ?? resolvedDriveFileId;
   const sample = searchParams.get('sample') === '1';
   const pendingUpload = isPendingUploadDriveFileId(driveFileId);
+  const commentsButtonId = useId();
+  const commentsPanelId = useId();
+  const commentsBookKey = JSON.stringify([folderName, fileName, driveFileId, sample, pendingUpload]);
+  const [openCommentsKey, setOpenCommentsKey] = useState<string | null>(null);
+  const commentsOpen = openCommentsKey === commentsBookKey;
+  useEffect(() => {
+    setOpenCommentsKey((current) => current === commentsBookKey ? current : null);
+    return () => viewerBookCommentsModel.close();
+  }, [commentsBookKey]);
   const initialPageFromUrl = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : null;
   const pdfUrl = pendingUpload ? '' : sample && driveFileId
     ? `/api/samples/${encodeURIComponent(driveFileId)}/content`
@@ -307,9 +318,24 @@ export default function PdfViewerPage() {
   };
   const localOcr = !driveFileId && !sample && !pendingUpload;
   const scanBook = localOcr ? { folder: folderName, filename: fileName } : undefined;
+  const commentsBook = { folder: folderName, filename: fileName, driveFileId: driveFileId ?? undefined };
+  const closeComments = () => {
+    if (viewerBookCommentsModel.saving) return;
+    viewerBookCommentsModel.close();
+    setOpenCommentsKey(null);
+    document.getElementById(commentsButtonId)?.focus();
+  };
+  const floatingPanel = commentsOpen ? <FloatingBookComments id={commentsPanelId} book={commentsBook} onClose={closeComments} /> : undefined;
   const documentActions = <ViewerDocumentActions
     onOcr={localOcr ? openOcr : undefined}
     onDownload={() => setExportOpen(true)}
+    comments={!sample && !pendingUpload && stateLoaded ? {
+      buttonId: commentsButtonId, panelId: commentsPanelId, open: commentsOpen, onToggle: () => {
+        if (commentsOpen) { closeComments(); return; }
+        viewerBookCommentsModel.open(commentsBook);
+        setOpenCommentsKey(commentsBookKey);
+      },
+    } : undefined}
   />;
 
   return (
@@ -440,6 +466,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          floatingPanel={floatingPanel}
           scanBook={scanBook}
         />
       ) : (
@@ -461,6 +488,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          floatingPanel={floatingPanel}
           scanBook={scanBook}
         />
       ) : (

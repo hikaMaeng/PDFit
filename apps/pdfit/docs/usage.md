@@ -77,6 +77,8 @@ Open a document with `engine=gpu` in the viewer URL to enable PDFium's progressi
 
 The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to read the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 
+Select **Comments** on a library book to open its book comments in a narrow floating window. Drag the title using a mouse or touch, or focus the title and use the arrow keys. You can keep reading while the window is open. Each page shows up to five full posts. Scroll the posts to read longer entries. The book card and viewer share the same posts. Select **Close** or press the toolbar's **Comments** button again to dismiss the window.
+
 The left tool palette shows a caption under each icon in the interface language. Select **Clips** at the top to open the document's clip list and enable area selection. Drag a rectangle within one page to save one clip. The button turns off when you release a valid selection, and the list stays open. Press the lit **Clips** button again to cancel before selecting, or use **Close** in the list header to dismiss the list.
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.

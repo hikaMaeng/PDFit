@@ -14,12 +14,14 @@ import TuneIcon from '@mui/icons-material/Tune';
 import TocIcon from '@mui/icons-material/Toc';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { DEFAULT_COLOR_ADJUSTMENTS, sameColorAdjustments, type PdfGpuColorAdjustments, type PdfGpuColorAdjustmentState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { toolbarLabels as labels } from './resource.js';
 import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
 import { ScanControls } from './ScanControls.js';
 import type { OcrScanBook } from '../../api/ocr.js';
+import { COMMENT } from '../book-comments/resource.js';
 
 type PageLayout = 'single' | 'double';
 
@@ -83,11 +85,18 @@ export function ViewerToolbarFrame({ children }: { children: ReactNode }) {
 }
 
 // see apps/pdfit/docs/usage.md#viewer-toolbar
-export function ViewerDocumentActions({ onOcr, onDownload }: { onOcr?: () => void; onDownload: () => void }) {
+export function ViewerDocumentActions({ onOcr, onDownload, comments }: {
+  onOcr?: () => void;
+  onDownload: () => void;
+  comments?: { buttonId: string; panelId: string; open: boolean; onToggle: () => void };
+}) {
   const { t } = usePdfitI18n();
   return <>
     {onOcr && <ToolbarButton icon={<TextSnippetOutlinedIcon />} caption={labels.ocr} label={t('ocrPage')} data-testid="page-ocr-open" aria-haspopup="dialog" onClick={onOcr} />}
     <ToolbarButton icon={<FileDownloadOutlinedIcon />} caption={labels.download} label={t('exportDocument')} data-testid="document-export-open" aria-haspopup="dialog" onClick={onDownload} />
+    {comments && <ToolbarButton id={comments.buttonId} icon={<ChatBubbleOutlineIcon />} caption={labels.comments} label={t(COMMENT.BUTTON)}
+      data-testid="viewer-comments-toggle" aria-haspopup="dialog" aria-expanded={comments.open}
+      aria-controls={comments.open ? comments.panelId : undefined} color={comments.open ? 'primary' : 'default'} onClick={comments.onToggle} />}
   </>;
 }
 

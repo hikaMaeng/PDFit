@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
 type PalettePosition = { x: number; y: number };
 type DragStart = PalettePosition & { clientX: number; clientY: number; pointerId: number };
@@ -6,21 +6,21 @@ type DragStart = PalettePosition & { clientX: number; clientY: number; pointerId
 const DEFAULT_POSITION: PalettePosition = { x: 12, y: 12 };
 const EDGE_GAP = 8;
 
-function savedPosition(storageKey: string): PalettePosition {
-  if (typeof window === 'undefined') return DEFAULT_POSITION;
+function savedPosition(storageKey: string, initialPosition: PalettePosition): PalettePosition {
+  if (typeof window === 'undefined') return initialPosition;
   try {
     const value = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as Partial<PalettePosition> | null;
-    return Number.isFinite(value?.x) && Number.isFinite(value?.y) ? { x: Number(value?.x), y: Number(value?.y) } : DEFAULT_POSITION;
+    return Number.isFinite(value?.x) && Number.isFinite(value?.y) ? { x: Number(value?.x), y: Number(value?.y) } : initialPosition;
   } catch {
-    return DEFAULT_POSITION;
+    return initialPosition;
   }
 }
 
 /** Keeps a floating viewer palette draggable, keyboard-movable, and inside its parent. */
-export function useDraggablePalette(storageKey: string) {
+export function useDraggablePalette(storageKey: string, initialPosition = DEFAULT_POSITION) {
   const paletteRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<DragStart | null>(null);
-  const [position, setPosition] = useState<PalettePosition>(() => savedPosition(storageKey));
+  const [position, setPosition] = useState<PalettePosition>(() => savedPosition(storageKey, initialPosition));
 
   const clamp = useCallback((candidate: PalettePosition): PalettePosition => {
     const palette = paletteRef.current;
@@ -35,14 +35,20 @@ export function useDraggablePalette(storageKey: string) {
   const moveTo = useCallback((candidate: PalettePosition) => setPosition(clamp(candidate)), [clamp]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, JSON.stringify(position));
+    try { window.localStorage.setItem(storageKey, JSON.stringify(position)); } catch { /* Storage is optional. */ }
   }, [position, storageKey]);
 
-  useEffect(() => {
-    const keepInBounds = () => setPosition((current) => clamp(current));
-    window.addEventListener('resize', keepInBounds);
+  useLayoutEffect(() => {
+    const keepInBounds = () => setPosition((current) => {
+      const next = clamp(current);
+      return next.x === current.x && next.y === current.y ? current : next;
+    });
+    const observer = new ResizeObserver(keepInBounds);
+    const palette = paletteRef.current;
+    if (palette) observer.observe(palette);
+    if (palette?.offsetParent) observer.observe(palette.offsetParent);
     keepInBounds();
-    return () => window.removeEventListener('resize', keepInBounds);
+    return () => observer.disconnect();
   }, [clamp]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {

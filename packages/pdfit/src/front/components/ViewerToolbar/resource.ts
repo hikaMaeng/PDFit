@@ -12,6 +12,7 @@ export const toolbarLabels = {
   image: 'Image',
   ocr: 'OCR',
   download: 'Download',
+  comments: 'Comments',
   contents: 'Contents',
   scan: 'Scan',
   previous: 'Prev',

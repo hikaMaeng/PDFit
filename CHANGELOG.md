@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-11-25
+
+- Open the book's comments from either viewer toolbar and move the floating window while reading. The viewer and cover card share the same posts.
+
 ## [0.4.13] - 2026-11-25
 
 - Open a book's comment board from its cover card. The responsive dialog shows five complete posts per page and scrolls the post area while keeping the page controls in view.

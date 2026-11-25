@@ -47,6 +47,9 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
   File actions opens a menu. Comments opens a dialog with five complete posts
   per page. Scope each post's edit and delete controls to its article.
   `book-comments-content` scrolls independently of the heading and page controls.
+* Consumers: PDF.js and PDFGPU viewers. [FloatingBookComments](../src/front/components/book-comments/BookCommentsDialog.tsx)
+  shares the book comments protocol and board with the cover card. Keep the floating
+  window within the viewer body and leave the PDF and toolbar interactive.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`
   source tree during the build and must

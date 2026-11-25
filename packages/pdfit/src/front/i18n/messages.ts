@@ -8,6 +8,7 @@ const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es:
 const rows = {
   ...homeMessages,
   bookComments: ['Comments', '코멘트', '评论', 'Comentarios', 'टिप्पणियाँ', 'التعليقات', 'Commentaires', 'Comentários', 'Комментарии', 'Ulasan', 'মন্তব্য', 'コメント'],
+  bookCommentsMove: ['Move comments window', '코멘트 창 이동', '移动评论窗口', 'Mover ventana de comentarios', 'टिप्पणी विंडो खिसकाएँ', 'تحريك نافذة التعليقات', 'Déplacer la fenêtre des commentaires', 'Mover janela de comentários', 'Переместить окно комментариев', 'Alihkan tetingkap ulasan', 'মন্তব্যের উইন্ডো সরান', 'コメントウィンドウを移動'],
   bookCommentCreate: ['New comment', '새 코멘트', '新评论', 'Nuevo comentario', 'नई टिप्पणी', 'تعليق جديد', 'Nouveau commentaire', 'Novo comentário', 'Новый комментарий', 'Ulasan baharu', 'নতুন মন্তব্য', '新しいコメント'],
   bookCommentBody: ['Comment text', '코멘트 본문', '评论正文', 'Texto del comentario', 'टिप्पणी का पाठ', 'نص التعليق', 'Texte du commentaire', 'Texto do comentário', 'Текст комментария', 'Teks ulasan', 'মন্তব্যের লেখা', 'コメント本文'],
   bookCommentEmpty: ['No comments for this book yet.', '이 책에 남긴 코멘트가 없습니다.', '这本书还没有评论。', 'Este libro aún no tiene comentarios.', 'इस पुस्तक पर अभी कोई टिप्पणी नहीं है।', 'لا توجد تعليقات على هذا الكتاب بعد.', 'Ce livre n’a pas encore de commentaire.', 'Este livro ainda não tem comentários.', 'У этой книги пока нет комментариев.', 'Belum ada ulasan untuk buku ini.', 'এই বইয়ে এখনো কোনো মন্তব্য নেই।', 'この本にはまだコメントがありません。'],

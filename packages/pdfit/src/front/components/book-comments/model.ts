@@ -118,3 +118,4 @@ class BookCommentsModel {
 }
 
 export const bookCommentsModel = new BookCommentsModel();
+export const viewerBookCommentsModel = new BookCommentsModel();
