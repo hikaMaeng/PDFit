@@ -12,8 +12,10 @@ Confirm Docker health, `/health`, and the two fixture files inside the mount.
 
 ## Expected results
 
-1. The cover overlay places auto-classification after the tags. The card footer
-   starts with Comments and the file actions menu includes rename, move, delete.
+1. The cover overlay places AI auto tagging after the tags. In Korean, verify
+   the button's accessible name and hover tooltip both read `AI 자동 태그`.
+   The card footer starts with Comments and the file actions menu includes rename,
+   move, and delete.
 2. Submit six posts, including one long body. Check that the first page shows
    the five newest posts and the second page shows the oldest. Edit the oldest
    and check that the other PDF's board stays empty. Verify that a comment ID

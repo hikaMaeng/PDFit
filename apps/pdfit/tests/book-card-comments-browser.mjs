@@ -92,12 +92,14 @@ try {
   const bar = source.getByTestId('pdf-cover-actions');
   await action('코멘트', bar).waitFor();
   assert.equal(await bar.getByRole('button').first().getAttribute('aria-label'), '코멘트');
-  assert.equal(await action('파일 자동 분류', bar).count(), 0);
+  assert.equal(await action('AI 자동 태그', bar).count(), 0);
   await source.getByTestId('pdf-cover-media').hover();
   const tagArea = source.getByTestId('pdf-cover-tags');
-  const autoTag = action('파일 자동 분류', tagArea);
+  const autoTag = action('AI 자동 태그', tagArea);
   await autoTag.waitFor();
-  assert.equal(await tagArea.getByRole('button').last().getAttribute('aria-label'), '파일 자동 분류');
+  assert.equal(await tagArea.getByRole('button').last().getAttribute('aria-label'), 'AI 자동 태그');
+  await autoTag.hover();
+  await page.getByRole('tooltip', { name: 'AI 자동 태그', exact: true }).waitFor();
   assert.equal(await tagArea.getByText(tag, { exact: false }).count(), 1);
   await source.getByTestId('pdf-cover-thumbnail').and(page.locator('[data-cover-state="ready"]')).waitFor();
   await page.screenshot({ path: path.join(artifacts, '01-book-card.png'), animations: 'disabled' });
@@ -202,7 +204,7 @@ try {
   await mobile.goto(`/folder/${encodeURIComponent(destination)}`);
   const mobileCard = mobile.getByTestId('pdf-cover-card');
   await action('문서 정보 보기', mobileCard).tap();
-  await action('파일 자동 분류', mobileCard.getByTestId('pdf-cover-tags')).waitFor();
+  await action('AI 자동 태그', mobileCard.getByTestId('pdf-cover-tags')).waitFor();
   await action('코멘트', mobileCard).tap();
   await mustSee('첫 번째 독서 메모 수정', mobile.getByRole('dialog'));
   await mobile.screenshot({ path: path.join(artifacts, '04-comments-touch.png'), animations: 'disabled' });

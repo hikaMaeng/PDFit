@@ -63,7 +63,7 @@ Drag a book's cover or title onto a tag in the left sidebar to add it. You can a
 
 Drag a sidebar tag by its name onto a tag folder's heading or body. On a touchscreen, press and hold the name before dragging. If the tag already belongs to a folder, this adds it to the destination as well.
 
-Hover over a cover or open **Show document info** to find **Auto-classify PDF** after the book's tags. The three-dot **File actions** menu contains **Rename file**, **Move to another folder**, and **Delete**. A rename changes the PDF's actual filename and keeps its tags, clips, reading state, and comments. If you omit the extension, PDFit adds it.
+Hover over a cover or open **Show document info** to find **AI auto tagging** after the book's tags. The button's tooltip and accessible name both use **AI auto tagging** (`AI 자동 태그` in Korean). The three-dot **File actions** menu contains **Rename file**, **Move to another folder**, and **Delete**. A rename changes the PDF's actual filename and keeps its tags, clips, reading state, and comments. If you omit the extension, PDFit adds it.
 
 Select **Comments** at the bottom left of a card to open that book's board. Choose **New comment** to post a memo. Each page shows up to five full posts, newest first. Scroll the body when posts exceed the available height. The heading and page controls stay in view as the window resizes. Each post has its own edit and delete controls. **View bookmarks** in the title row opens the book's separate clip collection.
 

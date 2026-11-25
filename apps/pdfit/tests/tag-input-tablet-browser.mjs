@@ -34,7 +34,7 @@ for (const engine of [chromium, webkit]) {
     const dialog = page.getByRole('dialog');
     const input = dialog.getByPlaceholder('태그 추가 또는 목록에서 선택');
     await input.waitFor();
-    await dialog.getByRole('button',{name:'파일 자동 분류',exact:true}).waitFor();
+    await dialog.getByRole('button',{name:'AI 자동 태그',exact:true}).waitFor();
     const colors = () => input.evaluate((element) => { const root = element.closest('.MuiFormControl-root'); return [getComputedStyle(root.querySelector('fieldset')).borderColor, getComputedStyle(root.querySelector('label')).color]; });
     await page.mouse.move(0, 0);
     assert.equal(await input.evaluate((element) => element === document.activeElement), false);
