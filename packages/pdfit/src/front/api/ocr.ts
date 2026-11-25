@@ -38,18 +38,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** One attempt. Rejects with OcrUnreachableError when the server itself did not answer. */
-async function attempt(folder: string, filename: string, pageIndex: number, signal?: AbortSignal): Promise<PageOcrResult> {
+async function requestPageOcr(url: string, init: RequestInit): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch('/api/ocr/page', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder, filename, pageIndex }),
-      signal,
-    });
+    response = await fetch(url, init);
   } catch (error) {
     // An aborted request is the caller's doing; anything else is a dead connection.
-    if (signal?.aborted) throw error;
+    if (init.signal?.aborted) throw error;
     throw new OcrUnreachableError(null);
   }
   if (!response.ok) {
@@ -58,7 +53,13 @@ async function attempt(folder: string, filename: string, pageIndex: number, sign
     if (!payload?.error && GATEWAY_STATUSES.has(response.status)) throw new OcrUnreachableError(response.status);
     throw new Error(payload?.error ?? `HTTP ${response.status}`);
   }
-  return response.json() as Promise<PageOcrResult>;
+  return response;
+}
+
+export async function getCachedPageText(folder: string, filename: string, pageIndex: number, signal: AbortSignal): Promise<PageOcrResult | null> {
+  const query = new URLSearchParams({ folder, filename, pageIndex: String(pageIndex) });
+  const response = await requestPageOcr(`/api/ocr/page?${query}`, { signal });
+  return response.status === 204 ? null : response.json() as Promise<PageOcrResult>;
 }
 
 /**
@@ -68,7 +69,13 @@ async function attempt(folder: string, filename: string, pageIndex: number, sign
 export async function recognizePageText(folder: string, filename: string, pageIndex: number, signal?: AbortSignal): Promise<PageOcrResult> {
   for (let index = 0; ; index += 1) {
     try {
-      return await attempt(folder, filename, pageIndex, signal);
+      const response = await requestPageOcr('/api/ocr/page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder, filename, pageIndex }),
+        signal,
+      });
+      return await response.json() as PageOcrResult;
     } catch (error) {
       if (!(error instanceof OcrUnreachableError) || index >= RETRY_DELAYS_MS.length) throw error;
       await sleep(RETRY_DELAYS_MS[index], signal);

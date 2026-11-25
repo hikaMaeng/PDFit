@@ -24,7 +24,7 @@ import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
-import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
+import { ViewerToolbar, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../ViewerToolbar/index.js';
 import { usePageColorFilter } from '../PageColorFilter.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
@@ -64,7 +64,7 @@ type Props = {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   onUnavailable?: () => void;
   uiHidden?: boolean;
-  documentActions?: ReactNode;
+  documentActions?: RenderViewerDocumentActions;
   floatingPanel?: ReactNode;
   scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
@@ -406,7 +406,7 @@ export default function PdfGpuViewer({
 
   if (initError) {
     return <>
-      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
       {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel}</Box>}
     </>;
@@ -424,7 +424,7 @@ export default function PdfGpuViewer({
           continuousScroll={state.scrollMode === 'continuous'}
           zoomInput={zoomInput}
           colorAdjustments={colorAdjustments}
-          documentActions={documentActions}
+          documentActions={documentActions?.(currentPage, state.pageCount)}
           scanBook={scanBook}
           outlineOpen={outlineOpen}
           outlineDisabled={!state.pageCount}

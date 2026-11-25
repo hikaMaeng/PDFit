@@ -285,6 +285,13 @@ Mounted with the thumbnail routes (`backgroundTasks`). Text is read in two steps
    first Settings server with a `vision` model, else the first with an `llm` model,
    with a 300 s limit. Vision requests run one at a time.
 
+`GET /api/ocr/page?folder=…&filename=…&pageIndex=…` reads the saved result for
+the current file stamp. It returns the same result shape as POST with
+`cached: true`, or `204` when the cache has no result. It sends
+`Cache-Control: no-store` so a later lookup sees a completed scan. Lookups
+only read the cache and leave PDF workers, the vision model, and the search index idle.
+See [the OCR route](../src/server/routes/ocr.ts).
+
 `POST /api/ocr/page` `{ folder, filename, pageIndex }` (0-based) returns
 `{ text, source, cached, pageIndex, pageCount, durationMs }`. `source` is `none` when
 the page has no text layer and no vision model is configured. Errors: `400` invalid
@@ -296,7 +303,7 @@ file's results for older stamps. Results for deleted files are not collected. `n
 is not cached, so configuring a vision model applies to the next request. A waiting
 request is re-planned by every periodic plan and gives up after 10 minutes.
 
-The front-end client (`front/api/ocr.ts`) separates a failure the server reported from one
+For an explicit scan, the [front-end client](../src/front/api/ocr.ts) separates a failure the server reported from one
 it never saw: a fetch that threw, or a `502`/`503`/`504` whose body is not this API's JSON,
 is a gateway or a restarting runtime answering, and is retried after 1, 2, 4, 8 and 15
 seconds (about 30 s in all) before `OcrUnreachableError` reaches the caller. A JSON error

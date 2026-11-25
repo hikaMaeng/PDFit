@@ -75,7 +75,7 @@ The image-search button under a cover ("Use a real book cover") replaces the ren
 
 Open a document with `engine=gpu` in the viewer URL to enable PDFium's progressive preview cache. The default viewer uses PDF.js with HTTP range loading.
 
-The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to read the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
+The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to open the text dialog on the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 
 Select **Comments** on a library book to open its book comments in a narrow floating window. Drag the title using a mouse or touch, or focus the title and use the arrow keys. You can keep reading while the window is open. Each page shows up to five full posts. Scroll the posts to read longer entries. The book card and viewer share the same posts. Select **Close** or press the toolbar's **Comments** button again to dismiss the window.
 
@@ -99,7 +99,9 @@ A saved clip is read in the background. The text comes from the PDF itself when 
 
 Open the paperclip beside a cover card's filename to see just that book's clips. Switch between **Date added** and **Page order** above the grid. A clip opens the same detail as **My clips**. Write in **Memo** under the capture and press **Save** to persist the text. **Reset** restores the last saved memo.
 
-In the viewer, **OCR** in the toolbar reads the page on screen the same way. A digital page answers at once. A scanned page goes to the AI server and can take minutes; the dialog says so after 4 s. Results are kept per page until the PDF changes, so asking again is instant. Closing the dialog stops waiting, but the server still finishes and keeps the result. A request that does not reach the server at all — the runtime is restarting, or a reverse proxy in front of it answers 502 — is retried for about 30 seconds, so a page read across a restart recovers on its own; only then does the dialog say the server could not be reached. Without an AI server, areas without PDF text show a hint to add one in Settings. Both features exist for local library files only.
+In the viewer, **OCR** opens the text dialog on the current page. Use the left and right buttons to browse one page at a time. The PDF viewer keeps its reading position. A previously scanned page shows its saved text. On an unscanned page, select **Scan page** to read the PDF text layer or send the rendered page to the configured AI server. The dialog shows a slow-scan hint after four seconds and a Settings hint if the page has no text and no AI server is configured.
+
+An explicit scan keeps running when you browse another page or close the dialog. Its result stays available until the PDF changes. A scan request that fails to reach the runtime retries for about 30 seconds. Page and clip OCR are available for local library files. See the [page OCR API](../../../packages/pdfit/docs/api.md#ocr-local-runtime).
 
 ### Document scan
 

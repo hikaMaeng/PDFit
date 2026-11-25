@@ -36,6 +36,8 @@ export interface PageOcrResult {
   durationMs: number;
 }
 
+type CachedPageOcrRecord = Omit<PageOcrResult, 'cached' | 'durationMs'>;
+
 /** Bookmark persistence the OCR service needs. Optional MetadataStore methods. */
 export interface BookmarkOcrStore {
   listBookmarksWithOcrStatus(status: BookmarkOcr['status'], limit: number): Promise<BookmarkRecord[]>;
@@ -76,6 +78,8 @@ export interface OcrService {
   scan?: OcrScanService;
   /** Marks the bookmark pending and queues it. Returns false for a non-local file. */
   enqueueBookmark(bookmark: BookmarkRecord): Promise<boolean>;
+  /** Read an existing result for the current file stamp without starting OCR. */
+  getCachedPage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult | null>;
   /** Text of one page: cache, then text layer, then the vision model on a rendering. */
   recognizePage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult>;
 }
@@ -90,6 +94,18 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   const request = options.request ?? fetch;
   const pageSearchIndex = options.pageSearchIndex;
   let restoringPageIndex: Promise<void> | undefined;
+
+  async function readCachedPage(cachePath: string, stamp: string, pageIndex: number): Promise<CachedPageOcrRecord | null> {
+    try {
+      const cached = JSON.parse(await fs.readFile(cachePath, 'utf8')) as (CachedPageOcrRecord & { metadataStamp?: string }) | null;
+      if (typeof cached?.text !== 'string' || (cached.source !== 'text-layer' && cached.source !== 'vision')) return null;
+      if (cached.metadataStamp !== undefined && cached.metadataStamp !== stamp) return null;
+      return { text: cached.text, source: cached.source, pageCount: cached.pageCount, pageIndex };
+    } catch (error) {
+      if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
 
   async function indexPage(folder: string, filename: string, stamp: string, result: Pick<PageOcrResult, 'source' | 'pageIndex' | 'text'>) {
     if (pageSearchIndex && result.source !== 'none' && result.text.trim()) {
@@ -250,13 +266,8 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     const { folder, filename, sourcePath, stamp, cacheStamp } = document;
     const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
     const cachePath = path.join(options.cacheRoot, cacheName);
-    try {
-      const { text, source, pageCount, metadataStamp } = JSON.parse(await fs.readFile(cachePath, 'utf8')) as
-        Omit<PageOcrResult, 'cached' | 'durationMs'> & { metadataStamp?: string };
-      if (typeof text === 'string' && (metadataStamp === undefined || metadataStamp === stamp) && (!background || text.trim())) {
-        return { text, source, pageCount, pageIndex, cached: true, durationMs: Date.now() - started };
-      }
-    } catch { /* not cached */ }
+    const cached = await readCachedPage(cachePath, stamp, pageIndex).catch(() => null);
+    if (cached && (!background || cached.text.trim())) return { ...cached, cached: true, durationMs: Date.now() - started };
 
     const key = `page:${cacheName.replace(/\.json$/, '')}`;
     const priority = background ? DEFAULT_TASK_PRIORITY : INTERACTIVE_PRIORITY;
@@ -337,6 +348,13 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const outcome = options.submit({ key: `bookmark:${bookmark.id}`, payload });
       // 'full' leaves it pending: the next periodic plan picks it up.
       return outcome !== 'unknown-type';
+    },
+    async getCachedPage(folder, filename, pageIndex) {
+      const started = Date.now();
+      const { cacheStamp, stamp } = await resolveDocument(folder, filename);
+      const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
+      const cached = await readCachedPage(path.join(options.cacheRoot, cacheName), stamp, pageIndex);
+      return cached && { ...cached, cached: true, durationMs: Date.now() - started };
     },
     async recognizePage(folder, filename, pageIndex) {
       const started = Date.now();

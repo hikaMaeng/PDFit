@@ -24,6 +24,7 @@ import type { OcrScanBook } from '../../api/ocr.js';
 import { COMMENT } from '../book-comments/resource.js';
 
 type PageLayout = 'single' | 'double';
+export type RenderViewerDocumentActions = (page?: number, pageCount?: number) => ReactNode;
 
 type Props = {
   pageLayout: PageLayout;
@@ -85,14 +86,15 @@ export function ViewerToolbarFrame({ children }: { children: ReactNode }) {
 }
 
 // see apps/pdfit/docs/usage.md#viewer-toolbar
-export function ViewerDocumentActions({ onOcr, onDownload, comments }: {
+export function ViewerDocumentActions({ onOcr, ocrDisabled, onDownload, comments }: {
   onOcr?: () => void;
+  ocrDisabled?: boolean;
   onDownload: () => void;
   comments?: { buttonId: string; panelId: string; open: boolean; onToggle: () => void };
 }) {
   const { t } = usePdfitI18n();
   return <>
-    {onOcr && <ToolbarButton icon={<TextSnippetOutlinedIcon />} caption={labels.ocr} label={t('ocrPage')} data-testid="page-ocr-open" aria-haspopup="dialog" onClick={onOcr} />}
+    {onOcr && <ToolbarButton icon={<TextSnippetOutlinedIcon />} caption={labels.ocr} label={t('ocrPage')} data-testid="page-ocr-open" aria-haspopup="dialog" onClick={onOcr} disabled={ocrDisabled} />}
     <ToolbarButton icon={<FileDownloadOutlinedIcon />} caption={labels.download} label={t('exportDocument')} data-testid="document-export-open" aria-haspopup="dialog" onClick={onDownload} />
     {comments && <ToolbarButton id={comments.buttonId} icon={<ChatBubbleOutlineIcon />} caption={labels.comments} label={t(COMMENT.BUTTON)}
       data-testid="viewer-comments-toggle" aria-haspopup="dialog" aria-expanded={comments.open}
