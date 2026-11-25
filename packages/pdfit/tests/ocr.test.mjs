@@ -98,20 +98,35 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     const files = { 'A\u0000text.pdf': textPdf, 'A\u0000blank.pdf': blankPdf };
     const network = visionFetch({ answer: '```\n스캔된 글자\n```' });
     let vision = visionServer;
+    let sourceStamp = '1-1';
+    const indexed = [];
     let service;
     const scheduler = inlineScheduler(() => service);
     service = createOcrService({
       resolveSourcePath: async (folder, filename) => files[`${folder}\u0000${filename}`] ?? null,
-      sourceStamp: async () => '1-1',
+      sourceStamp: async () => sourceStamp,
       submit: scheduler.submit,
       resolveVisionServer: async () => vision,
       cacheRoot: path.join(base, 'ocr'),
       request: network.request,
+      pageSearchIndex: { save: async (...entry) => { indexed.push(entry); } },
     });
 
+    assert.equal(await service.getCachedPage('A', 'text.pdf', 0), null);
+    assert.equal(await service.getCachedPage('A', 'blank.pdf', 0), null);
+    assert.equal(scheduler.submitted.length, 0);
+    assert.equal(network.calls.length, 0);
+    assert.equal(indexed.length, 0);
     const first = await service.recognizePage('A', 'text.pdf', 0);
     assert.deepEqual({ text: first.text, source: first.source, cached: first.cached, pageCount: first.pageCount }, { text: 'PDFit OCR', source: 'text-layer', cached: false, pageCount: 1 });
     assert.equal(network.calls.length, 0, 'a page with text never reaches the vision model');
+    const expectedCached = { text: 'PDFit OCR', source: 'text-layer', cached: true, pageCount: 1, pageIndex: 0 };
+    const { durationMs, ...cached } = await service.getCachedPage('A', 'text.pdf', 0);
+    assert.deepEqual(cached, expectedCached);
+    assert.equal(indexed.length, 1, 'lookup does not write the search index');
+    sourceStamp = '2-1';
+    assert.equal(await service.getCachedPage('A', 'text.pdf', 0), null, 'an older file stamp is a cache miss');
+    sourceStamp = '1-1';
     const second = await service.recognizePage('A', 'text.pdf', 0);
     assert.equal(second.cached, true);
     assert.equal(scheduler.submitted.length, 1, 'the cached result needs no task');
@@ -125,12 +140,14 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     assert.equal(content[1].type, 'image_url');
     assert.match(content[1].image_url.url, /^data:image\/jpeg;base64,\/9j\//, 'the rendered page is sent as JPEG');
     assert.equal(network.calls[0].model, 'vision-model');
+    assert.equal((await service.getCachedPage('A', 'blank.pdf', 0)).text, scanned.text);
 
     vision = null;
     await fs.rm(path.join(base, 'ocr'), { recursive: true, force: true });
     const none = await service.recognizePage('A', 'blank.pdf', 0);
     assert.equal(none.source, 'none');
     assert.equal(none.text, '');
+    assert.equal(await service.getCachedPage('A', 'blank.pdf', 0), null);
     await assert.rejects(fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'blank.pdf', 'v2-1-1', 0))), 'an unreadable page is not cached');
 
     await assert.rejects(service.recognizePage('A', 'missing.pdf', 0), /File not found/);
@@ -237,7 +254,16 @@ test('bookmark and OCR routes: create queues OCR, retry, page endpoint validatio
     getBookmark: async (id) => (id === record.id ? record : null),
     setBookmarkOcr: async () => true,
   };
-  const page = { recognizePage: async (folder, filename, pageIndex) => { if (filename === 'missing.pdf') throw Object.assign(new Error('File not found.'), { status: 404 }); return { text: 'T', source: 'text-layer', cached: false, pageIndex, pageCount: 1, durationMs: 1 }; } };
+  let scans = 0;
+  const result = (pageIndex, cached) => ({ text: 'T', source: 'text-layer', cached, pageIndex, pageCount: 5, durationMs: 1 });
+  const page = {
+    getCachedPage: async (folder, filename, pageIndex) => pageIndex === 4 ? result(pageIndex, true) : null,
+    recognizePage: async (folder, filename, pageIndex) => {
+      if (filename === 'missing.pdf') throw Object.assign(new Error('File not found.'), { status: 404 });
+      scans += 1;
+      return result(pageIndex, false);
+    },
+  };
   const app = express();
   app.use(express.json());
   app.use('/api/bookmarks', createBookmarksRouter(store, ocr));
@@ -255,6 +281,15 @@ test('bookmark and OCR routes: create queues OCR, retry, page endpoint validatio
     assert.equal((await post(`/api/bookmarks/${record.id}/ocr`, {})).status, 202);
     assert.equal((await post('/api/bookmarks/22222222-2222-4222-8222-222222222222/ocr', {})).status, 404);
 
+    const get = (pageIndex) => fetch(`${origin}/api/ocr/page?folder=A&filename=book.pdf&pageIndex=${pageIndex}`);
+    const cachedResponse = await get(4);
+    assert.equal(cachedResponse.status, 200);
+    assert.deepEqual(await cachedResponse.json(), result(4, true));
+    assert.equal(cachedResponse.headers.get('cache-control'), 'no-store');
+    assert.equal((await get(1)).status, 204);
+    assert.equal((await get('')).status, 400);
+    assert.equal((await get('1.5')).status, 400);
+    assert.equal(scans, 0, 'GET never starts recognition');
     const ok = await post('/api/ocr/page', { folder: 'A', filename: 'book.pdf', pageIndex: 4 });
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).pageIndex, 4);

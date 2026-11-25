@@ -20,6 +20,7 @@ import { toolbarLabels as labels } from './resource.js';
 import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
 
 type PageLayout = 'single' | 'double';
+export type RenderViewerDocumentActions = (page?: number, pageCount?: number) => ReactNode;
 
 type Props = {
   pageLayout: PageLayout;
@@ -80,10 +81,10 @@ export function ViewerToolbarFrame({ children }: { children: ReactNode }) {
 }
 
 // see apps/pdfit/docs/usage.md#viewer-toolbar
-export function ViewerDocumentActions({ onOcr, onDownload }: { onOcr?: () => void; onDownload: () => void }) {
+export function ViewerDocumentActions({ onOcr, ocrDisabled, onDownload }: { onOcr?: () => void; ocrDisabled?: boolean; onDownload: () => void }) {
   const { t } = usePdfitI18n();
   return <>
-    {onOcr && <ToolbarButton icon={<TextSnippetOutlinedIcon />} caption={labels.ocr} label={t('ocrPage')} data-testid="page-ocr-open" aria-haspopup="dialog" onClick={onOcr} />}
+    {onOcr && <ToolbarButton icon={<TextSnippetOutlinedIcon />} caption={labels.ocr} label={t('ocrPage')} data-testid="page-ocr-open" aria-haspopup="dialog" onClick={onOcr} disabled={ocrDisabled} />}
     <ToolbarButton icon={<FileDownloadOutlinedIcon />} caption={labels.download} label={t('exportDocument')} data-testid="document-export-open" aria-haspopup="dialog" onClick={onDownload} />
   </>;
 }

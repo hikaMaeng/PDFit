@@ -91,7 +91,9 @@ A saved clip is read in the background. The text comes from the PDF itself when 
 
 Open the paperclip beside a cover card's filename to see just that book's clips. Switch between **Date added** and **Page order** above the grid. A clip opens the same detail as **My clips**. Write in **Memo** under the capture and press **Save** to persist the text. **Reset** restores the last saved memo.
 
-In the viewer, **OCR** in the toolbar reads the page on screen the same way. A digital page answers at once. A scanned page goes to the AI server and can take minutes; the dialog says so after 4 s. Results are kept per page until the PDF changes, so asking again is instant. Closing the dialog stops waiting, but the server still finishes and keeps the result. A request that does not reach the server at all — the runtime is restarting, or a reverse proxy in front of it answers 502 — is retried for about 30 seconds, so a page read across a restart recovers on its own; only then does the dialog say the server could not be reached. Without an AI server, areas without PDF text show a hint to add one in Settings. Both features exist for local library files only.
+In the viewer, **OCR** opens the text dialog on the current page. Use the left and right buttons to browse one page at a time. The PDF viewer keeps its reading position. A previously scanned page shows its saved text. On an unscanned page, select **Scan page** to read the PDF text layer or send the rendered page to the configured AI server. The dialog shows a slow-scan hint after four seconds and a Settings hint if the page has no text and no AI server is configured.
+
+An explicit scan keeps running when you browse another page or close the dialog. Its result stays available until the PDF changes. A scan request that fails to reach the runtime retries for about 30 seconds. Page and clip OCR are available for local library files. See the [page OCR API](../../../packages/pdfit/docs/api.md#ocr-local-runtime).
 
 ## Background tasks
 

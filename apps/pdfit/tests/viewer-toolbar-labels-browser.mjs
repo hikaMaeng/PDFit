@@ -6,10 +6,9 @@ import { chromium } from 'playwright';
 import { createPageNumberPdf } from './acceptance/lib/pdf-fixtures.mjs';
 
 const folder = 'Toolbar fixture';
-const filename = 'Toolbar.pdf';
+const files = { legacy: 'Toolbar.pdf', gpu: 'Toolbar GPU.pdf' };
 const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15213';
-const viewerPath = `/viewer/${encodeURIComponent(folder)}/${filename}`;
-const filePath = `/api/folders/${encodeURIComponent(folder)}/files/${filename}`;
+const ocrPath = '/api/ocr/page';
 const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] });
 
 try {
@@ -17,7 +16,8 @@ try {
   if (fixtureRoot) {
     const fixtureFolder = join(fixtureRoot, folder);
     await mkdir(fixtureFolder, { recursive: true });
-    await writeFile(join(fixtureFolder, filename), await createPageNumberPdf(browser, 3, 'Toolbar fixture'), { flag: 'wx' });
+    const pdf = await createPageNumberPdf(browser, 3, 'Toolbar fixture');
+    for (const filename of Object.values(files)) await writeFile(join(fixtureFolder, filename), pdf, { flag: 'wx' });
   } else {
     await verifyToolbar();
   }
@@ -29,13 +29,23 @@ async function verifyToolbar() {
   const runId = process.env.PDFIT_TEST_RUN ?? new Date().toISOString().replaceAll(/\D/g, '').slice(0, 14);
   const output = new URL(`../../../test/${runId.slice(0, 8)}/${runId.slice(8)}_viewer-toolbar-labels/`, import.meta.url);
   await mkdir(output, { recursive: true });
-  const pdf = await fetch(`${origin}${filePath}`);
-  assert.equal(pdf.status, 200, 'fixture available in the mounted library');
-  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
-  assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
   const results = [];
 
-  for (const engine of ['legacy', 'gpu']) {
+  for (const [engine, filename] of Object.entries(files)) {
+    const filePath = `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(filename)}`;
+    const viewerPath = `/viewer/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
+    const pdf = await fetch(`${origin}${filePath}`);
+    assert.equal(pdf.status, 200, 'fixture available in the mounted library');
+    const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+    assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
+    const seededPage = await fetch(`${origin}${ocrPath}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, filename, pageIndex: 0 }),
+    });
+    assert.equal(seededPage.status, 200);
+    assert.equal((await seededPage.json()).text.trim(), 'Toolbar fixture Page 1 of 3');
+
     const context = await browser.newContext({ locale: 'ko-KR', colorScheme: 'dark', acceptDownloads: true, viewport: { width: 1440, height: 900 } });
     try {
       await context.addInitScript(() => {
@@ -107,16 +117,7 @@ async function verifyToolbar() {
       const pageNumber = toolbar.getByRole('textbox', { name: '페이지 번호' });
       await pageNumber.fill('2');
       await pageNumber.press('Enter');
-      const recognition = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/ocr/page');
-      await ocr.click();
-      const recognized = await recognition;
-      assert.equal(recognized.request().postDataJSON().pageIndex, 1);
-      assert.equal(recognized.status(), 200);
-      const ocrDialog = page.getByRole('dialog', { name: '2페이지 텍스트' });
-      const ocrText = ocrDialog.getByTestId('page-ocr-text');
-      await ocrText.waitFor();
-      assert.equal((await ocrText.textContent()).trim(), 'Toolbar fixture Page 2 of 3');
-      await ocrDialog.getByRole('button', { name: '닫기' }).click();
+      const pageOcr = await verifyPageOcr(page, ocr, pageNumber, output, engine);
 
       await download.click();
       const downloadDialog = page.getByRole('dialog', { name: '문서 다운로드' });
@@ -126,12 +127,82 @@ async function verifyToolbar() {
       assert.equal(saved.suggestedFilename(), filename);
       assert.deepEqual(await readFile(await saved.path()), pdfBytes);
       assert.deepEqual(errors, []);
-      results.push({ engine, backend, sizes, recognizedPage: 2, downloadedBytes: pdfBytes.length, pageErrors: errors });
-      console.log(`PASS ${engine} (${backend}): responsive captions, page 2 OCR, ${pdfBytes.length}-byte PDF`);
+      results.push({ engine, backend, sizes, pageOcr, downloadedBytes: pdfBytes.length, pageErrors: errors });
+      console.log(`PASS ${engine} (${backend}): responsive captions, manual OCR and navigation, ${pdfBytes.length}-byte PDF`);
     } finally {
       await context.close();
     }
   }
 
   await writeFile(new URL('result.json', output), JSON.stringify({ origin, results }, null, 2));
+}
+
+async function verifyPageOcr(page, open, viewerPageInput, output, engine) {
+  const requests = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname !== ocrPath) return;
+    const method = request.method();
+    requests.push({ method, pageIndex: method === 'GET' ? Number(url.searchParams.get('pageIndex')) : request.postDataJSON().pageIndex });
+  });
+  const dialogFor = (number) => page.getByRole('dialog', { name: `${number}페이지 텍스트` });
+  const previous = (dialog) => dialog.getByRole('button', { name: '이전 페이지' });
+  const next = (dialog) => dialog.getByRole('button', { name: '다음 페이지' });
+  const unscanned = (dialog) => dialog.getByText('이 페이지는 아직 스캔하지 않았습니다.');
+  const text = (dialog) => dialog.getByTestId('page-ocr-text');
+  const scan = (dialog) => dialog.getByRole('button', { name: '스캔하기' });
+  const second = dialogFor(2);
+
+  await open.click();
+  await unscanned(second).waitFor();
+  await second.screenshot({ path: fileURLToPath(new URL(`${engine}-ocr-unscanned-375.png`, output)) });
+  assert.deepEqual(requests, [{ method: 'GET', pageIndex: 1 }]);
+  await previous(second).click();
+  const first = dialogFor(1);
+  assert.equal((await text(first).innerText()).trim(), 'Toolbar fixture Page 1 of 3');
+  assert.ok(await previous(first).isDisabled());
+  assert.equal(await scan(first).count(), 0);
+  await next(first).click();
+  await unscanned(second).waitFor();
+
+  const third = dialogFor(3);
+  await next(second).click();
+  await unscanned(third).waitFor();
+  assert.ok(await next(third).isDisabled());
+  assert.ok(requests.every(({ method }) => method === 'GET'));
+  await previous(third).click();
+  await scan(second).waitFor();
+
+  const gate = Promise.withResolvers();
+  await page.route((url) => url.pathname === ocrPath, async (route) => {
+    if (route.request().method() === 'POST') await gate.promise;
+    await route.continue();
+  });
+  const recognition = page.waitForResponse((response) => new URL(response.url()).pathname === ocrPath && response.request().method() === 'POST');
+  try {
+    await scan(second).click();
+    await second.getByText('텍스트를 읽는 중…', { exact: true }).waitFor();
+    await next(second).click();
+    await unscanned(third).waitFor();
+    await previous(third).click();
+    await second.getByText('텍스트를 읽는 중…', { exact: true }).waitFor();
+  } finally {
+    gate.resolve();
+  }
+  const recognized = await recognition;
+  assert.equal(recognized.status(), 200);
+  assert.equal((await text(second).innerText()).trim(), 'Toolbar fixture Page 2 of 3');
+  assert.deepEqual(requests.filter(({ method }) => method === 'POST'), [{ method: 'POST', pageIndex: 1 }]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await second.screenshot({ path: fileURLToPath(new URL(`${engine}-ocr-scanned-1440.png`, output)) });
+
+  await next(second).click();
+  await unscanned(third).waitFor();
+  await third.getByRole('button', { name: '닫기' }).click();
+  assert.equal(await viewerPageInput.inputValue(), '2');
+  await open.click();
+  assert.equal((await text(second).innerText()).trim(), 'Toolbar fixture Page 2 of 3');
+  await second.getByRole('button', { name: '닫기' }).click();
+  assert.equal(requests.filter(({ method }) => method === 'POST').length, 1);
+  return { requests, recognizedPage: 2, status: recognized.status() };
 }

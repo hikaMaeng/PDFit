@@ -1,4 +1,7 @@
 export enum RSC {
+  VIEWER_OCR_CHECKING_STATUS = 'viewer.ocr.checking.status',
+  VIEWER_OCR_UNSCANNED_STATUS = 'viewer.ocr.unscanned.status',
+  VIEWER_OCR_SCAN_BUTTON = 'viewer.ocr.scan.button',
   TAG_MANAGE_RECENT_LABEL = 'tag.manage.recent.label',
   TAG_EDITOR_TITLE_TEXT = 'tag.editor.title.text',
   TAG_EDITOR_NAME_LABEL = 'tag.editor.name.label',

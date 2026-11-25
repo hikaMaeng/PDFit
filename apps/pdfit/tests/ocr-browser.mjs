@@ -199,9 +199,9 @@ const readPanel = (page, prefix) => page.evaluate((prefix) => {
   };
 }, prefix);
 
-// 헤더 버튼으로 페이지 텍스트 대화상자를 열고 그 요청·응답을 함께 잡는다.
+// 툴바에서 페이지 텍스트 대화상자를 열고 저장 결과 조회를 잡는다.
 const openPageOcr = async (page) => {
-  const requestSeen = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/ocr/page', { timeout: 15_000 });
+  const requestSeen = page.waitForRequest((request) => request.method() === 'GET' && new URL(request.url()).pathname === '/api/ocr/page', { timeout: 15_000 });
   const button = page.getByTestId('page-ocr-open');
   await button.waitFor({ state: 'visible', timeout: 15_000 });
   const ariaLabel = await button.getAttribute('aria-label');
@@ -209,7 +209,8 @@ const openPageOcr = async (page) => {
   const dialog = page.getByTestId('page-ocr-dialog');
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
   const request = await requestSeen;
-  const requestBody = JSON.parse(request.postData() ?? '{}');
+  const { folder, filename, pageIndex } = Object.fromEntries(new URL(request.url()).searchParams);
+  const requestBody = { folder, filename, pageIndex: Number(pageIndex) };
   const title = (await page.locator('#page-ocr-dialog-title').innerText()).trim();
   const roleDialog = await page.getByRole('dialog', { name: title }).count();
   return { dialog, request, requestBody, title, roleDialog, ariaLabel };
@@ -332,7 +333,7 @@ try {
       assert.equal(opened.ariaLabel, TEXT.ocrPage, '버튼 접근 이름');
       assert.equal(opened.title, TEXT.pageTitle(digitalPage), '대화상자 제목이 그 페이지 번호');
       assert.equal(opened.roleDialog, 1, '접근 이름이 제목인 dialog 하나');
-      assert.deepEqual(opened.requestBody, { folder, filename: digitalFile, pageIndex: digitalPageIndex }, '요청 본문 pageIndex = 페이지 - 1');
+      assert.deepEqual(opened.requestBody, { folder, filename: digitalFile, pageIndex: digitalPageIndex }, '조회 pageIndex = 페이지 - 1');
       assert.equal(panel.final, 'done', '패널 done');
       assert.equal(ui.source, 'text-layer', 'data-source=text-layer');
       assert.equal(ui.sourceLabel, TEXT.sourceTextLayer);
@@ -510,46 +511,42 @@ try {
     return partial;
   });
 
-  // ── 3c. 스캔 PDF 캐시 안 된 페이지: 느림 안내, 닫고 다시 열기, 비전 결과 ──
+  // ── 3c. 스캔 PDF 캐시 안 된 페이지: 수동 스캔, 느림 안내, 비전 결과 ──
   const uncachedPage = scannedUncachedIndex + 1;
   await runStep('3c_page_ocr_scanned_uncached', async () => {
     const shownPage = await openViewerAt(mainPage, scannedFile, uncachedPage);
-    // 첫 열기: 느림 안내가 4 s 무렵 나타나는지 본다(최대 8 s 관찰) → 닫기.
-    const first = await openPageOcr(mainPage);
-    const firstPanel = await watchPanel(mainPage, 'page-ocr', 8_000, { stopOnFinal: true });
-    await snap(mainPage, 'page-ocr-scanned-pending-slow-hint.png');
-    const firstSettledEarly = ['done', 'failed', 'unavailable'].includes(firstPanel.final);
-    await closeDialog(mainPage, first.dialog);
-    const firstResponse = await responseOf(first.request);
-    // 다시 열기: 새 요청, 다시 pending에서 시작, 끝까지 기다린다.
-    const second = await openPageOcr(mainPage);
-    const secondOpenedAt = elapsed();
-    const secondPanel = await watchPanel(mainPage, 'page-ocr', visionWaitMs);
+    const opened = await openPageOcr(mainPage);
+    assert.equal((await responseOf(opened.request)).status, 204, '처음에는 캐시가 없다');
+    await opened.dialog.getByText('이 페이지는 아직 스캔하지 않았습니다.').waitFor();
+    const scanRequest = mainPage.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/ocr/page');
+    await opened.dialog.getByRole('button', { name: '스캔하기' }).click();
+    const request = await scanRequest;
+    assert.deepEqual(request.postDataJSON(), { folder, filename: scannedFile, pageIndex: scannedUncachedIndex });
+    const panel = await watchPanel(mainPage, 'page-ocr', visionWaitMs);
     const ui = await readPanel(mainPage, 'page-ocr');
-    const secondResponse = await responseOf(second.request);
+    const scanResponse = await responseOf(request);
     const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     await snap(mainPage, 'page-ocr-scanned-uncached-final.png');
-    const expected = ui.status === 'done' ? await pageOcrApi(scannedFile, scannedUncachedIndex) : null;
+    await closeDialog(mainPage, opened.dialog);
+    const reopened = await openPageOcr(mainPage);
+    const expected = await responseOf(reopened.request);
     const partial = {
-      filename: scannedFile, pageNumberInput: shownPage, title: second.title,
-      first: { panel: firstPanel, settledEarly: firstSettledEarly, response: { status: firstResponse.status, failure: firstResponse.failure ?? null, cached: firstResponse.body?.cached ?? null } },
-      second: { openedAtRunMs: secondOpenedAt, panel: secondPanel, response: { status: secondResponse.status, failure: secondResponse.failure ?? null, pendingAfterMs: secondResponse.pendingAfterMs ?? null, source: secondResponse.body?.source, cached: secondResponse.body?.cached, durationMs: secondResponse.body?.durationMs, chars: secondResponse.body?.text?.length, error: secondResponse.body?.error } },
+      filename: scannedFile, pageNumberInput: shownPage, title: opened.title, panel,
+      scanStatus: scanResponse.status, cachedStatus: expected.status, cached: expected.body?.cached,
       ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null, textHead: ui.text?.slice(0, 120) ?? null },
       durationLabel: duration,
-      expected: expected ? { source: expected.body?.source, cached: expected.body?.cached, chars: expected.body?.text?.length, wallMs: expected.wallMs } : null,
-      textEqualsApi: expected ? ui.text === expected.body?.text : null,
+      textEqualsApi: ui.text === expected.body?.text,
     };
     try {
-      assert.equal(second.title, TEXT.pageTitle(uncachedPage));
-      assert.ok(!firstSettledEarly, `처음 열기는 8 s 안에 끝나지 않아야 한다(캐시 안 된 스캔 페이지) ${JSON.stringify(firstPanel)}`);
-      assert.ok(firstPanel.slowHintAtMs !== null && firstPanel.slowHintAtMs >= 3500 && firstPanel.slowHintAtMs <= 6000, `느림 안내가 ~4 s에 나타난다 ${firstPanel.slowHintAtMs}`);
-      assert.equal(secondPanel.timeline[0]?.status, 'pending', '다시 열면 pending에서 시작');
-      assert.equal(secondPanel.final, 'done', `비전 결과 done (최종 ${secondPanel.final}, ${ui.failed ?? ''})`);
+      assert.equal(opened.title, TEXT.pageTitle(uncachedPage));
+      if (panel.finalAtMs >= 4500) assert.ok(panel.slowHintAtMs !== null && panel.slowHintAtMs >= 3500 && panel.slowHintAtMs <= 6000, `느림 안내가 ~4 s에 나타난다 ${panel.slowHintAtMs}`);
+      assert.equal(scanResponse.status, 200);
+      assert.equal(panel.final, 'done', `비전 결과 done (최종 ${panel.final}, ${ui.failed ?? ''})`);
       assert.equal(ui.source, 'vision');
-      assert.equal(ui.text, expected?.body?.text, '화면 글 = API(이제 캐시)');
-      assert.equal(expected?.body?.cached, true, '끝난 뒤 API는 캐시를 돌려준다');
+      assert.equal(ui.text, expected.body?.text, '화면 글 = API(이제 캐시)');
+      assert.equal(expected.body?.cached, true, '끝난 뒤 API는 캐시를 돌려준다');
     } catch (error) { throw failWith(error.message, partial); }
-    await closeDialog(mainPage, second.dialog);
+    await closeDialog(mainPage, reopened.dialog);
     return partial;
   });
 

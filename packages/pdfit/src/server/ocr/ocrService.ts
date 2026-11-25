@@ -35,6 +35,8 @@ export interface PageOcrResult {
   durationMs: number;
 }
 
+type CachedPageOcrRecord = Omit<PageOcrResult, 'cached' | 'durationMs'>;
+
 /** Bookmark persistence the OCR service needs. Optional MetadataStore methods. */
 export interface BookmarkOcrStore {
   listBookmarksWithOcrStatus(status: BookmarkOcr['status'], limit: number): Promise<BookmarkRecord[]>;
@@ -74,6 +76,8 @@ export interface OcrService {
   definition: PeriodicTaskDefinition<PageTextOcrPayload, PageTextTaskResult>;
   /** Marks the bookmark pending and queues it. Returns false for a non-local file. */
   enqueueBookmark(bookmark: BookmarkRecord): Promise<boolean>;
+  /** Read an existing result for the current file stamp without starting OCR. */
+  getCachedPage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult | null>;
   /** Text of one page: cache, then text layer, then the vision model on a rendering. */
   recognizePage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult>;
 }
@@ -88,6 +92,26 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   const request = options.request ?? fetch;
   const pageSearchIndex = options.pageSearchIndex;
   let restoringPageIndex: Promise<void> | undefined;
+
+  async function resolvePageCache(folder: string, filename: string, pageIndex: number) {
+    const sourcePath = await options.resolveSourcePath(folder, filename);
+    if (!sourcePath) throw Object.assign(new Error('File not found.'), { status: 404 });
+    const sourceStamp = await options.sourceStamp(sourcePath);
+    const stamp = `${PAGE_CACHE_VERSION}-${sourceStamp}`;
+    const cacheName = pageOcrCacheName(folder, filename, stamp, pageIndex);
+    return { sourcePath, sourceStamp, stamp, cacheName, cachePath: path.join(options.cacheRoot, cacheName) };
+  }
+
+  async function readCachedPage(cachePath: string): Promise<CachedPageOcrRecord | null> {
+    try {
+      const cached = JSON.parse(await fs.readFile(cachePath, 'utf8')) as CachedPageOcrRecord | null;
+      if (typeof cached?.text === 'string' && (cached.source === 'text-layer' || cached.source === 'vision')) return cached;
+      return null;
+    } catch (error) {
+      if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
 
   async function indexPage(folder: string, filename: string, stamp: string, result: Pick<PageOcrResult, 'source' | 'pageIndex' | 'text'>) {
     if (pageSearchIndex && result.source !== 'none' && result.text.trim()) {
@@ -229,23 +253,20 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       // 'full' leaves it pending: the next periodic plan picks it up.
       return outcome !== 'unknown-type';
     },
+    async getCachedPage(folder, filename, pageIndex) {
+      const started = Date.now();
+      const { cachePath } = await resolvePageCache(folder, filename, pageIndex);
+      const cached = await readCachedPage(cachePath);
+      return cached && { ...cached, cached: true, durationMs: Date.now() - started };
+    },
     async recognizePage(folder, filename, pageIndex) {
       const started = Date.now();
-      const sourcePath = await options.resolveSourcePath(folder, filename);
-      if (!sourcePath) throw Object.assign(new Error('File not found.'), { status: 404 });
-      const sourceStamp = await options.sourceStamp(sourcePath);
-      const stamp = `${PAGE_CACHE_VERSION}-${sourceStamp}`;
-      const cacheName = pageOcrCacheName(folder, filename, stamp, pageIndex);
-      const cachePath = path.join(options.cacheRoot, cacheName);
-      try {
-        const cached = JSON.parse(await fs.readFile(cachePath, 'utf8')) as Omit<PageOcrResult, 'cached' | 'durationMs'>;
-        if (typeof cached.text === 'string') {
-          if (cached.source === 'text-layer' || cached.source === 'vision') {
-            await indexPage(folder, filename, sourceStamp, { ...cached, pageIndex });
-          }
-          return { ...cached, cached: true, durationMs: Date.now() - started };
-        }
-      } catch { /* not cached */ }
+      const { sourcePath, sourceStamp, stamp, cacheName, cachePath } = await resolvePageCache(folder, filename, pageIndex);
+      const cached = await readCachedPage(cachePath).catch(() => null);
+      if (cached) {
+        await indexPage(folder, filename, sourceStamp, { ...cached, pageIndex });
+        return { ...cached, cached: true, durationMs: Date.now() - started };
+      }
 
       const key = `page:${cacheName.replace(/\.json$/, '')}`;
       const result = await runPageText(key, { sourcePath, pageIndex, render: PAGE_RENDER, folder, filename });

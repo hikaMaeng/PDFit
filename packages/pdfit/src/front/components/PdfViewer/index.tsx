@@ -34,7 +34,7 @@ import { BOOKMARK_PANEL_WIDTH, BookmarkPanel } from '../PdfGpuViewer/BookmarkPan
 import { usePdfAnnotations } from '../PdfGpuViewer/usePdfAnnotations.js';
 import { usePdfPan } from '../PdfGpuViewer/usePdfPan.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
-import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
+import { ViewerToolbar, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../ViewerToolbar/index.js';
 import { usePageColorFilter } from '../PageColorFilter.js';
 import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { usePageSwipe } from '../usePageSwipe.js';
@@ -125,7 +125,7 @@ interface Props {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
-  documentActions?: React.ReactNode;
+  documentActions?: RenderViewerDocumentActions;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkDeleted?: (id: string) => Promise<void>;
@@ -859,7 +859,7 @@ export default function PdfViewer({
   if (loading) {
     return (
       <>
-        {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+        {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading && !waitingForPdf}
             label={waitingForPdf ? t(RSC.VIEWER_PDF_OPEN_RETRYING_STATUS) : rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
@@ -870,7 +870,7 @@ export default function PdfViewer({
 
   if (error) {
     return <>
-      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Box sx={{ p: 4 }}><Alert severity="error" action={error.kind === 'temporary' && <Button color="inherit" size="small" onClick={() => setLoadRevision((value) => value + 1)}>{t('retry')}</Button>}>
         {error.kind === 'temporary' ? t(RSC.VIEWER_PDF_OPEN_UNAVAILABLE_ALERT) : error.kind === 'missing' ? t('documentUnavailable') : error.message}
       </Alert></Box>
@@ -890,7 +890,7 @@ export default function PdfViewer({
           zoomOutDisabled={scale <= ZOOM_LEVELS[0]}
           zoomInDisabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
           colorAdjustments={colorAdjustments}
-          documentActions={documentActions}
+          documentActions={documentActions?.(currentPage, totalPages)}
           outlineOpen={outlineOpen}
           outlineDisabled={!docReady}
           pageInput={pageInput}

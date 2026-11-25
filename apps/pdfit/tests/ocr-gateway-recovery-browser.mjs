@@ -54,7 +54,11 @@ await context.route('**/api/viewer-state/**', (route) => route.fulfill({ status:
 
 let gatewayFailuresLeft = 0;
 const ocrAttempts = [];
-await context.route('**/api/ocr/page', async (route) => {
+await context.route((url) => url.pathname === '/api/ocr/page', async (route) => {
+  if (route.request().method() !== 'POST') {
+    await route.continue();
+    return;
+  }
   const at = elapsed();
   if (gatewayFailuresLeft > 0) {
     gatewayFailuresLeft -= 1;
@@ -90,7 +94,8 @@ const openDialog = async () => {
   const button = page.getByTestId('page-ocr-open');
   await button.waitFor({ state: 'visible', timeout: 30_000 });
   await button.click();
-  await page.getByTestId('page-ocr-dialog').waitFor({ state: 'visible', timeout: 10_000 });
+  const dialog = page.getByTestId('page-ocr-dialog');
+  await dialog.getByRole('button', { name: /^(스캔하기|다시 읽기)$/ }).click({ timeout: 15_000 });
 };
 const closeDialog = async () => {
   const dialog = page.getByTestId('page-ocr-dialog');

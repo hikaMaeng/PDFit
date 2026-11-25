@@ -23,7 +23,8 @@ import { isPendingUploadDriveFileId, isViewerCommand, registerViewerWindow } fro
 import { usePdfitI18n, useTranslatedDisplayText } from '../i18n/usePdfitI18n';
 import DocumentExportDialog from '../components/DocumentExportDialog.js';
 import PageOcrDialog from '../components/PageOcrDialog.js';
-import { ViewerDocumentActions, ViewerToolbarFrame } from '../components/ViewerToolbar/index.js';
+import { ViewerDocumentActions, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../components/ViewerToolbar/index.js';
+import { pageOcrModel } from '../model/pageOcr.js';
 import { addSampleToLibrary, getSampleLibraryStatus } from '../api/samples.js';
 import BookMetadataDialog from '../components/BookMetadataDialog.js';
 import { usePdfitFrontConfig } from '../context.js';
@@ -142,9 +143,6 @@ export default function PdfViewerPage() {
   // explicit opt-in for diagnostics and high-performance local comparisons.
   const [viewerEngine, setViewerEngine] = useState<'gpu' | 'legacy'>(searchParams.get('engine') === 'gpu' ? 'gpu' : 'legacy');
   const [exportOpen, setExportOpen] = useState(false);
-  const [ocrOpen, setOcrOpen] = useState(false);
-  /** 1-based page captured when the page-text dialog opened. */
-  const [ocrPage, setOcrPage] = useState(1);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [sampleLibraryState, setSampleLibraryState] = useState<'checking' | 'available' | 'adding' | 'added' | 'error'>(sample ? 'checking' : 'available');
   const [sampleLibraryNotice, setSampleLibraryNotice] = useState<string | null>(null);
@@ -301,12 +299,15 @@ export default function PdfViewerPage() {
     }
   }, [driveFileId, sampleLibraryState, t]);
 
-  const openOcr = () => {
-    setOcrPage(Math.max(1, Math.trunc(latestViewerStateRef.current?.page ?? savedState?.page ?? 1)));
-    setOcrOpen(true);
-  };
-  const documentActions = <ViewerDocumentActions
-    onOcr={!driveFileId && !sample && !pendingUpload ? openOcr : undefined}
+  const pageOcrAvailable = !driveFileId && !sample && !pendingUpload;
+  useEffect(() => () => {
+    const { target } = pageOcrModel;
+    if (target?.folder === folderName && target.filename === fileName) pageOcrModel.close();
+  }, [fileName, folderName, pageOcrAvailable]);
+
+  const documentActions: RenderViewerDocumentActions = (page = 1, pageCount = 0) => <ViewerDocumentActions
+    onOcr={pageOcrAvailable ? () => pageOcrModel.open(folderName, fileName, page, pageCount) : undefined}
+    ocrDisabled={pageCount === 0}
     onDownload={() => setExportOpen(true)}
   />;
 
@@ -382,8 +383,8 @@ export default function PdfViewerPage() {
           ) : null}
       </Box>
 
-      {(pendingUpload || !stateLoaded) && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
-      {!driveFileId && !sample ? <PageOcrDialog open={ocrOpen} folder={folderName} filename={fileName} page={ocrPage} onClose={() => setOcrOpen(false)} /> : null}
+      {(pendingUpload || !stateLoaded) && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
+      {pageOcrAvailable ? <PageOcrDialog folder={folderName} filename={fileName} /> : null}
 
       <DocumentExportDialog
         open={exportOpen}

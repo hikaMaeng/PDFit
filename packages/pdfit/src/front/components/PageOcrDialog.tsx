@@ -1,67 +1,68 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
+import React, { useSyncExternalStore } from 'react';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
-import { OcrUnreachableError, recognizePageText } from '../api/ocr.js';
+import { OcrUnreachableError } from '../api/ocr.js';
+import { pageOcrModel } from '../model/pageOcr.js';
+import { RSC } from './resource.js';
 import OcrTextPanel, { type OcrPanelState } from './OcrTextPanel.js';
 
-type Props = {
-  open: boolean;
-  folder: string;
-  filename: string;
-  /** 1-based page shown when the dialog was opened. */
-  page: number;
-  onClose: () => void;
-};
+export default function PageOcrDialog({ folder, filename }: { folder: string; filename: string }) {
+  const { t, language } = usePdfitI18n();
+  useSyncExternalStore(pageOcrModel.subscribe, pageOcrModel.getVersion, pageOcrModel.getVersion);
+  const { target, state } = pageOcrModel;
+  if (!target || target.folder !== folder || target.filename !== filename) return null;
+  const { page, pageCount } = target;
+  const rtl = language === 'ar';
+  const reason = state.status === 'failed'
+    ? state.error instanceof OcrUnreachableError ? t('ocrUnreachable') : String(state.error instanceof Error ? state.error.message : state.error)
+    : '';
+  let panel: OcrPanelState | undefined;
+  if (state.status === 'pending') panel = { status: 'pending', slowHint: state.slowHint };
+  if (state.status === 'failed' && state.during === 'scan') panel = { status: 'failed', error: reason };
+  if (state.status === 'ready') {
+    const { source, text } = state.result;
+    panel = source === 'none' ? { status: 'unavailable' } : { status: 'done', text, source };
+  }
 
-/** Delay before telling the reader that a scanned page can take minutes. */
-const SLOW_HINT_MS = 4_000;
-
-/** Text of the current page: the PDF text layer, or the AI server for a scanned page. */
-export default function PageOcrDialog({ open, folder, filename, page, onClose }: Props) {
-  const { t } = usePdfitI18n();
-  const [state, setState] = useState<OcrPanelState>({ status: 'pending' });
-  const [durationMs, setDurationMs] = useState<number | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const read = useCallback(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setState({ status: 'pending' });
-    setDurationMs(null);
-    const slow = window.setTimeout(() => { if (!controller.signal.aborted) setState((current) => current.status === 'pending' ? { status: 'pending', slowHint: true } : current); }, SLOW_HINT_MS);
-    recognizePageText(folder, filename, page - 1, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setDurationMs(result.durationMs);
-        setState(result.source === 'none' ? { status: 'unavailable' } : { status: 'done', text: result.text, source: result.source });
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        // The request never reached the runtime even after the retries: say so in the
-        // reader's language instead of showing the gateway's `HTTP 502`.
-        const reason = error instanceof OcrUnreachableError ? t('ocrUnreachable') : error instanceof Error ? error.message : String(error);
-        setState({ status: 'failed', error: reason });
-      })
-      .finally(() => window.clearTimeout(slow));
-  }, [filename, folder, page, t]);
-
-  useEffect(() => {
-    if (!open) { abortRef.current?.abort(); return; }
-    read();
-    // Closing stops waiting; the server still finishes and caches the page.
-    return () => abortRef.current?.abort();
-  }, [open, read]);
-
-  return <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" aria-labelledby="page-ocr-dialog-title" data-testid="page-ocr-dialog">
-    <DialogTitle id="page-ocr-dialog-title">{t('ocrPageTitle', { page })}</DialogTitle>
+  return <Dialog open onClose={pageOcrModel.close} fullWidth maxWidth="md" aria-labelledby="page-ocr-dialog-title" data-testid="page-ocr-dialog"
+    onKeyDown={(event) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) event.stopPropagation();
+    }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInlineEnd: 2 }}>
+      <DialogTitle id="page-ocr-dialog-title" aria-live="polite">{t('ocrPageTitle', { page })}</DialogTitle>
+      <Box dir={rtl ? 'rtl' : 'ltr'} sx={{ display: 'flex', flexShrink: 0 }}>
+        <IconButton aria-label={t('previousPage')} title={t('previousPage')} disabled={page <= 1} onClick={() => pageOcrModel.move(-1)}>
+          {rtl ? <NavigateNextIcon /> : <NavigateBeforeIcon />}
+        </IconButton>
+        <IconButton aria-label={t('nextPage')} title={t('nextPage')} disabled={page >= pageCount} onClick={() => pageOcrModel.move(1)}>
+          {rtl ? <NavigateBeforeIcon /> : <NavigateNextIcon />}
+        </IconButton>
+      </Box>
+    </Box>
     <DialogContent dividers>
       <Typography variant="body2" color="text.secondary" translate="no" sx={{ mb: 1.5, overflowWrap: 'anywhere' }}>{filename}</Typography>
-      <OcrTextPanel testId="page-ocr" state={state} onRetry={read} maxHeight="56vh" />
+      {state.status === 'checking' ? (
+        <Box role="status" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <CircularProgress size={16} />
+          <Typography variant="body2">{t(RSC.VIEWER_OCR_CHECKING_STATUS)}</Typography>
+        </Box>
+      ) : null}
+      {state.status === 'unscanned' ? (
+        <Box sx={{ display: 'grid', gap: 1, justifyItems: 'start' }}>
+          <Typography role="status" variant="body2" color="text.secondary">{t(RSC.VIEWER_OCR_UNSCANNED_STATUS)}</Typography>
+          <Button variant="outlined" onClick={pageOcrModel.scanPage}>{t(RSC.VIEWER_OCR_SCAN_BUTTON)}</Button>
+        </Box>
+      ) : null}
+      {state.status === 'failed' && state.during === 'lookup' ? (
+        <Alert severity="warning" action={<Button color="inherit" onClick={pageOcrModel.checkPage}>{t('retry')}</Button>}>{t('ocrFailed', { reason })}</Alert>
+      ) : null}
+      {panel ? <OcrTextPanel key={page} testId="page-ocr" state={panel} onRetry={pageOcrModel.scanPage} maxHeight="56vh" /> : null}
     </DialogContent>
     <DialogActions>
-      {durationMs !== null ? <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto', pl: 1 }} data-testid="page-ocr-duration">{(durationMs / 1000).toFixed(1)} s</Typography> : <Box sx={{ mr: 'auto' }} />}
-      <Button onClick={onClose}>{t('close')}</Button>
+      {state.status === 'ready' ? <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto', pl: 1 }} data-testid="page-ocr-duration">{(state.result.durationMs / 1000).toFixed(1)} s</Typography> : <Box sx={{ mr: 'auto' }} />}
+      <Button onClick={pageOcrModel.close}>{t('close')}</Button>
     </DialogActions>
   </Dialog>;
 }

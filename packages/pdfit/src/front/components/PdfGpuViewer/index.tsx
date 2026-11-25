@@ -1,6 +1,5 @@
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { ReactNode } from 'react';
 import { Alert, Box } from '@mui/material';
 import {
   DEFAULT_COLOR_ADJUSTMENTS,
@@ -24,7 +23,7 @@ import { interpolatePdfGpuDisplayProgress } from './loadingProgress.js';
 import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
-import { ViewerToolbar, ViewerToolbarFrame } from '../ViewerToolbar/index.js';
+import { ViewerToolbar, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../ViewerToolbar/index.js';
 import { usePageColorFilter } from '../PageColorFilter.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
@@ -64,7 +63,7 @@ type Props = {
   onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
   onUnavailable?: () => void;
   uiHidden?: boolean;
-  documentActions?: ReactNode;
+  documentActions?: RenderViewerDocumentActions;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
   onBookmarkUpdated?: (id: string, request: UpdateBookmarkRequest) => Promise<void>;
@@ -402,7 +401,7 @@ export default function PdfGpuViewer({
 
   if (initError) {
     return <>
-      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions}</ViewerToolbarFrame>}
+      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
     </>;
   }
@@ -419,7 +418,7 @@ export default function PdfGpuViewer({
           continuousScroll={state.scrollMode === 'continuous'}
           zoomInput={zoomInput}
           colorAdjustments={colorAdjustments}
-          documentActions={documentActions}
+          documentActions={documentActions?.(currentPage, state.pageCount)}
           outlineOpen={outlineOpen}
           outlineDisabled={!state.pageCount}
           pageInput={pageInput}
