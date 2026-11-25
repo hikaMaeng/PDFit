@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { UPLOAD_STAGING_PREFIX } from './filesystem.js';
 import { createLibraryVolumeGuard, type LibraryVolumeGuard } from './libraryVolume.js';
+import { touches } from './libraryFileOperations.js';
 import type { BookRecord, MetadataStore } from '../../shared/index.js';
 
 export interface WatcherController {
@@ -11,6 +12,7 @@ export interface WatcherController {
   refresh(): Promise<void>;
   commitUpload(persist: () => Promise<BookRecord[]>): Promise<BookRecord[]>;
   mutateFiles<T>(operation: () => Promise<T>): Promise<T>;
+  mutateIndex<T>(operation: () => Promise<T>): Promise<T>;
 }
 
 function isMissing(error: unknown): boolean {
@@ -23,6 +25,7 @@ export function createWatcher(options: {
   rootFolderName: string;
   resolveFolderPath: (folder: string) => string;
   metadataStore: MetadataStore;
+  watchDirectories?: boolean;
   /** Every disk access goes through it so a dead mount cannot hang the server. */
   volume?: LibraryVolumeGuard;
 }): WatcherController {
@@ -35,6 +38,7 @@ export function createWatcher(options: {
   const bus = new EventEmitter();
   const dirWatchers = new Map<string, fs.FSWatcher>();
   let indexWrites = Promise.resolve();
+  let fileWrites = Promise.resolve();
   let activeScan: AbortController | undefined;
   let refreshing: Promise<void> | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -45,9 +49,19 @@ export function createWatcher(options: {
     return result;
   }
 
-  function mutateFiles<T>(operation: () => Promise<T>): Promise<T> {
+  function mutateIndex<T>(operation: () => Promise<T>): Promise<T> {
     activeScan?.abort();
     return queueIndexWrite(operation);
+  }
+
+  function mutateFiles<T>(operation: () => Promise<T>): Promise<T> {
+    activeScan?.abort();
+    const result = fileWrites.then(async () => {
+      await indexWrites;
+      return operation();
+    });
+    fileWrites = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   function scheduleRefresh(): void {
@@ -64,7 +78,7 @@ export function createWatcher(options: {
     try {
       const books = await mutateFiles(async () => {
         const uploaded = await persist();
-        await metadataStore.syncBooks(uploaded);
+        await mutateIndex(() => metadataStore.syncBooks(uploaded));
         return uploaded;
       });
       bus.emit('change', 'folders-changed');
@@ -89,7 +103,7 @@ export function createWatcher(options: {
   }
 
   function watchDir(dir: string): void {
-    if (dirWatchers.has(dir)) {
+    if (options.watchDirectories === false || dirWatchers.has(dir)) {
       return;
     }
 
@@ -130,14 +144,19 @@ export function createWatcher(options: {
     const removed = await mutateFiles(async () => {
       // A file can be replaced by a completed upload while this event waits.
       if (volume.isOffline() || await stat(fullPath) || volume.isOffline()) return false;
-      if (isPdf) {
-        await metadataStore.purgeFile(isRoot ? rootFolderName : path.basename(dir), name);
-      } else {
-        closeWatcher(fullPath);
-        await metadataStore.purgeFolder(name);
-      }
-      await metadataStore.purgeOrphanTags();
-      return true;
+      return mutateIndex(async () => {
+        const folder = isRoot ? rootFolderName : path.basename(dir);
+        const ref = isPdf ? { folder, filename: name } : { folder: name };
+        if ((await metadataStore.libraryFileOperations?.list())?.some((operation) => touches(operation, ref))) return false;
+        if (isPdf) {
+          await metadataStore.purgeFile(folder, name);
+        } else {
+          closeWatcher(fullPath);
+          await metadataStore.purgeFolder(name);
+        }
+        await metadataStore.purgeOrphanTags();
+        return true;
+      });
     });
     if (!removed) return;
     bus.emit('change', 'folders-changed');
@@ -181,9 +200,10 @@ export function createWatcher(options: {
 
   async function refreshIndex(): Promise<void> {
     for (;;) {
-      const pendingWrites = indexWrites;
-      await pendingWrites;
-      if (pendingWrites !== indexWrites) continue;
+      const pendingFiles = fileWrites;
+      const pendingIndex = indexWrites;
+      await Promise.all([pendingFiles, pendingIndex]);
+      if (pendingFiles !== fileWrites || pendingIndex !== indexWrites) continue;
       const controller = new AbortController();
       activeScan = controller;
       const { signal } = controller;
@@ -217,6 +237,7 @@ export function createWatcher(options: {
     refresh,
     commitUpload,
     mutateFiles,
+    mutateIndex,
     start() {
       // Startup must never scan or synchronize the library. Watch only the
       // root so newly-created folders can be discovered; existing folder

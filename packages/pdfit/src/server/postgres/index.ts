@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -19,6 +19,8 @@ import type { BookClipCount, BookmarkOcr, BookmarkRecord, CreateBookmarkRequest,
 import { parseBookOutlineEntries, type BookOutlineEntry } from '../../common/protocol/outlines/index.js';
 import { bookClipCountsSchema } from './bookClipCounts.js';
 import { bookCommentsSchema, createPostgresBookComments } from './bookComments.js';
+import { createPostgresLibraryFileOperations, libraryFileOperationsSchema } from './libraryFileOperations.js';
+import type { LibraryFileOperationStore } from '../../shared/libraryFileOperations.js';
 import type { RenamedPdf } from '../../common/protocol/file-rename/index.js';
 import { contentSearchSchema, LEGACY_PLACEHOLDER_OUTLINE, listPageOcrSearchIndexes, savePageOcrSearchText, searchLibraryContent } from './contentSearch.js';
 import type { ContentSearchScope } from '../../common/protocol/search/index.js';
@@ -63,9 +65,17 @@ import type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } fro
 
 export class PostgresMetadataStore implements MetadataStore {
   readonly bookComments: NonNullable<MetadataStore['bookComments']>;
+  readonly libraryFileOperations: LibraryFileOperationStore;
 
   constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {
     this.bookComments = createPostgresBookComments(db);
+    this.libraryFileOperations = createPostgresLibraryFileOperations(db, {
+      relocate: (client, source, folder, file) => this.relocateBookInTransaction(client, source.folder, source.filename, folder, file),
+      purge: async (client, { folder, filename }) => {
+        await client.query('SELECT lock_book_clip_count($1, $2)', [folder, filename]);
+        await this.purgeFileRecords(client, folder, filename);
+      },
+    });
   }
 
   async listTrackedBooks(): Promise<Array<{ folder: string; filename: string }>> {
@@ -400,6 +410,12 @@ export class PostgresMetadataStore implements MetadataStore {
       SELECT folder, filename, size, modified_at, title_choseong
       FROM jsonb_to_recordset($1::jsonb)
         AS snapshot(folder TEXT, filename TEXT, size BIGINT, modified_at TEXT, title_choseong TEXT)
+      WHERE NOT EXISTS (
+        SELECT FROM library_file_operations operation
+        WHERE (snapshot.folder, snapshot.filename) IN (
+          (operation.source_folder, operation.source_filename), (operation.destination_folder, operation.destination_filename)
+        )
+      )
       ON CONFLICT (folder, filename)
       DO UPDATE SET size = EXCLUDED.size, modified_at = EXCLUDED.modified_at, title_choseong = EXCLUDED.title_choseong
     `, [JSON.stringify(books.map((book) => ({ ...book, title_choseong: titleChoseong(book.filename) })))]);
@@ -620,33 +636,42 @@ export class PostgresMetadataStore implements MetadataStore {
   }
 
   async relocateBook(fromFolder: string, filename: string, toFolder: string, file: RenamedPdf): Promise<RenamedPdf> {
-    const client = await this.db.connect();
+    return this.inTransaction((client) => this.relocateBookInTransaction(client, fromFolder, filename, toFolder, file));
+  }
+
+  private async relocateBookInTransaction(client: PoolClient, fromFolder: string, filename: string, toFolder: string, file: RenamedPdf): Promise<RenamedPdf> {
     const keys = [fromFolder, filename, toFolder, file.name];
+    // Match the lock order used by the clip-count triggers.
+    await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(0, 2));
+    await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(2));
+    const moved = await client.query(`
+      UPDATE books SET folder = $3, filename = $4, title_choseong = $5, size = $6, modified_at = $7,
+        clip_count_revision = nextval('book_clip_count_revisions')
+      WHERE (folder, filename) = ($1, $2) RETURNING clip_count, clip_count_revision
+    `, [...keys, titleChoseong(file.name), file.size, file.modifiedAt]);
+    for (const table of ['reading_progress', 'book_tags', 'viewer_state', 'bookmarks', 'book_outlines', 'book_favorites']) {
+      await client.query(`UPDATE ${table} SET folder = $3, filename = $4 WHERE (folder, filename) = ($1, $2)`, keys);
+    }
+    const fileUrl = (folder: string, name: string) => `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(name)}`;
+    await client.query('UPDATE annotations SET document_id = $2 WHERE document_id = $1', [fileUrl(fromFolder, filename), fileUrl(toFolder, file.name)]);
+    let row = moved.rows[0];
+    if (!row) {
+      await client.query(`
+        INSERT INTO books (folder, filename, size, modified_at, title_choseong)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [toFolder, file.name, file.size, file.modifiedAt, titleChoseong(file.name)]);
+      row = (await client.query('SELECT clip_count, clip_count_revision FROM books WHERE (folder, filename) = ($1, $2)', keys.slice(2))).rows[0];
+    }
+    return { ...file, ...bookClipCountFromRow(row) };
+  }
+
+  private async inTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.db.connect();
     try {
       await client.query('BEGIN');
-      // Match the lock order used by the clip-count triggers.
-      await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(0, 2));
-      await client.query('SELECT lock_book_clip_count($1, $2)', keys.slice(2));
-      const moved = await client.query(`
-        UPDATE books SET folder = $3, filename = $4, title_choseong = $5,
-          clip_count_revision = nextval('book_clip_count_revisions')
-        WHERE (folder, filename) = ($1, $2) RETURNING clip_count, clip_count_revision
-      `, [...keys, titleChoseong(file.name)]);
-      for (const table of ['reading_progress', 'book_tags', 'viewer_state', 'bookmarks', 'book_outlines', 'book_favorites']) {
-        await client.query(`UPDATE ${table} SET folder = $3, filename = $4 WHERE (folder, filename) = ($1, $2)`, keys);
-      }
-      const fileUrl = (folder: string, name: string) => `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(name)}`;
-      await client.query('UPDATE annotations SET document_id = $2 WHERE document_id = $1', [fileUrl(fromFolder, filename), fileUrl(toFolder, file.name)]);
-      let row = moved.rows[0];
-      if (!row) {
-        await client.query(`
-          INSERT INTO books (folder, filename, size, modified_at, title_choseong)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [toFolder, file.name, file.size, file.modifiedAt, titleChoseong(file.name)]);
-        row = (await client.query('SELECT clip_count, clip_count_revision FROM books WHERE (folder, filename) = ($1, $2)', keys.slice(2))).rows[0];
-      }
+      const result = await work(client);
       await client.query('COMMIT');
-      return { ...file, ...bookClipCountFromRow(row) };
+      return result;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -656,13 +681,14 @@ export class PostgresMetadataStore implements MetadataStore {
   }
 
   async purgeFile(folder: string, filename: string): Promise<void> {
-    await this.db.query('DELETE FROM books WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM reading_progress WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM book_tags WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM viewer_state WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM bookmarks WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM book_outlines WHERE folder = $1 AND filename = $2', [folder, filename]);
-    await this.db.query('DELETE FROM book_favorites WHERE folder = $1 AND filename = $2', [folder, filename]);
+    await this.purgeFileRecords(this.db, folder, filename);
+  }
+
+  private async purgeFileRecords(client: Pool | PoolClient, folder: string, filename: string): Promise<void> {
+    const key = [folder, filename];
+    for (const table of ['books', 'reading_progress', 'book_tags', 'viewer_state', 'bookmarks', 'book_outlines', 'book_favorites']) {
+      await client.query(`DELETE FROM ${table} WHERE (folder, filename) = ($1, $2)`, key);
+    }
   }
 
   async purgeFolder(folder: string): Promise<void> {
@@ -956,6 +982,7 @@ export class PostgresMetadataStore implements MetadataStore {
       ALTER TABLE book_outlines ADD COLUMN IF NOT EXISTS is_manually_edited BOOLEAN;
       ${contentSearchSchema}
       ${bookCommentsSchema}
+      ${libraryFileOperationsSchema}
     `);
     // title_choseong 컬럼이 새로 생겼거나 book_tags에서 보충된 행에 초성 필드를 채운다.
     await this.backfillTitleChoseong();

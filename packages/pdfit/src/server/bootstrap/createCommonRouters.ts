@@ -17,6 +17,7 @@ import { createBookCommentsRouter } from '../routes/bookComments.js';
 import { BOOK_COMMENTS_PATH } from '../../common/protocol/book-comments/index.js';
 import { createFilesystemService } from '../services/filesystem.js';
 import { createWatcher } from '../services/watcher.js';
+import { createLibraryFileOperations, type LibraryFileOperations } from '../services/libraryFileOperations.js';
 import express from 'express';
 import path from 'node:path';
 import type { MetadataStoreResolver } from '../routes/metadataStoreResolver.js';
@@ -111,6 +112,7 @@ export function createPdfitCommonRouterAssembly(options: {
     rootFolderName: filesystem.rootFolderName,
     resolveFolderPath: filesystem.getFolderPath,
     metadataStore: options.metadataStore,
+    watchDirectories: options.watcherEnabled,
     volume: filesystem.volume,
   });
 
@@ -125,6 +127,7 @@ export function createPdfitCommonRouterAssembly(options: {
   // Real-book covers live beside the rendered thumbnails and exist wherever they do.
   let covers: CoverOverrideStore | undefined;
   let ocr: OcrService | undefined;
+  let fileOperations: LibraryFileOperations | undefined;
   if (options.backgroundTasks) {
     const background = options.backgroundTasks;
     const scheduler = createPdfitTaskScheduler(background);
@@ -139,9 +142,14 @@ export function createPdfitCommonRouterAssembly(options: {
     scheduler.register(thumbnails.definition);
     covers = createCoverOverrideStore(path.join(background.thumbnailRoot, 'covers'));
     const store = options.metadataStore;
+    if (store.libraryFileOperations) {
+      fileOperations = createLibraryFileOperations(store.libraryFileOperations, filesystem, watcher, scheduler, covers);
+    }
     const resolveSourcePath = async (folder: string, filename: string) => {
       try {
-        const sourcePath = path.resolve(filesystem.getFolderPath(folder), path.basename(filename));
+        const sourcePath = fileOperations
+          ? await fileOperations.readablePath({ folder, filename: path.basename(filename) })
+          : path.resolve(filesystem.getFolderPath(folder), path.basename(filename));
         return (await filesystem.volume.run(() => fs.promises.stat(sourcePath))).isFile() ? sourcePath : null;
       } catch {
         return null;
@@ -202,6 +210,7 @@ export function createPdfitCommonRouterAssembly(options: {
         (event) => watcher.bus.emit('change', event),
         thumbnailService,
         covers,
+        fileOperations,
       ) },
       ...(covers ? [{ path: '/api/covers', router: createCoversRouter({
         filesystem,
@@ -211,7 +220,10 @@ export function createPdfitCommonRouterAssembly(options: {
         hasFile: async (folder, filename) => (await options.metadataStore.listBooksByFolder(folder)).some((book) => book.filename === filename),
       }) }] : []),
       ...(ocr ? [{ path: '/api/ocr', router: createOcrRouter(ocr) }] : []),
-      ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, () => ({ thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null } })) }] : []),
+      ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, async () => ({
+        thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null },
+        ...(fileOperations && { libraryFileOperations: await fileOperations.status() }),
+      })) }] : []),
       ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags, undefined, ocr),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
     ],

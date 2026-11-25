@@ -115,6 +115,7 @@ export interface MetadataStore {
   listFolderColors(): Promise<Record<string, string>>;
   updateFolderColor(folder: string, color: string): Promise<void>;
   syncBooks(books: BookRecord[]): Promise<void>;
+  readonly libraryFileOperations?: import('./libraryFileOperations.js').LibraryFileOperationStore;
   listFolderTags(folder: string): Promise<Record<string, string[]>>;
   listBookTags(folder: string, filename: string, driveFileId?: string): Promise<string[]>;
   addTag(folder: string, filename: string, tag: string, driveFileId?: string): Promise<void>;
