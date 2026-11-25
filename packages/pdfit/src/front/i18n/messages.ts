@@ -8,6 +8,7 @@ const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es:
 const rows = {
   ...homeMessages,
   bookComments: ['Comments', '코멘트', '评论', 'Comentarios', 'टिप्पणियाँ', 'التعليقات', 'Commentaires', 'Comentários', 'Комментарии', 'Ulasan', 'মন্তব্য', 'コメント'],
+  bookCommentCount: ['Comments: {count}', '코멘트 {count}개', '评论：{count}', 'Comentarios: {count}', 'टिप्पणियाँ: {count}', 'التعليقات: {count}', 'Commentaires : {count}', 'Comentários: {count}', 'Комментарии: {count}', 'Ulasan: {count}', 'মন্তব্য: {count}', 'コメント：{count}件'],
   bookCommentsMove: ['Move comments window', '코멘트 창 이동', '移动评论窗口', 'Mover ventana de comentarios', 'टिप्पणी विंडो खिसकाएँ', 'تحريك نافذة التعليقات', 'Déplacer la fenêtre des commentaires', 'Mover janela de comentários', 'Переместить окно комментариев', 'Alihkan tetingkap ulasan', 'মন্তব্যের উইন্ডো সরান', 'コメントウィンドウを移動'],
   bookCommentCreate: ['New comment', '새 코멘트', '新评论', 'Nuevo comentario', 'नई टिप्पणी', 'تعليق جديد', 'Nouveau commentaire', 'Novo comentário', 'Новый комментарий', 'Ulasan baharu', 'নতুন মন্তব্য', '新しいコメント'],
   bookCommentBody: ['Comment text', '코멘트 본문', '评论正文', 'Texto del comentario', 'टिप्पणी का पाठ', 'نص التعليق', 'Texte du commentaire', 'Texto do comentário', 'Текст комментария', 'Teks ulasan', 'মন্তব্যের লেখা', 'コメント本文'],

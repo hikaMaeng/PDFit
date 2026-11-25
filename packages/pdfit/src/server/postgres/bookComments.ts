@@ -35,6 +35,15 @@ function fromRow(row?: CommentRow | null): BookComment | null {
 
 export function createPostgresBookComments(db: Pool): BookCommentStore {
   return {
+    async listBookCommentCounts(books) {
+      const { rows } = await db.query<{ total: number }>(`
+        SELECT (SELECT COUNT(*)::int FROM book_comments c
+          WHERE (c.folder, c.filename) = (book.folder, book.filename)) AS total
+        FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS book(folder, filename, position)
+        ORDER BY book.position
+      `, [books.map((book) => book.folder), books.map((book) => book.filename)]);
+      return rows.map((row) => row.total);
+    },
     async listBookComments({ folder, filename }, page) {
       const result = await db.query<CommentRow & { total: number; page: number }>(`
         WITH tally AS (

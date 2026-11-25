@@ -3,6 +3,7 @@ import {
   type BookCommentPage, type CommentBook,
 } from '../../../common/protocol/book-comments/index.js';
 import { createBrowserUuid } from '../../browserUuid.js';
+import { publishBookCommentChange } from './countModel.js';
 
 type Mode = 'read' | 'create' | 'edit' | 'delete';
 
@@ -101,6 +102,7 @@ class BookCommentsModel {
         ? { method: 'DELETE' }
         : { method: mode === 'create' ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
       if (!response.ok || (mode !== 'delete' && !parseBookComment(await response.json()))) throw new Error('Unable to save book comment.');
+      if (mode !== 'edit') publishBookCommentChange(book);
       if (this.book !== book) return;
       this.mode = 'read';
       this.selectedId = null;

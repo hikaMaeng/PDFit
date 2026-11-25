@@ -18,6 +18,8 @@ export interface BookCommentPage {
 }
 
 export const BOOK_COMMENTS_PATH = '/api/book-comments';
+export const BOOK_COMMENT_COUNTS_PATH = '/counts';
+export const BOOK_COMMENT_COUNTS_LIMIT = 200;
 export const BOOK_COMMENT_LIMIT = 10_000;
 export const BOOK_COMMENT_PAGE_SIZE = 5;
 export const BOOK_COMMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,10 +30,20 @@ export interface WriteBookComment {
 }
 
 export interface BookCommentStore {
+  listBookCommentCounts(books: readonly CommentBook[]): Promise<number[]>;
   listBookComments(book: CommentBook, page: number): Promise<BookCommentPage>;
   createBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   updateBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   deleteBookComment(book: CommentBook, id: string): Promise<void>;
+}
+
+export function parseCommentBook(value: unknown): CommentBook | null {
+  if (!value || typeof value !== 'object') return null;
+  const { folder, filename, driveFileId } = value as Partial<CommentBook>;
+  if (typeof folder !== 'string' || !folder || folder.includes('\0') ||
+    typeof filename !== 'string' || !filename || filename.includes('\0') ||
+    (driveFileId !== undefined && (typeof driveFileId !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(driveFileId)))) return null;
+  return { folder, filename, driveFileId };
 }
 
 export function parseBookComment(value: unknown): BookComment | null {

@@ -2,7 +2,6 @@ import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStor
 import { useNavigate } from 'react-router-dom';
 import { Box, Button, Checkbox, CircularProgress, IconButton, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageSearchIcon from '@mui/icons-material/ImageSearch';
 import HashTagIcon from './HashTagIcon.js';
@@ -23,9 +22,7 @@ import { cardPropsEqual } from './cardPropsEqual.js';
 import RealCoverDialog from './RealCoverDialog.js';
 import FavoriteToggle from './FavoriteToggle.js';
 import BookClipButton from './clips/BookClipButton.js';
-import BookCommentsDialog from './book-comments/BookCommentsDialog.js';
-import { bookCommentsModel } from './book-comments/model.js';
-import { COMMENT } from './book-comments/resource.js';
+import BookCommentButton from './book-comments/BookCommentButton.js';
 import BookFileActions from './book-file-actions/BookFileActions.js';
 import type { BookClipCount } from '../../common/protocol/bookmarks/index.js';
 
@@ -433,7 +430,6 @@ function PdfCoverItem(props: Props) {
   const coverThumbnailUrl = localServerCover && props.thumbnailUrl ? withCoverVersion(props.thumbnailUrl, props.folder, props.filename) : props.thumbnailUrl;
   const canReplaceCover = localServerCover && !pending && Boolean(props.onManageTags) && coversAvailable();
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
   const hasFileActions = !props.hideFileActions && Boolean(props.onMove || props.onDelete);
   const showComments = hasFileActions || Boolean(props.onManageTags);
   const book = { folder: props.folder, filename: props.filename, driveFileId: props.driveFileId };
@@ -530,10 +526,7 @@ function PdfCoverItem(props: Props) {
       </IconButton>
     </Box>
     {(showComments || canReplaceCover) && <Box data-testid="pdf-cover-actions" sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', '& > span, & > [data-testid] > span': { display: 'flex' }, '& .MuiIconButton-root': { flex: 1, height: 36, p: 0, borderRadius: 0 } }}>
-      {showComments && <Tooltip title={t(COMMENT.BUTTON)}><span><IconButton aria-label={t(COMMENT.BUTTON)} aria-haspopup="dialog" size="small" disabled={pending}
-        onClick={() => { bookCommentsModel.open(book); setCommentsOpen(true); }} sx={{ color: 'primary.main' }}>
-        <ChatBubbleOutlineIcon fontSize="small" />
-      </IconButton></span></Tooltip>}
+      {showComments && <BookCommentButton book={book} disabled={pending} />}
       <Box data-testid="pdf-cover-tag-actions" sx={{ display: 'contents' }}>
         {canReplaceCover ? <Tooltip title={t('realCover')}><span><IconButton aria-label={t('realCover')} data-testid="pdf-cover-real-cover" size="small" onClick={() => setCoverDialogOpen(true)} sx={{ color: 'primary.main' }}><ImageSearchIcon fontSize="small" /></IconButton></span></Tooltip> : null}
         {props.onManageTags ? <Tooltip title={t('manageTags')}><span><IconButton aria-label={t('manageTags')} size="small" disabled={pending} onClick={() => props.onManageTags?.(props.folder, props.filename)} sx={{ color: 'primary.main' }}><HashTagIcon fontSize="small" /></IconButton></span></Tooltip> : null}
@@ -543,7 +536,6 @@ function PdfCoverItem(props: Props) {
       </Box>}
     </Box>}
     {canReplaceCover ? <RealCoverDialog open={coverDialogOpen} folder={props.folder} filename={props.filename} onClose={() => setCoverDialogOpen(false)} /> : null}
-    {commentsOpen && <BookCommentsDialog book={book} onClose={() => { bookCommentsModel.close(); setCommentsOpen(false); }} />}
   </Box>;
 }
 
