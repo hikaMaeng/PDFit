@@ -16,6 +16,8 @@ For scan diagnostics, the OCR tests also inject two upstream timeouts and check 
 
 For the model deadline, build Free and run `node --test apps/pdfit/tests/ai-model-timeout.test.mjs`. Confirm that OCR, Bot, translation, and both automatic-tag configurations use 1,200,000 ms. The delayed HTTP fixture compares the AI transport with a short-deadline dispatcher and checks cancellation.
 
+For a live concurrency change after an OCR timeout, read back the saved AI server setting, then resume the failed scan from its original start page. Check `page.dispatched` and `vision-request` for the new limit. Compare `/api/ocr/scan/pages` before and after to verify that previously indexed pages are reused and that the failed page is saved. Record the last observed scan status and the published `/health` result.
+
 1. Create an AI server without a concurrency field. Confirm default 1, validation of limits, and persistence of an edit to 2 in Settings.
 2. Read page 2 with regular OCR and verify its database status. In the PDF.js toolbar, check Scan before Contents and open the dialog. All five pages appear with contrasting saved and unsaved colors and accessible status names.
 3. Start on page 2. The toolbar shows `3,4 총 2건` while the start controls are hidden. Open the summary and confirm only pages 3 and 4 appear. Escape closes the dialog and restores focus to the summary. Move the reader to a different page while vision responses are held. A duplicate start returns the same job. Page 2 stays skipped and page 1 stays outside the scan range.
