@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage';
 import BackgroundSyncIndicator from './components/BackgroundSyncIndicator.js';
 import { UNTAGGED_PATH } from './model/untagged.js';
 import { FAVORITES_PATH } from './model/favorites.js';
+import { RECENT_BOOKS_PATH } from './model/recentBooks.js';
 import { TAG_INDEX_PATH } from './model/tagIndex.js';
 
 const PdfViewerPage = lazy(() => import('./pages/PdfViewerPage.js'));
@@ -36,7 +37,7 @@ function warmRouteModulesAfterFirstPaint(): () => void {
 }
 
 export default function App() {
-  const { extraRoutes } = usePdfitFrontConfig();
+  const { extraRoutes, recentBooks } = usePdfitFrontConfig();
 
   // Start heavy route/PDF.js downloads after the first browser paint. This
   // keeps the first screen responsive while warming the viewer in parallel.
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/tag/:name" element={<TagPage />} />
           <Route path={UNTAGGED_PATH} element={<TagPage untagged />} />
           <Route path={FAVORITES_PATH} element={<TagPage favorites />} />
+          {recentBooks && <Route path={RECENT_BOOKS_PATH} element={<TagPage key={RECENT_BOOKS_PATH} recent />} />}
           <Route path={TAG_INDEX_PATH} element={<TagIndexPage />} />
           <Route path="/search" element={<SearchPage />} />
           {extraRoutes.map((route) => (

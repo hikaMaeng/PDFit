@@ -6,6 +6,7 @@ import { useProgressiveItems } from '../components/useProgressiveItems';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { UNTAGGED_CHANGED_EVENT } from '../model/untagged.js';
+import { RECENT_BOOKS_CHANGED_EVENT } from '../model/recentBooks.js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Checkbox, ToggleButton, ToggleButtonGroup,
@@ -17,6 +18,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import StarIcon from '@mui/icons-material/Star';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { tagsApi, BookRef } from '../api/tags';
@@ -44,6 +46,7 @@ import SelectedDocumentActions, { type SelectedDocument } from '../components/Se
 import BookMetadataDialog, { type BookMetadataTarget } from '../components/BookMetadataDialog';
 import { usePdfitFrontConfig } from '../context';
 import { isPendingUploadDriveFileId } from '../viewer/openViewer';
+import { RSC } from './resource.js';
 
 interface TagDialogState {
   folder: string;
@@ -57,16 +60,16 @@ const bookIdentity = (book: Pick<BookRef, 'folder' | 'filename' | 'driveFileId'>
 
 /**
  * `untagged`이면 `/tag/:name` 대신 태그가 하나도 없는 문서를 보여 주는 "미분류" 보기이고,
- * `favorites`이면 즐겨찾기 표시한 문서만 모아 보여 주는 "즐겨찾기" 보기다(DB 기준 목록).
+ * `favorites`와 `recent`는 각각 즐겨찾기와 신규등록 문서를 모아 보여 준다.
  */
-export default function TagPage({ untagged = false, favorites = false }: { untagged?: boolean; favorites?: boolean } = {}) {
+export default function TagPage({ untagged = false, favorites = false, recent = false }: { untagged?: boolean; favorites?: boolean; recent?: boolean } = {}) {
   const { t, ui } = usePdfitI18n();
   const { bookMetadataEnabled, bookResearchAccess, aiAutoTagAccess, onAiTagRemoved, serverThumbnails } = usePdfitFrontConfig();
   const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const tagName = untagged || favorites ? '' : tagNameFromPath(pathname) ?? '';
+  const tagName = tagNameFromPath(pathname) ?? '';
 
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [refreshing, setRefreshing] = useState(false);
@@ -80,7 +83,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
   const [tagIcons, setTagIcons] = useState<Record<string, TagIconName | undefined>>({});
   const booksRequest = useRef(0);
   // 태그에 문서가 아무리 많아도 위에서부터 조금씩 붙여 첫 화면이 멈추지 않게 한다.
-  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${favorites ? '__favorites__' : untagged ? '__untagged__' : tagName}\u0000${libraryView}`);
+  const { rendered: renderedBooks, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(books, `${pathname}\u0000${libraryView}`);
 
   /** `${folder}/${filename}` → 태그 목록 */
   const [bookTags, setBookTags] = useState<Record<string, string[]>>({});
@@ -131,14 +134,15 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
 
   // ─── 초기 로드 ────────────────────────────────────────────
   const loadBooks = useCallback(async (background = false) => {
-    if (!tagName && !untagged && !favorites) return;
+    if (!tagName && !untagged && !favorites && !recent) return;
     const request = ++booksRequest.current;
     if (!background) setLoading(true);
     setError(null);
     try {
+      const loadTaggedBooks = recent ? foldersApi.listRecentBooks : favorites ? favoritesApi.listBooks : () => tagsApi.listBooks(tagName);
       const [data, summaries] = untagged
         ? [await tagsApi.listUntaggedBooks(), []] as const
-        : await Promise.all([favorites ? favoritesApi.listBooks() : tagsApi.listBooks(tagName), tagsApi.listSummary()]);
+        : await Promise.all([loadTaggedBooks(), tagsApi.listSummary()]);
       if (request !== booksRequest.current) return;
       if (!untagged) {
         const summary = summaries.find((item) => item.name === tagName);
@@ -156,7 +160,19 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     } finally {
       if (request === booksRequest.current) setLoading(false);
     }
-  }, [tagName, untagged, favorites]);
+  }, [tagName, untagged, favorites, recent]);
+
+  const refreshBooks = async () => {
+    setRefreshing(true);
+    try {
+      if (recent) await foldersApi.refresh();
+      await loadBooks(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : ui("새로고침에 실패했습니다."));
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     void loadBooks();
@@ -196,6 +212,17 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
     window.addEventListener('favorites-changed', reload);
     return () => window.removeEventListener('favorites-changed', reload);
   }, [favorites, loadBooks]);
+
+  useEffect(() => {
+    if (!recent) return;
+    const reload = () => void loadBooks(true);
+    window.addEventListener('folders-changed', reload);
+    window.addEventListener(RECENT_BOOKS_CHANGED_EVENT, reload);
+    return () => {
+      window.removeEventListener('folders-changed', reload);
+      window.removeEventListener(RECENT_BOOKS_CHANGED_EVENT, reload);
+    };
+  }, [recent, loadBooks]);
 
   useEffect(() => {
     setSelectedBooks((current) => {
@@ -478,7 +505,9 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
       {/* 헤더 */}
       <Box sx={{ px: 1, py: 0, mb: 0.5 }}>
         <Box data-testid="tag-title-row" sx={{ display: 'flex', alignItems: 'center', gap: 1, '& > .MuiIconButton-root': { p: 0 } }}>
-          {favorites
+          {recent
+            ? <ScheduleIcon aria-hidden sx={{ fontSize: 28, color: 'text.secondary' }} />
+            : favorites
             ? <StarIcon aria-hidden data-testid="favorites-title-icon" sx={{ fontSize: 28, color: FAVORITE_COLOR }} />
             : untagged
             ? <LabelOffOutlinedIcon aria-hidden data-testid="untagged-title-icon" sx={{ fontSize: 28, color: 'text.secondary' }} />
@@ -487,10 +516,10 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
               : <Typography component="span" sx={{ fontSize: 28, fontWeight: 700, color: tagColor }}>#</Typography>}
               color={tagColor} size="medium" onChange={(color) => void tagsApi.updateColor(tagName, color).then(() => { setTagColor(color); window.dispatchEvent(new Event('tags-changed')); })} />}
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, minWidth: 0 }}>
-            <Typography variant="h5" fontWeight={700} translate={favorites || untagged ? undefined : 'no'} sx={{ minWidth: 0, overflowWrap: 'anywhere' }} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{favorites ? t('favorites') : untagged ? t('untagged') : tagName}</Typography>
+            <Typography variant="h5" component={recent ? 'h1' : 'h5'} fontWeight={700} translate={favorites || untagged || recent ? undefined : 'no'} sx={{ minWidth: 0, overflowWrap: 'anywhere' }} data-testid={favorites ? 'favorites-title' : untagged ? 'untagged-title' : undefined}>{recent ? t(RSC.LIBRARY_RECENT_TITLE_TEXT) : favorites ? t('favorites') : untagged ? t('untagged') : tagName}</Typography>
             <Chip data-testid="tag-document-count" label={t('pdfCount', { count: books.length })} size="small" color="primary" variant="outlined" sx={{ borderRadius: '4px', fontWeight: 600 }} />
           </Box>
-          <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={async () => { setRefreshing(true); try { await loadBooks(true); } finally { setRefreshing(false); } }} sx={{ ml: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>{t('refresh')}</Button>
+          <Button data-testid="tag-refresh" size="small" variant="outlined" startIcon={<RefreshIcon />} disabled={refreshing} onClick={() => void refreshBooks()} sx={{ ml: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>{t('refresh')}</Button>
         </Box>
       </Box>
 
@@ -501,7 +530,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
         {books.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
             <PictureAsPdfIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-            <Typography color="text.secondary">{favorites ? t('noFavoritePdfs') : untagged ? t('noUntaggedPdfs') : t('noTaggedPdfs')}</Typography>
+            <Typography color="text.secondary">{recent ? t(RSC.LIBRARY_RECENT_EMPTY_MESSAGE) : favorites ? t('noFavoritePdfs') : untagged ? t('noUntaggedPdfs') : t('noTaggedPdfs')}</Typography>
           </Box>
         ) : (
           <>
@@ -514,7 +543,7 @@ export default function TagPage({ untagged = false, favorites = false }: { untag
           </Box>
           {libraryView === 'list' && <PdfListHeader />}
           </LibraryFixedControls>
-          <LibraryBookCollection view={libraryView}>
+          <LibraryBookCollection view={libraryView} listTestId={recent ? 'recent-book-list' : undefined}>
             {renderedBooks.map((book) => {
               const identity = bookIdentity(book);
               const autoTagging = locks.isAutoTagging(identity);

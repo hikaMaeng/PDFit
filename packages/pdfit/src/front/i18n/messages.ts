@@ -3,10 +3,16 @@ import { homeMessages } from './homeMessages.js';
 import { scanMessages } from './scanMessages.js';
 import { bookBotMessages } from './bookBotMessages.js';
 import { translateEnglishUi } from './uiText.js';
+import { RSC as SidebarRsc } from '../layout/resource.js';
+import { RSC as PageRsc } from '../pages/resource.js';
 
 const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es: 3, hi: 4, ar: 5, fr: 6, pt: 7, ru: 8, ms: 9, bn: 10, ja: 11 };
+const recentBooksLabel = ['Recently added', '신규등록', '最近添加', 'Añadidos recientemente', 'हाल में जोड़ी गईं', 'المضافة حديثًا', 'Ajouts récents', 'Adicionados recentemente', 'Недавно добавленные', 'Baru ditambah', 'সম্প্রতি যোগ করা হয়েছে', '最近追加した本'];
 
 const rows = {
+  [SidebarRsc.SIDEBAR_FOLDERS_RECENT_BUTTON]: recentBooksLabel,
+  [PageRsc.LIBRARY_RECENT_TITLE_TEXT]: recentBooksLabel,
+  [PageRsc.LIBRARY_RECENT_EMPTY_MESSAGE]: ['No books have been added yet.', '등록된 책이 없습니다.', '尚未添加任何书籍。', 'Aún no se han añadido libros.', 'अभी तक कोई किताब नहीं जोड़ी गई है।', 'لم تُضف أي كتب بعد.', 'Aucun livre ajouté pour le moment.', 'Ainda não foram adicionados livros.', 'Книги пока не добавлены.', 'Belum ada buku ditambah.', 'এখনও কোনো বই যোগ করা হয়নি।', 'まだ本が追加されていません。'],
   ...homeMessages,
   ...bookBotMessages,
   bookComments: ['Comments', '코멘트', '评论', 'Comentarios', 'टिप्पणियाँ', 'التعليقات', 'Commentaires', 'Comentários', 'Комментарии', 'Ulasan', 'মন্তব্য', 'コメント'],

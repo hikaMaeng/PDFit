@@ -13,6 +13,7 @@ const App = createPdfitServiceApp({
   // Covers are rendered by the server's hourly thumbnail task, not in the browser.
   serverThumbnails: true,
   contentSearch: true,
+  recentBooks: true,
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

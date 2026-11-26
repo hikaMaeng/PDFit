@@ -16,6 +16,10 @@ The **Set up AI servers** link opens Settings for the language and vision
 models used by auto-tagging, display-name translation, and scan OCR. **View
 bookmarks** opens the library-wide clip collection.
 
+**Recently added** (신규등록) is fixed at the top of **Folders**. It shows up
+to 30 books from across the library, newest registrations first, in list or
+cover view. Use **Refresh** to include PDFs copied directly to the library.
+
 ## npm installation
 
 Requirements: Node.js 20 or newer with npm, and Docker Desktop (or Docker Engine) with Compose. Install the released launcher from GitHub:

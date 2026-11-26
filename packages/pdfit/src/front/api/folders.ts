@@ -1,4 +1,5 @@
 import { uiText } from '../i18n/uiText.js';
+import type { RecentBookRecord } from '../../shared/index.js';
 export interface FolderInfo {
   name: string;
   pdfCount: number;
@@ -380,6 +381,7 @@ async function uploadFilesOptimistically(folder: string, files: File[], onProgre
 
 export const foldersApi = {
   list: async () => (await listCachedFolders()) ?? request<FolderInfo[]>('/folders'),
+  listRecentBooks: () => request<RecentBookRecord[]>('/folders/recent-books'),
 
   refresh: async () => {
     const result = await request<FolderInfo[] | RefreshResult>('/folders/refresh', { method: 'POST' });

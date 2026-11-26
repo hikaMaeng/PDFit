@@ -7,6 +7,7 @@ import type {
   BookRecord,
   BookTitleSearchResult,
   MetadataStore,
+  RecentBookRecord,
   TagIndexEntry,
   TagSummary,
   TaggedBookRecord,
@@ -226,6 +227,30 @@ export class PostgresMetadataStore implements MetadataStore {
     }));
   }
 
+  async listRecentBooks(): Promise<RecentBookRecord[]> {
+    const result = await this.db.query(`
+      SELECT recent.*, ARRAY(
+        SELECT t.name
+        FROM book_tags bt JOIN tags t ON t.id = bt.tag_id
+        WHERE (bt.folder, bt.filename) = (recent.folder, recent.filename)
+        ORDER BY t.name
+      ) AS tags
+      FROM (
+        SELECT folder, filename, size, modified_at, clip_count, clip_count_revision, registered_at
+        FROM books
+        WHERE registered_at IS NOT NULL
+        ORDER BY registered_at DESC, folder, filename
+        LIMIT 30
+      ) recent
+      ORDER BY registered_at DESC, folder, filename
+    `);
+    return result.rows.map((row) => ({
+      folder: String(row.folder), filename: String(row.filename), size: Number(row.size),
+      modified_at: String(row.modified_at), registeredAt: row.registered_at.toISOString(),
+      tags: (row.tags as string[]).map(String), ...bookClipCountFromRow(row),
+    }));
+  }
+
   async setFavorite(folder: string, filename: string, favorite: boolean): Promise<boolean> {
     if (!favorite) {
       await this.db.query('DELETE FROM book_favorites WHERE folder = $1 AND filename = $2', [folder, filename]);
@@ -410,8 +435,8 @@ export class PostgresMetadataStore implements MetadataStore {
     // 폴더 새로고침·파일 추가·감시기 갱신은 모두 이 함수로 `books`를 쓴다. 초성 검색 필드(title_choseong)는
     // 여기서 항상 함께 만들어 넣고, 이미 있는 행도 갱신해 필드가 제목과 어긋나지 않게 한다.
     await this.db.query(`
-      INSERT INTO books (folder, filename, size, modified_at, title_choseong)
-      SELECT folder, filename, size, modified_at, title_choseong
+      INSERT INTO books (folder, filename, size, modified_at, title_choseong, registered_at)
+      SELECT folder, filename, size, modified_at, title_choseong, now()
       FROM jsonb_to_recordset($1::jsonb)
         AS snapshot(folder TEXT, filename TEXT, size BIGINT, modified_at TEXT, title_choseong TEXT)
       WHERE NOT EXISTS (
@@ -421,7 +446,8 @@ export class PostgresMetadataStore implements MetadataStore {
         )
       )
       ON CONFLICT (folder, filename)
-      DO UPDATE SET size = EXCLUDED.size, modified_at = EXCLUDED.modified_at, title_choseong = EXCLUDED.title_choseong
+      DO UPDATE SET size = EXCLUDED.size, modified_at = EXCLUDED.modified_at, title_choseong = EXCLUDED.title_choseong,
+        registered_at = COALESCE(books.registered_at, EXCLUDED.registered_at)
     `, [JSON.stringify(books.map((book) => ({ ...book, title_choseong: titleChoseong(book.filename) })))]);
   }
 
@@ -661,8 +687,8 @@ export class PostgresMetadataStore implements MetadataStore {
     let row = moved.rows[0];
     if (!row) {
       await client.query(`
-        INSERT INTO books (folder, filename, size, modified_at, title_choseong)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO books (folder, filename, size, modified_at, title_choseong, registered_at)
+        VALUES ($1, $2, $3, $4, $5, now())
       `, [toFolder, file.name, file.size, file.modifiedAt, titleChoseong(file.name)]);
       row = (await client.query('SELECT clip_count, clip_count_revision FROM books WHERE (folder, filename) = ($1, $2)', keys.slice(2))).rows[0];
     }
@@ -843,10 +869,23 @@ export class PostgresMetadataStore implements MetadataStore {
       );
       CREATE INDEX IF NOT EXISTS idx_books_folder ON books (folder);
       ALTER TABLE books ADD COLUMN IF NOT EXISTS title_choseong TEXT;
+      ALTER TABLE books ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS schema_migrations (
         id TEXT PRIMARY KEY,
         applied_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
       );
+      -- Existing catalog rows predate registration timestamps. See docs/internals.md.
+      DO $$
+      BEGIN
+        INSERT INTO schema_migrations (id) VALUES ('book-registration-time') ON CONFLICT DO NOTHING;
+        IF FOUND THEN
+          UPDATE books SET registered_at = modified_at::timestamptz
+          WHERE registered_at IS NULL AND modified_at ~ '^[0-9]{4}-'
+            AND pg_input_is_valid(modified_at, 'timestamptz');
+        END IF;
+      END $$;
+      CREATE INDEX IF NOT EXISTS idx_books_recent
+        ON books (registered_at DESC, folder, filename) WHERE registered_at IS NOT NULL;
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE id = 'remove-bookmarks-v1') THEN

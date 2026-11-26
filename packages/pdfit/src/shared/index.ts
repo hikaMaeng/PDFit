@@ -57,6 +57,10 @@ export interface TaggedBookRecord extends BookRecord {
   tags: string[];
 }
 
+export interface RecentBookRecord extends TaggedBookRecord {
+  registeredAt: string;
+}
+
 /** `books` 테이블 제목 검색 결과. `total`은 `limit`과 무관한 전체 일치 수다. */
 export interface BookTitleSearchResult {
   total: number;
@@ -93,6 +97,7 @@ export interface MetadataStore {
   listFavoriteKeys?(): Promise<Array<{ folder: string; filename: string }>>;
   /** 즐겨찾기한 책의 전체 레코드(사이드바 "즐겨찾기" 보기). 태그 목록을 함께 돌려준다. */
   listFavoriteBooks?(): Promise<TaggedBookRecord[]>;
+  listRecentBooks?(): Promise<RecentBookRecord[]>;
   /** 즐겨찾기를 켜거나 끈다. `books`에 없는 책은 켜지 않는다. 바뀐 값을 돌려준다. */
   setFavorite?(folder: string, filename: string, favorite: boolean): Promise<boolean>;
   /**

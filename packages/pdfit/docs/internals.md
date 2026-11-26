@@ -1,5 +1,13 @@
 # Internals
 
+## Recent book registrations
+
+[The local catalog](../src/server/postgres/index.ts#syncBooks) records when each
+PDF first enters the index. File refresh, single-PDF rename, and move preserve
+the timestamp. The schema migration initializes existing records with the last
+saved file modification time where available. Entries without a known time
+appear once a scan indexes the PDF.
+
 ## Book clip counts
 
 The [PostgreSQL migration](../src/server/postgres/bookClipCounts.ts#bookClipCountsSchema)

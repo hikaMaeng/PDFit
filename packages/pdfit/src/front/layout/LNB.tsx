@@ -38,6 +38,7 @@ import LabelOffOutlinedIcon from '@mui/icons-material/LabelOffOutlined';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import FolderOffOutlinedIcon from '@mui/icons-material/FolderOffOutlined';
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined';
@@ -69,6 +70,7 @@ import type { PdfitLanguage } from '../model/languagePreference.js';
 import { distinctTagColor } from '../../shared/tagColor.js';
 import { UNTAGGED_CHANGED_EVENT, UNTAGGED_PATH } from '../model/untagged.js';
 import { FAVORITES_PATH } from '../model/favorites.js';
+import { RECENT_BOOKS_CHANGED_EVENT, RECENT_BOOKS_PATH } from '../model/recentBooks.js';
 import { favoritesModel } from '../model/favoritesModel.js';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { TAG_INDEX_PATH } from '../model/tagIndex.js';
@@ -126,7 +128,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTag = tagNameFromPath(location.pathname);
-  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved, contentSearch } = usePdfitFrontConfig();
+  const { appName, appVersion, extraSidebarItems, extraSidebarFooter, navigationGuard, onAiTagRemoved, contentSearch, recentBooks } = usePdfitFrontConfig();
   const go = (path: string) => navigate(navigationGuard?.(path) ?? path);
   const { languagePreference } = usePdfitFrontConfig();
   const sidebarLabel = (item: { path: string; label: string; localizedLabels?: Partial<Record<PdfitLanguage, string>> }) => item.path === '/settings'
@@ -362,6 +364,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
       source.onmessage = (event) => {
         if (event.data === 'folders-changed') {
           void loadFolders();
+          if (recentBooks) window.dispatchEvent(new Event(RECENT_BOOKS_CHANGED_EVENT));
         }
         if (event.data === 'tags-changed') {
           void loadTags();
@@ -395,7 +398,7 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
         clearTimeout(retryTimer);
       }
     };
-  }, [loadFolders, loadTags]);
+  }, [loadFolders, loadTags, recentBooks]);
 
   // Resolve old name-based preferences and remove records of deleted folders.
   useEffect(() => {
@@ -1272,6 +1275,23 @@ export default function LNB({ mobileOpen, onMobileClose }: LNBProps) {
             </Box>
 
             <Collapse in={foldersOpen} timeout="auto" unmountOnExit>
+              {recentBooks && (
+                <List dense disablePadding>
+                  <ListItem disablePadding sx={{ pr: 7 }}>
+                    <ListItemButton
+                      component={Link}
+                      to={navigationGuard?.(RECENT_BOOKS_PATH) ?? RECENT_BOOKS_PATH}
+                      selected={isActive(RECENT_BOOKS_PATH)}
+                      aria-current={isActive(RECENT_BOOKS_PATH) ? 'page' : undefined}
+                      onClick={onMobileClose}
+                      sx={{ borderRadius: 1, mx: 1, py: 0.5, color: sidebarTextPrimary, '&:hover': { bgcolor: sidebarHover }, '&.Mui-selected': { backgroundColor: selectedNavigationBackground, boxShadow: `inset 3px 0 0 ${selectedAccent}`, '&:hover': { backgroundColor: selectedNavigationBackground } } }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 24, color: sidebarTextSecondary }}><ScheduleIcon aria-hidden sx={{ fontSize: 16 }} /></ListItemIcon>
+                      <ListItemText disableTypography primary={<Typography noWrap variant="body2" sx={{ fontSize: '0.8rem' }}>{t(RSC.SIDEBAR_FOLDERS_RECENT_BUTTON)}</Typography>} />
+                    </ListItemButton>
+                  </ListItem>
+                </List>
+              )}
               {loading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
                   <CircularProgress size={14} />

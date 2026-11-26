@@ -6,6 +6,7 @@ import FolderPage from '../../../front/pages/FolderPage.js';
 import HomePage from '../../../front/pages/HomePage.js';
 import { UNTAGGED_PATH } from '../../../front/model/untagged.js';
 import { FAVORITES_PATH } from '../../../front/model/favorites.js';
+import { RECENT_BOOKS_PATH } from '../../../front/model/recentBooks.js';
 import { TAG_INDEX_PATH } from '../../../front/model/tagIndex.js';
 
 const TagPage = lazy(() => import('../../../front/pages/TagPage.js'));
@@ -33,7 +34,7 @@ function warmRouteModulesAfterFirstPaint(): () => void {
 }
 
 export default function PdfitServiceAppRoutes() {
-  const { extraRoutes } = usePdfitFrontConfig();
+  const { extraRoutes, recentBooks } = usePdfitFrontConfig();
 
   useEffect(() => warmRouteModulesAfterFirstPaint(), []);
 
@@ -46,6 +47,7 @@ export default function PdfitServiceAppRoutes() {
         <Route path="/tag/:name" element={<TagPage />} />
         <Route path={UNTAGGED_PATH} element={<TagPage untagged />} />
         <Route path={FAVORITES_PATH} element={<TagPage favorites />} />
+        {recentBooks && <Route path={RECENT_BOOKS_PATH} element={<TagPage key={RECENT_BOOKS_PATH} recent />} />}
         <Route path={TAG_INDEX_PATH} element={<TagIndexPage />} />
         <Route path="/search" element={<SearchPage />} />
         {extraRoutes.map((route) => (

@@ -37,6 +37,7 @@ export function createPdfitServiceApp(extension: PdfitServiceExtension = {}) {
     bookMetadataEnabled: extension.bookMetadataEnabled,
     serverThumbnails: extension.serverThumbnails,
     contentSearch: extension.contentSearch,
+    recentBooks: extension.recentBooks,
     bookResearchAccess: extension.bookResearchAccess,
     languagePreference: extension.languagePreference ?? defaultLanguagePreference,
     displayTranslation: extension.displayTranslation,

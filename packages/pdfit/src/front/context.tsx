@@ -33,6 +33,8 @@ export interface PdfitFrontExtension {
   serverThumbnails?: boolean;
   /** The library exposes indexed outline, OCR, and clip text searches. */
   contentSearch?: boolean;
+  /** The library exposes a recent registrations collection. */
+  recentBooks?: boolean;
   /** Whether the current account can use the server-managed AI book research feature. */
   bookResearchAccess?: () => boolean;
   themeOptions?: ThemeOptions;
@@ -62,6 +64,7 @@ export interface PdfitFrontRuntimeConfig {
   bookMetadataEnabled?: boolean;
   serverThumbnails?: boolean;
   contentSearch?: PdfitFrontExtension['contentSearch'];
+  recentBooks?: PdfitFrontExtension['recentBooks'];
   bookBotEnabled?: boolean;
   bookResearchAccess?: PdfitFrontExtension['bookResearchAccess'];
   themeOptions?: ThemeOptions;

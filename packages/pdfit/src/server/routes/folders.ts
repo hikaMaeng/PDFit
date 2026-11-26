@@ -78,6 +78,7 @@ export function createFoldersRouter(
   /** Real-book covers chosen by the user; they replace the rendered first page. */
   covers?: CoverOverrideStore,
   fileOperations?: LibraryFileOperations,
+  listRecentBooks?: MetadataStore['listRecentBooks'],
 ): Router {
   const router = Router();
   const upload = createUpload(filesystem, (req) => req.params.name, maxUploadBytes);
@@ -149,6 +150,15 @@ export function createFoldersRouter(
       await refresh?.();
       await fileOperations?.retry();
       res.json(await filesystem.listFolders());
+    } catch (error) {
+      fail(res, error, 500);
+    }
+  });
+
+  router.get('/recent-books', async (_req: Request, res: Response) => {
+    if (!listRecentBooks) { res.status(501).json({ error: 'Recent books are unavailable.' }); return; }
+    try {
+      res.json(await listRecentBooks());
     } catch (error) {
       fail(res, error, 500);
     }

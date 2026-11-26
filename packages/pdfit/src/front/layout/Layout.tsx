@@ -6,6 +6,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import LNB from './LNB';
 import { UNTAGGED_PATH } from '../model/untagged.js';
 import { FAVORITES_PATH } from '../model/favorites.js';
+import { RECENT_BOOKS_PATH } from '../model/recentBooks.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n';
 
 function RouteErrorState() {
@@ -57,7 +58,7 @@ export default function Layout() {
   const theme = useTheme();
   const isTabletDrawer = useMediaQuery('(min-width: 720px) and (max-width: 899.95px) and (pointer: coarse)');
   const location = useLocation();
-  const isLibraryList = location.pathname.startsWith('/folder/') || location.pathname.startsWith('/tag/') || location.pathname === UNTAGGED_PATH || location.pathname === FAVORITES_PATH || location.pathname === '/bookmarks';
+  const isLibraryList = location.pathname.startsWith('/folder/') || location.pathname.startsWith('/tag/') || location.pathname === UNTAGGED_PATH || location.pathname === FAVORITES_PATH || location.pathname === RECENT_BOOKS_PATH || location.pathname === '/bookmarks';
   const mainBackground = 'background.default';
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);

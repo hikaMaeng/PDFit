@@ -6,11 +6,13 @@
 * `/settings` — AI server settings UI (no database settings: the image embeds PostgreSQL)
 * `/viewer` — dedicated PDF viewer UI
 * `/tag-index` — tag "Index" page: one masonry card per tag listing its book titles
+* `/recent-books` — the sidebar's "Recently added" collection
 
 ## Server routes
 
 * `/health` — runtime health
 * `/api/folders`, `/api/tags`, `/api/progress`, `/api/viewer-state`, `/api/events` — shared library APIs
+* `GET /api/folders/recent-books` returns up to 30 indexed book records with tags and ISO 8601 `registeredAt`, newest first. The [catalog query](../../../packages/pdfit/src/server/postgres/index.ts#listRecentBooks) breaks registration-time ties by folder and filename.
 * `PATCH /api/folders/files/rename` and `/api/book-comments` — rename a PDF or manage its posts. [Shared API contract](../../../packages/pdfit/docs/api.md#book-file-actions-and-comments)
 * `POST /api/folders/:name/files` receives multipart PDFs. Each completed file is moved into the library, and the upload succeeds after its records are committed to PostgreSQL. The response contains `name`, `size`, and `modifiedAt`. The commit emits `folders-changed` and `tags-changed` on `/api/events`. See [index commit and scan](../../../packages/pdfit/src/server/services/watcher.ts).
 * `DELETE /api/folders/:name/files/:filename`, `PATCH /api/folders/files/rename` and `POST /api/folders/move` commit the book change and a pending file operation in one PostgreSQL transaction. The response and `folders-changed`, `tags-changed` and `favorites-changed` events follow the commit. A PDF awaiting relocation can be read through its new URL while the old file or the staged file remains available. A repeated pending request reuses the same job. Conflicting requests, including uploads and folder changes on reserved paths, return `409`.

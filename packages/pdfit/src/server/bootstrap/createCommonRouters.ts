@@ -216,6 +216,7 @@ export function createPdfitCommonRouterAssembly(options: {
         thumbnailService,
         covers,
         fileOperations,
+        options.metadataStore.listRecentBooks?.bind(options.metadataStore),
       ) },
       ...(covers ? [{ path: '/api/covers', router: createCoversRouter({
         filesystem,
