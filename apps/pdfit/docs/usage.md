@@ -95,11 +95,13 @@ Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**,
 
 Choose **Bot** in the viewer toolbar to open a floating chat for the current book. Drag the header or focus it and use the arrow keys to move the chat. Ask a question or request a summary. The reply can cite the PDF page number and distinguish your comments from the book's text.
 
-Bot displays each answer as it arrives and saves the exchange when the model finishes. If a reply fails, send the question again using the draft left in the input.
+Bot shows its current stage while it prepares context, reads sections, waits for the model, or saves the conversation. Answer text appears as it arrives. Select a page reference such as **p. 9** to jump to that PDF page while keeping the chat open. If a reply fails, send the question again using the draft left in the input.
 
 Bot opens the most recently started chat for this book. **Chat history** shows each saved title and start time. Choose an earlier row to continue that conversation or **New chat** to start another. The title comes from the first completed exchange.
 
 In **Settings → AI Servers**, set an LLM model for chat. The configured AI server receives the question, conversation and relevant book material. Bot reads the saved or embedded contents, scanned page text, saved clips, clip OCR and notes, and book comments. Clip image descriptions use the configured vision model or an LLM that supports images. Use **Scan** to make more page text available.
+
+Set **Bot context limit (tokens)** to the window available on that LLM or gateway. Within the estimated window, Bot sends the book material and conversation directly in one answer request.
 
 See [context and storage](../../../packages/pdfit/docs/book-bot.md).
 

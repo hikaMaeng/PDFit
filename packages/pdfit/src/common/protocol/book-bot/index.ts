@@ -7,6 +7,13 @@ export const BOOK_BOT_TURNS = '/turns';
 export const BOOK_BOT_QUESTION_LIMIT = 4000;
 export const BOOK_BOT_ID = BOOK_COMMENT_ID;
 export const BOOK_BOT_STREAM_TYPE = 'text/event-stream';
+export const BOOK_BOT_PROGRESS_HEADER = 'X-PDFit-Bot-Progress';
+export const BOOK_BOT_MIN_CONTEXT_TOKENS = 16_384;
+export const BOOK_BOT_MAX_CONTEXT_TOKENS = 2_097_152;
+
+export type BookBotProgress =
+  | { phase: 'preparing' | 'generating' | 'thinking' | 'saving' }
+  | { phase: 'clips' | 'history' | 'evidence'; completed: number; total: number };
 
 export type BookBotBook = CommentBook;
 
@@ -36,6 +43,7 @@ export interface BookBotSessionPayload {
 
 export type BookBotStreamEvent =
   | { type: 'delta'; text: string }
+  | ({ type: 'progress' } & BookBotProgress)
   | { type: 'saved'; session: BookBotSessionSummary; turn: BookBotTurn; revision: number }
   | { type: 'error'; status: 409 | 500 | 502 };
 
@@ -105,6 +113,18 @@ export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | nu
   if (value.type === 'delta' && 'text' in value && typeof value.text === 'string') {
     return { type: 'delta', text: value.text };
   }
+  if (value.type === 'progress' && 'phase' in value) {
+    const { phase } = value;
+    if (phase === 'preparing' || phase === 'generating' || phase === 'thinking' || phase === 'saving') {
+      return { type: 'progress', phase };
+    }
+    if ((phase === 'clips' || phase === 'history' || phase === 'evidence') &&
+      'completed' in value && typeof value.completed === 'number' && Number.isSafeInteger(value.completed) &&
+      'total' in value && typeof value.total === 'number' && Number.isSafeInteger(value.total) &&
+      value.total > 0 && value.completed >= 0 && value.completed <= value.total) {
+      return { type: 'progress', phase, completed: value.completed, total: value.total };
+    }
+  }
   if (value.type === 'saved') {
     const session = 'session' in value ? parseSummary(value.session) : null;
     const turn = 'turn' in value ? parseTurn(value.turn) : null;
@@ -116,4 +136,9 @@ export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | nu
     return { type: 'error', status: value.status };
   }
   return null;
+}
+
+export function isBookBotContextTokens(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) &&
+    value >= BOOK_BOT_MIN_CONTEXT_TOKENS && value <= BOOK_BOT_MAX_CONTEXT_TOKENS;
 }

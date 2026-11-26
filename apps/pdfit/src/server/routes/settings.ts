@@ -1,12 +1,19 @@
 import { Router, type Request, type Response } from 'express';
 import type { SettingsStore } from '../services/settingsStore.js';
 import { translateDisplayTexts, type DisplayTranslationLanguage } from '../services/displayTranslation.js';
+import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 
 const DISPLAY_TRANSLATION_LANGUAGES = new Set<DisplayTranslationLanguage>(['en', 'ko', 'zh', 'es', 'hi', 'ar', 'fr', 'pt', 'ru', 'ms', 'bn', 'ja']);
 
 function validOcrConcurrency(value: unknown) {
   return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 2_147_483_647);
 }
+
+function validBotContextTokens(value: unknown) {
+  return value == null || isBookBotContextTokens(value);
+}
+
+const contextTokensError = `botContextTokens must be null or an integer from ${BOOK_BOT_MIN_CONTEXT_TOKENS} to ${BOOK_BOT_MAX_CONTEXT_TOKENS}.`;
 
 export function createSettingsRouter(store: SettingsStore): Router {
   const router = Router();
@@ -20,13 +27,14 @@ export function createSettingsRouter(store: SettingsStore): Router {
   });
 
   router.post('/ai-servers', async (req: Request, res: Response) => {
-    const { name, type, url, headers = {}, models = {}, ocrConcurrency } = (req.body ?? {}) as {
+    const { name, type, url, headers = {}, models = {}, ocrConcurrency, botContextTokens } = (req.body ?? {}) as {
       name?: string;
       type?: 'lm-studio' | 'openai-compat';
       url?: string;
       headers?: Record<string, string>;
       models?: Record<string, string>;
       ocrConcurrency?: number;
+      botContextTokens?: number | null;
     };
 
     if (!name || !url) {
@@ -37,6 +45,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
       return;
     }
+    if (!validBotContextTokens(botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
 
     try {
       const id = await store.createAiServer({
@@ -46,6 +55,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
         headers,
         models,
         ocrConcurrency,
+        botContextTokens,
       });
       res.status(201).json({ id });
     } catch (error) {
@@ -65,6 +75,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
       return;
     }
+    if (!validBotContextTokens(patch.botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
     try {
       const updated = await store.updateAiServer(id, patch);
       if (!updated) {

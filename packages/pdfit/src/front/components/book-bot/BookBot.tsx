@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useRef, useSyncExternalStore } from 'react';
-import { Alert, Box, Button, IconButton, List, ListItem, ListItemButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, IconButton, Link, List, ListItem, ListItemButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import HistoryIcon from '@mui/icons-material/History';
 import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
@@ -14,10 +14,12 @@ import { useDraggablePalette } from '../PdfGpuViewer/useDraggablePalette.js';
 import { ToolbarButton } from '../ViewerToolbar/index.js';
 import type { getBookBotModel } from './model.js';
 import { BOT } from './resource.js';
+import { pdfPageFromCitation, remarkPdfPageCitations } from './pageCitations.js';
 
 type Model = ReturnType<typeof getBookBotModel>;
 type ToolProps = { model: Model; buttonId: string; panelId: string };
-type PanelProps = ToolProps & { documentUrl: string };
+type PageNavigation = { pageCount: number; onPage: (page: number) => void };
+type PanelProps = ToolProps & PageNavigation & { documentUrl: string };
 
 export function BookBotButton({ model, buttonId, panelId }: ToolProps) {
   const { t } = usePdfitI18n();
@@ -36,7 +38,7 @@ export function BookBotPanel(props: PanelProps) {
 const topRight = { x: Number.MAX_SAFE_INTEGER, y: 12 };
 const errorKeys = { load: BOT.LOAD_ERROR, send: BOT.SEND_ERROR, settings: BOT.SETTINGS_ERROR, conflict: BOT.CONFLICT };
 
-function FloatingChat({ model, buttonId, panelId, documentUrl }: PanelProps) {
+function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage }: PanelProps) {
   const { t } = usePdfitI18n();
   const titleId = useId();
   const { paletteRef, position, dragHandleProps } = useDraggablePalette('pdfit.bookBot.position', topRight);
@@ -88,7 +90,8 @@ function FloatingChat({ model, buttonId, panelId, documentUrl }: PanelProps) {
     {model.phase === 'loading' && <Typography role="status" color="text.secondary" sx={{ px: 2, py: 1 }}>{t(BOT.LOADING)}</Typography>}
     {model.error && <Alert severity="error" sx={{ mx: 1, mt: 1 }} action={model.error === 'load'
       ? <Button size="small" onClick={() => model.retry()}>{t('retry')}</Button> : undefined}>{t(errorKeys[model.error])}</Alert>}
-    {model.history ? <SessionList model={model} /> : <Conversation model={model} documentUrl={documentUrl} />}
+    {model.history ? <SessionList model={model} /> :
+      <Conversation model={model} documentUrl={documentUrl} pageCount={pageCount} onPage={onPage} />}
   </Paper>;
 }
 
@@ -112,18 +115,29 @@ function SessionList({ model }: { model: Model }) {
   </Box>;
 }
 
-function Conversation({ model, documentUrl }: { model: Model; documentUrl: string }) {
+const progressLabels = {
+  preparing: BOT.PREPARING, clips: BOT.CLIPS, history: BOT.HISTORY_PROGRESS, evidence: BOT.EVIDENCE,
+  generating: BOT.GENERATING, thinking: BOT.THINKING, saving: BOT.SAVING,
+} as const;
+const citationPlugins = [remarkPdfPageCitations];
+
+function Conversation({ model, documentUrl, pageCount, onPage }: PageNavigation & { model: Model; documentUrl: string }) {
   const { t } = usePdfitI18n();
   const logRef = useRef<HTMLDivElement>(null);
   const followEnd = useRef(true);
   const turns = model.session?.turns ?? [];
   const busy = model.phase !== 'ready';
+  const progress = model.progress;
+  const progressText = progress
+    ? t(progressLabels[progress.phase === 'thinking' && model.pendingAnswer ? 'generating' : progress.phase],
+      'completed' in progress ? { completed: progress.completed, total: progress.total } : undefined)
+    : t(BOT.WAITING);
   useEffect(() => {
     followEnd.current = true;
   }, [model.pending, model.session?.id]);
   useEffect(() => {
     if (followEnd.current && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [model.pending, model.pendingAnswer, model.session]);
+  }, [model.pending, model.pendingAnswer, model.session, progress]);
   return <>
     <Stack ref={logRef} role="log" aria-label={t(BOT.CHAT)} gap={1.5}
       onScroll={(event) => {
@@ -135,12 +149,14 @@ function Conversation({ model, documentUrl }: { model: Model; documentUrl: strin
         <Typography color="text.secondary" sx={{ px: 0.5 }}>{t(BOT.EMPTY)}</Typography>}
       {turns.map((turn) => <Stack key={turn.id} gap={1.25}>
         <ChatMessage author={t(BOT.YOU)} text={turn.question} reader />
-        <ChatMessage author={t(BOT.BUTTON)} text={turn.answer} />
+        <ChatMessage author={t(BOT.BUTTON)} text={turn.answer} pageCount={pageCount} onPage={onPage} />
       </Stack>)}
       {model.pending && <ChatMessage author={t(BOT.YOU)} text={model.pending} reader />}
-      {model.pendingAnswer && <ChatMessage author={t(BOT.BUTTON)} text={model.pendingAnswer} streaming />}
-      {model.phase === 'sending' && !model.pendingAnswer &&
-        <Typography role="status" variant="body2" color="text.secondary">{t(BOT.WAITING)}</Typography>}
+      {model.pendingAnswer && <ChatMessage author={t(BOT.BUTTON)} text={model.pendingAnswer} pageCount={pageCount} onPage={onPage} streaming />}
+      {model.phase === 'sending' && <Stack role="status" direction="row" alignItems="center" gap={1} sx={{ color: 'text.secondary' }}>
+        <CircularProgress size={14} aria-hidden="true" />
+        <Typography variant="body2">{progressText}</Typography>
+      </Stack>}
     </Stack>
     <Stack component="form" direction="row" gap={0.75} alignItems="end"
       onSubmit={(event) => { event.preventDefault(); void model.send(documentUrl); }}
@@ -163,15 +179,26 @@ function Conversation({ model, documentUrl }: { model: Model; documentUrl: strin
   </>;
 }
 
-const ChatMessage = memo(function ChatMessage({ author, text, reader = false, streaming = false }: {
+const ChatMessage = memo(function ChatMessage({ author, text, reader = false, streaming = false, pageCount = 0, onPage }: {
   author: string; text: string; reader?: boolean; streaming?: boolean;
-}) {
+} & Partial<PageNavigation>) {
+  const { t } = usePdfitI18n();
   return <Box aria-live={streaming ? 'off' : undefined} sx={{ alignSelf: reader ? 'end' : 'start', maxWidth: '94%', px: 1.25, py: 0.85, borderRadius: 2,
     bgcolor: reader ? 'action.selected' : 'action.hover', overflowWrap: 'anywhere' }}>
     <Typography variant="caption" fontWeight={700} color="text.secondary">{author}</Typography>
     <Box dir="auto" sx={{ fontSize: '0.875rem', whiteSpace: reader ? 'pre-wrap' : undefined, '& p': { my: 0.55 },
       '& pre': { whiteSpace: 'pre-wrap' }, '& ul, & ol': { paddingInlineStart: '1.5em' }, '& > :last-child': { mb: 0 } }}>
-      {reader ? text : <Markdown skipHtml disallowedElements={['img', 'a']} unwrapDisallowed>{text}</Markdown>}
+      {reader ? text : <Markdown skipHtml disallowedElements={['img']} unwrapDisallowed remarkPlugins={citationPlugins}
+        components={{
+          a: ({ href, children }) => {
+            const page = pdfPageFromCitation(href);
+            if (!onPage || page === null || page > pageCount) return <>{children}</>;
+            return <Link href={href} title={t(BOT.GO_TO_PAGE, { page })} onClick={(event) => {
+              event.preventDefault();
+              onPage(page);
+            }}>{children}</Link>;
+          },
+        }}>{text}</Markdown>}
     </Box>
   </Box>;
 });

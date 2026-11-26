@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./common/protocol/book-bot": {
+      "types": "./dist/common/protocol/book-bot/index.d.ts",
+      "default": "./dist/common/protocol/book-bot/index.js"
+    },
     "./client/service": {
       "types": "./dist/client/entries/service/index.d.ts",
       "default": "./dist/client/entries/service/index.js"

@@ -1,7 +1,7 @@
 import {
-  BOOK_BOT_PATH, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
+  BOOK_BOT_PATH, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
   parseBookBotStreamEvent,
-  type BookBotBook, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
+  type BookBotBook, type BookBotProgress, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
 } from '../../../common/protocol/book-bot/index.js';
 import { readServerSentData } from '../../../common/protocol/server-sent-data.js';
 import { createBrowserUuid } from '../../browserUuid.js';
@@ -12,13 +12,14 @@ import type { BookOutlineEntry } from '../../../common/protocol/outlines/index.j
 type Phase = 'ready' | 'loading' | 'sending';
 type Failure = 'load' | 'send' | 'settings' | 'conflict';
 
-async function readTurnStream(response: Response, onDelta: (text: string) => void) {
+async function readTurnStream(response: Response, onDelta: (text: string) => void, onProgress: (progress: BookBotProgress) => void) {
   if (!response.body) throw new Error('Missing Bot stream');
   for await (const frame of readServerSentData(response.body)) {
     const event = parseBookBotStreamEvent(JSON.parse(frame));
     if (!event) throw new Error('Invalid Bot stream event');
-    if (event.type !== 'delta') return event;
-    onDelta(event.text);
+    if (event.type === 'delta') onDelta(event.text);
+    else if (event.type === 'progress') onProgress(event);
+    else return event;
   }
   throw new Error('Bot stream ended before saving');
 }
@@ -40,6 +41,7 @@ class BookBotModel {
   draft = '';
   pending = '';
   pendingAnswer = '';
+  progress: BookBotProgress | null = null;
 
   constructor(private readonly book: BookBotBook) {
     this.bookQuery = new URLSearchParams({ folder: book.folder, filename: book.filename });
@@ -171,6 +173,7 @@ class BookBotModel {
     };
     this.attempted = input;
     this.pending = question;
+    this.progress = { phase: 'preparing' };
     this.phase = 'sending';
     this.error = null;
     this.emit();
@@ -178,7 +181,9 @@ class BookBotModel {
       const outline = this.outline ??= this.readEmbeddedOutline(documentUrl).catch(() => undefined);
       input.embeddedOutline = await outline;
       const response = await fetch(this.url(BOOK_BOT_TURNS), {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: BOOK_BOT_STREAM_TYPE }, body: JSON.stringify(input),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: BOOK_BOT_STREAM_TYPE, [BOOK_BOT_PROGRESS_HEADER]: '1' },
+        body: JSON.stringify(input),
       });
       if (response.status === 503) { this.error = 'settings'; return; }
       if (response.status === 409) { await this.handleConflict(input); return; }
@@ -186,6 +191,9 @@ class BookBotModel {
       if (response.headers.get('content-type')?.split(';', 1)[0] === BOOK_BOT_STREAM_TYPE) {
         const event = await readTurnStream(response, (text) => {
           this.pendingAnswer += text;
+          this.emit();
+        }, (progress) => {
+          this.progress = progress;
           this.emit();
         });
         if (event.type === 'error') {
@@ -215,6 +223,7 @@ class BookBotModel {
     } finally {
       this.pending = '';
       this.pendingAnswer = '';
+      this.progress = null;
       this.phase = 'ready';
       this.emit();
     }

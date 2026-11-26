@@ -65,7 +65,7 @@ type Props = {
   onUnavailable?: () => void;
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
-  floatingPanel?: ReactNode;
+  floatingPanel?: (onPage: (page: number) => void, pageCount: number) => ReactNode;
   scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
@@ -408,7 +408,7 @@ export default function PdfGpuViewer({
     return <>
       {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
-      {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel}</Box>}
+      {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel(goToPage, state.pageCount)}</Box>}
     </>;
   }
 
@@ -468,7 +468,7 @@ export default function PdfGpuViewer({
         </Box>
         {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
         {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
-        {floatingPanel}
+        {floatingPanel?.(goToPage, state.pageCount)}
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />

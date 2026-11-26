@@ -23,4 +23,5 @@ export interface BookBotModelConfig {
   baseUrl: string;
   model: string;
   headers?: Record<string, string>;
+  contextTokens?: number | null;
 }

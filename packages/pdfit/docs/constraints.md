@@ -12,6 +12,7 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
 * Do not let viewer composition import service layout, LNB, home, folder, or tag routes.
 * Do not let common server bootstrap import app-owned settings storage.
 * Keep app composition on `client/service`, `client/viewer`, `client/shared`, `server`, and `server/postgres`.
+* The Free AI Settings form and API consume `common/protocol/book-bot` for identical token-window validation. The viewer and router share its progress frame contract.
 * Hosted variants must use `createPdfitServer`,
   `createPdfitMetadataRouterMounts`, and `createPdfitRemoteFoldersRouter`.
   Storage, authentication, and billing belong in adapters; HTTP validation and
@@ -54,6 +55,7 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
 * Consumers: PDF.js and PDFGPU viewers. [FloatingBookComments](../src/front/components/book-comments/BookCommentsDialog.tsx)
   shares the book comments protocol and board with the cover card. Keep the floating
   window within the viewer body and leave the PDF and toolbar interactive.
+* Consumers: both viewers' **Bot** dialog. The named status region reports generation phases. Page citations are links by visible text and use the active engine's navigation callback. The dialog stays open on a page jump.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`
   source tree during the build and must

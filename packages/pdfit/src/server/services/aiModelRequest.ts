@@ -15,13 +15,14 @@ type ModelOptions = {
   request?: typeof fetch;
   onHttpStatus?: (status: number) => void;
   onDelta?: (text: string) => void;
+  onReasoning?: () => void;
 };
 
 type Completion = {
   error?: unknown;
   choices?: Array<{
     index?: number;
-    delta?: { content?: unknown };
+    delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
     message?: { content?: unknown };
     finish_reason?: string | null;
   }>;
@@ -29,7 +30,7 @@ type Completion = {
 
 // See docs/api.md#ai-model-requests.
 export async function streamAiCompletion(endpoint: string, payload: object, {
-  headers: configuredHeaders, signal, request = fetch, onDelta, onHttpStatus,
+  headers: configuredHeaders, signal, request = fetch, onDelta, onHttpStatus, onReasoning,
 }: ModelOptions): Promise<string> {
   let content = '';
   let finishReason: string | null = null;
@@ -56,12 +57,17 @@ export async function streamAiCompletion(endpoint: string, payload: object, {
     if (/^text\/event-stream(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) {
       if (!response.body) throw new Error('AI model returned no stream');
       let done = false;
+      let sawReasoning = false;
       for await (const data of readServerSentData(response.body)) {
         if (data.trim() === '[DONE]') { done = true; break; }
         if (!data.trim()) continue;
         const frame = JSON.parse(data) as Completion | null;
         if (!frame || frame.error) throw new Error('AI model returned a stream error');
         const choice = frame.choices?.find((item) => (item.index ?? 0) === 0);
+        if (onReasoning && !sawReasoning && !content && (choice?.delta?.reasoning_content || choice?.delta?.reasoning)) {
+          sawReasoning = true;
+          onReasoning();
+        }
         keep(choice?.delta?.content);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
       }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
-  BOOK_BOT_ID, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotBook, parseBookBotQuestion,
-  type BookBotBook, type BookBotSession, type BookBotTurn, type BookBotSessionPayload, type BookBotSessionsPayload,
+  BOOK_BOT_ID, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotBook, parseBookBotQuestion,
+  type BookBotBook, type BookBotProgress, type BookBotSession, type BookBotTurn, type BookBotSessionPayload, type BookBotSessionsPayload,
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
 import { openBookBotStream } from './stream.js';
@@ -63,6 +63,9 @@ export function createBookBotRouter(options: BookBotOptions): Router {
     running.add(key);
     const wantsStream = req.accepts(['json', BOOK_BOT_STREAM_TYPE]) === BOOK_BOT_STREAM_TYPE;
     let stream: ReturnType<typeof openBookBotStream> | undefined;
+    const reportProgress = req.get(BOOK_BOT_PROGRESS_HEADER) === '1'
+      ? (progress: BookBotProgress) => stream?.write({ type: 'progress', ...progress })
+      : undefined;
     const succeed = (session: BookBotSession, turn: BookBotTurn) => {
       if (wantsStream && !res.destroyed) {
         stream ??= openBookBotStream(res);
@@ -90,16 +93,19 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       if (!source) { res.status(404).end(); return; }
       if (source.outline === null) source.outline = input.embeddedOutline ?? null;
       if (wantsStream && !res.destroyed) stream = openBookBotStream(res);
+      reportProgress?.({ phase: 'preparing' });
       const vision = source.clips.length ? await options.resolveVision?.() : null;
       const result = await answerBookQuestion({
         model, vision, source, store, question, turns: existing?.turns ?? [], request,
         pageText: (page) => options.getCachedPageText?.(book, page) ?? Promise.resolve(null),
         onAnswerDelta: stream && ((text) => stream?.write({ type: 'delta', text })),
+        onProgress: stream && reportProgress,
       }).catch((error: unknown) => {
         console.warn('[book-bot] generation failed:', error instanceof Error ? error.name : 'unknown');
         return null;
       });
       if (!result) { fail(502); return; }
+      reportProgress?.({ phase: 'saving' });
       // A closed browser connection may be retried by turn ID. Finish saving upstream success.
       const turn = { id: turnId, question, answer: result.answer };
       const session = await store.saveTurn(book, sessionId, revision, turn, result.title);

@@ -16,6 +16,7 @@ export interface AiServer {
   headers: Record<string, string>;
   models: AiServerModels;
   ocrConcurrency: number;
+  botContextTokens: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -27,6 +28,7 @@ export interface AiServerInput {
   headers?: Record<string, string>;
   models?: AiServerModels;
   ocrConcurrency?: number;
+  botContextTokens?: number | null;
 }
 
 export interface SettingsStore {
@@ -56,6 +58,7 @@ export class PostgresSettingsStore implements SettingsStore {
       ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS ocr_concurrency INTEGER NOT NULL DEFAULT 1
         CHECK (ocr_concurrency > 0)
     `);
+    await this.pool.query('ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS bot_context_tokens INTEGER');
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_server_models (
         id BIGSERIAL PRIMARY KEY,
@@ -86,7 +89,7 @@ export class PostgresSettingsStore implements SettingsStore {
 
   async listAiServers(): Promise<AiServer[]> {
     const servers = await this.pool.query(`
-      SELECT id, name, type, url, headers, ocr_concurrency, created_at, updated_at
+      SELECT id, name, type, url, headers, ocr_concurrency, bot_context_tokens, created_at, updated_at
       FROM ai_servers
       ORDER BY id
     `);
@@ -111,6 +114,7 @@ export class PostgresSettingsStore implements SettingsStore {
       headers: row.headers ?? {},
       models: byServer.get(Number(row.id)) ?? {},
       ocrConcurrency: row.ocr_concurrency,
+      botContextTokens: row.bot_context_tokens,
       created_at: Number(row.created_at),
       updated_at: Number(row.updated_at),
     }));
@@ -122,11 +126,11 @@ export class PostgresSettingsStore implements SettingsStore {
       await client.query('BEGIN');
       const inserted = await client.query(
         `
-          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency)
-          VALUES ($1, $2, $3, $4::jsonb, $5)
+          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency, bot_context_tokens)
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6)
           RETURNING id
         `,
-        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1],
+        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1, input.botContextTokens ?? null],
       );
       const id = Number(inserted.rows[0].id);
 
@@ -185,6 +189,10 @@ export class PostgresSettingsStore implements SettingsStore {
       if (input.ocrConcurrency !== undefined) {
         fields.push(`ocr_concurrency = $${fields.length + 1}`);
         values.push(input.ocrConcurrency);
+      }
+      if (input.botContextTokens !== undefined) {
+        fields.push(`bot_context_tokens = $${fields.length + 1}`);
+        values.push(input.botContextTokens);
       }
 
       if (fields.length > 0) {

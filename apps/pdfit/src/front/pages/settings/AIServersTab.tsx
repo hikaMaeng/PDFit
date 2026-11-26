@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 import {
   Box,
   Button,
@@ -115,6 +116,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
   const { t } = usePdfitI18n();
   const [form, setForm] = useState<AiServerInput>(EMPTY_INPUT);
   const [ocrConcurrency, setOcrConcurrency] = useState('1');
+  const [botContext, setBotContext] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -139,6 +141,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
           },
     );
     setOcrConcurrency(String(initial?.ocrConcurrency ?? 1));
+    setBotContext(initial?.botContextTokens == null ? '' : String(initial.botContextTokens));
     setError('');
   }, [initial, open]);
 
@@ -166,7 +169,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ ...form, ocrConcurrency: Number(ocrConcurrency) }, initial?.id);
+      await onSave({ ...form, ocrConcurrency: Number(ocrConcurrency), botContextTokens: contextTokens }, initial?.id);
       onClose();
     } catch (caught) {
       setError(String(caught));
@@ -177,6 +180,8 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
 
   const limit = Number(ocrConcurrency);
   const validLimit = Number.isInteger(limit) && limit >= 1 && limit <= 2_147_483_647;
+  const contextTokens = botContext.trim() ? Number(botContext) : null;
+  const validContext = contextTokens === null || isBookBotContextTokens(contextTokens);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -244,6 +249,16 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
+            label={t(settingsKeys.botContextTokens)}
+            type="number"
+            value={botContext}
+            onChange={(event) => setBotContext(event.target.value)}
+            inputProps={{ min: BOOK_BOT_MIN_CONTEXT_TOKENS, max: BOOK_BOT_MAX_CONTEXT_TOKENS, step: 1 }}
+            error={!validContext}
+            fullWidth
+            size="small"
+          />
+          <TextField
             label={t('embeddingModel')}
             placeholder="nomic-embed-text"
             value={form.models?.embedding ?? ''}
@@ -263,7 +278,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
         <Button onClick={onClose} disabled={saving}>
           {t('cancel')}
         </Button>
-        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit}>
+        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit || !validContext}>
           {saving ? t('saving') : t('save')}
         </Button>
       </DialogActions>

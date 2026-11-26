@@ -34,4 +34,6 @@
 * `/api/settings/ai-servers` — AI server CRUD. `ocrConcurrency` is an optional positive PostgreSQL integer on create or update. List responses include the configured value. Existing entries and creates that omit it use 1.
 * `POST /api/settings/translations` — display-name translation through the first AI server that has an `llm` model. The server collects the streamed completion under the 20-minute model deadline and returns validated translations as JSON.
 
+AI server records accept `botContextTokens` on create and update. An integer from 16,384 to 2,097,152 sets the Bot window for that record. `null` returns to automatic chunking. See [Bot context preparation](../../../packages/pdfit/docs/book-bot.md#answer-context).
+
 The shared route factories are exported by `@pdfit/pdfit/server`; app-owned settings are wired in `src/server/index.ts`.

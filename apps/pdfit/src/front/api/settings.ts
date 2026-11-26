@@ -15,6 +15,7 @@ export interface AiServer {
   headers: Record<string, string>;
   models: AiServerModels;
   ocrConcurrency: number;
+  botContextTokens: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -26,6 +27,7 @@ export interface AiServerInput {
   headers?: Record<string, string>;
   models?: AiServerModels;
   ocrConcurrency?: number;
+  botContextTokens?: number | null;
 }
 
 // ─── AI 서버 API ───────────────────────────────────────────────

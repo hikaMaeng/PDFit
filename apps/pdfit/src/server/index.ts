@@ -61,7 +61,9 @@ const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
 const resolveChatModel = async () => {
   const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
-  return server?.models.llm ? { baseUrl: server.url, model: server.models.llm, headers: server.headers } : null;
+  return server?.models.llm ? {
+    baseUrl: server.url, model: server.models.llm, headers: server.headers, contextTokens: server.botContextTokens,
+  } : null;
 };
 // Both OCR and Bot clip descriptions can use a multimodal LLM when no vision model is set.
 const resolveVisionModel = async () => {
