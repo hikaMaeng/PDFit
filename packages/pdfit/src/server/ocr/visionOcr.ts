@@ -1,4 +1,4 @@
-import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from '../services/aiModelRequest.js';
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from '../services/aiModelRequest.js';
 
 /**
  * OCR through an OpenAI-compatible vision model. Used only for areas that have no PDF
@@ -86,31 +86,21 @@ export async function recognizeImageText(
   trace?: VisionOcrTrace,
 ): Promise<string> {
   const signal = AbortSignal.timeout(server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS);
-  const response = await request(chatCompletionsUrl(server.baseUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...server.headers },
-    body: JSON.stringify({
-      model: server.model,
-      temperature: 0,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: OCR_INSTRUCTION },
-          { type: 'image_url', image_url: { url: `data:${image.type};base64,${image.bytes.toString('base64')}` } },
-        ],
-      }],
-    }),
+  const content = await streamAiCompletion(chatCompletionsUrl(server.baseUrl), {
+    model: server.model,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: OCR_INSTRUCTION },
+        { type: 'image_url', image_url: { url: `data:${image.type};base64,${image.bytes.toString('base64')}` } },
+      ],
+    }],
+  }, {
+    headers: server.headers,
+    request,
     signal,
+    onHttpStatus: (httpStatus) => trace?.('vision-response', { httpStatus }),
   });
-  trace?.('vision-response', { httpStatus: response.status });
-  if (!response.ok) throw new Error(`Vision OCR request failed (${response.status}).`);
-  const payload = await response.json().catch((error) => {
-    // Fetch can report AbortError while reading the body after the deadline.
-    if (trace) signal.throwIfAborted();
-    throw error;
-  }) as { choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }> };
-  const choice = payload.choices?.[0];
-  if (!choice || typeof choice.message?.content !== 'string') throw new Error('Vision OCR returned no message.');
-  if (choice.finish_reason === 'length' && !choice.message.content.trim()) throw new Error('Vision OCR ran out of tokens before answering.');
-  return cleanOcrOutput(choice.message.content);
+  return cleanOcrOutput(content);
 }

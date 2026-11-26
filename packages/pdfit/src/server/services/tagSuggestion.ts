@@ -1,5 +1,5 @@
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY } from '../../shared/tagTaxonomy.js';
-import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from './aiModelRequest.js';
+import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from './aiModelRequest.js';
 
 export interface BookTagSuggestionRequest {
   title: string;
@@ -295,26 +295,19 @@ export function createOpenAiCompatibleTagSuggestionProvider(
 ): BookTagSuggestionProvider {
   const endpoint = chatCompletionsUrl(config.baseUrl);
   return async ({ title, bookstoreMetadata, availableTags, currentTags }) => {
-    const response = await request(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...config.headers },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0.1,
-        ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
-        messages: [
-          {
-            role: 'system',
-            content: AUTOMATIC_TAG_SYSTEM_PROMPT,
-          },
-          { role: 'user', content: JSON.stringify({ title, bookstoreMetadata, bookstoreTaxonomy: BOOKSTORE_TAG_TAXONOMY, availableTags: availableTags.slice(0, 200), currentTags }) },
-        ],
-      }),
+    const content = await streamAiCompletion(endpoint, {
+      model: config.model,
+      temperature: 0.1,
+      ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
+      messages: [
+        { role: 'system', content: AUTOMATIC_TAG_SYSTEM_PROMPT },
+        { role: 'user', content: JSON.stringify({ title, bookstoreMetadata, bookstoreTaxonomy: BOOKSTORE_TAG_TAXONOMY, availableTags: availableTags.slice(0, 200), currentTags }) },
+      ],
+    }, {
+      request,
+      headers: config.headers,
       signal: AbortSignal.timeout(config.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(`AI tag request failed (${response.status}).`);
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = payload.choices?.[0]?.message?.content;
     if (!content) throw new Error('AI server returned an empty tag response.');
     return parseTagResponse(content);
   };

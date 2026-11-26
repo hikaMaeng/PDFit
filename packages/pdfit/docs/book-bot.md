@@ -22,14 +22,20 @@ The [wire contract](../src/common/protocol/book-bot/index.ts) identifies each bo
 | POST `/api/book-bot/sessions?id=<uuid>` | Start an empty session with a retry-safe operation ID. |
 | POST `/api/book-bot/turns` | Send a question with a session ID or null, a turn ID and the known turn count. The first successful answer includes a generated title. |
 
-The [router](../src/server/book-bot/router.ts#createBookBotRouter) returns 409 for a stale revision or a concurrent turn, 503 for missing LLM configuration, and 502 for a failed or incomplete model reply. A repeated completed turn ID returns the stored session. The client can retry with the same ID.
+Send `Accept: text/event-stream` to receive `delta` frames with answer text, then a `saved` frame with the persisted turn, session metadata, and revision. Keep-alive comments may arrive while the server prepares the answer. After the stream opens, generation or persistence failures arrive as a terminal `error` frame. Without the SSE accept header, the route returns the existing JSON session document.
+
+The [router](../src/server/book-bot/router.ts#createBookBotRouter) returns 409 for a stale revision or a concurrent turn and 503 for missing LLM configuration before opening the stream. An interrupted or incomplete model reply reports 502. Retrying a completed turn ID returns the saved turn without generating it again.
 
 ## Storage
 
 [PostgreSQL](../src/server/postgres/bookBot.ts#createPostgresBookBot) keeps session IDs, initial timestamps, first-turn titles, and ordered exchanges. The book foreign key follows a rename or move and drops conversations when the library record is deleted. The initial draft is stored with its first successful turn. A user-created **New chat** is stored immediately. PostgreSQL admits one append per session revision. No database connection stays checked out during model generation.
+
+During generation, the server accumulates the answer in memory while sending visible text to the viewer. It commits the complete exchange once the upstream model finishes successfully, then emits `saved`. If the browser disconnects, the upstream request can still finish and commit. If the upstream response is incomplete, the turn is discarded and the viewer retains the draft for retry.
 
 ## Verification
 
 Locate the toolbar button and nonmodal dialog by **Bot**. Inside the dialog, locate **Question**, **Send question**, **Chat history**, and **New chat** by label or role. The drag handle is titled **Move Bot window** and accepts arrow keys. History is a named list of buttons with title text and a `time[datetime]` start time.
 
 The [browser test plan](../../../apps/pdfit/tests/plans/viewer-book-bot-20261126.md) uses the deployed viewer build, PostgreSQL, a synthetic library and an OpenAI-compatible fixture upstream.
+
+The [streaming test plan](../../../apps/pdfit/tests/plans/ai-streaming-20261126.md) checks early rendering, commit timing, disconnects and retries.

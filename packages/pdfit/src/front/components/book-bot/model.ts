@@ -1,7 +1,9 @@
 import {
-  BOOK_BOT_PATH, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, parseBookBotSession, parseBookBotSessions,
+  BOOK_BOT_PATH, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
+  parseBookBotStreamEvent,
   type BookBotBook, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
 } from '../../../common/protocol/book-bot/index.js';
+import { readServerSentData } from '../../../common/protocol/server-sent-data.js';
 import { createBrowserUuid } from '../../browserUuid.js';
 import { outlinesApi } from '../../api/outlines.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
@@ -9,6 +11,17 @@ import type { BookOutlineEntry } from '../../../common/protocol/outlines/index.j
 
 type Phase = 'ready' | 'loading' | 'sending';
 type Failure = 'load' | 'send' | 'settings' | 'conflict';
+
+async function readTurnStream(response: Response, onDelta: (text: string) => void) {
+  if (!response.body) throw new Error('Missing Bot stream');
+  for await (const frame of readServerSentData(response.body)) {
+    const event = parseBookBotStreamEvent(JSON.parse(frame));
+    if (!event) throw new Error('Invalid Bot stream event');
+    if (event.type !== 'delta') return event;
+    onDelta(event.text);
+  }
+  throw new Error('Bot stream ended before saving');
+}
 
 class BookBotModel {
   private readonly listeners = new Set<() => void>();
@@ -26,6 +39,7 @@ class BookBotModel {
   sessions: BookBotSessionSummary[] = [];
   draft = '';
   pending = '';
+  pendingAnswer = '';
 
   constructor(private readonly book: BookBotBook) {
     this.bookQuery = new URLSearchParams({ folder: book.folder, filename: book.filename });
@@ -137,6 +151,17 @@ class BookBotModel {
     return result.status === 'ok' ? result.entries : undefined;
   }
 
+  private async handleConflict(input: BookBotQuestion) {
+    this.error = 'conflict';
+    if (!input.sessionId) return;
+    const refreshed = await fetch(this.url(BOOK_BOT_SESSIONS, input.sessionId));
+    const result = refreshed.ok ? parseBookBotSession(await refreshed.json()) : null;
+    if (!result?.session || result.session.turns.length === input.revision) return;
+    this.session = result.session;
+    if (result.session.turns.some((turn) => turn.id === input.turnId)) this.draft = '';
+    this.attempted = null;
+  }
+
   async send(documentUrl: string) {
     const question = this.draft.trim();
     if (!question || this.phase !== 'ready' || this.error === 'load') return;
@@ -153,31 +178,43 @@ class BookBotModel {
       const outline = this.outline ??= this.readEmbeddedOutline(documentUrl).catch(() => undefined);
       input.embeddedOutline = await outline;
       const response = await fetch(this.url(BOOK_BOT_TURNS), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: BOOK_BOT_STREAM_TYPE }, body: JSON.stringify(input),
       });
       if (response.status === 503) { this.error = 'settings'; return; }
-      if (response.status === 409) {
-        this.error = 'conflict';
-        if (input.sessionId) {
-          const refreshed = await fetch(this.url(BOOK_BOT_SESSIONS, input.sessionId));
-          const result = refreshed.ok ? parseBookBotSession(await refreshed.json()) : null;
-          if (result?.session && result.session.turns.length !== input.revision) {
-            this.session = result.session;
-            if (result.session.turns.some((turn) => turn.id === input.turnId)) this.draft = '';
-            this.attempted = null;
-          }
+      if (response.status === 409) { await this.handleConflict(input); return; }
+      if (!response.ok) throw new Error('Failed to send Bot message');
+      if (response.headers.get('content-type')?.split(';', 1)[0] === BOOK_BOT_STREAM_TYPE) {
+        const event = await readTurnStream(response, (text) => {
+          this.pendingAnswer += text;
+          this.emit();
+        });
+        if (event.type === 'error') {
+          if (event.status === 409) { await this.handleConflict(input); return; }
+          throw new Error('Failed to complete Bot message');
         }
-        return;
+        if (event.turn.id !== input.turnId || (input.sessionId !== null && event.session.id !== input.sessionId)) {
+          throw new Error('Bot stream confirmed a different turn');
+        }
+        if (event.revision === input.revision + 1) {
+          this.session = { ...event.session, turns: [...(this.session?.turns ?? []), event.turn] };
+        } else {
+          const refreshed = await fetch(this.url(BOOK_BOT_SESSIONS, event.session.id));
+          const result = refreshed.ok ? parseBookBotSession(await refreshed.json()) : null;
+          if (!result?.session) throw new Error('Could not reload the saved Bot session');
+          this.session = result.session;
+        }
+      } else {
+        const result = parseBookBotSession(await response.json());
+        if (!result?.session) throw new Error('Failed to send Bot message');
+        this.session = result.session;
       }
-      const result = response.ok ? parseBookBotSession(await response.json()) : null;
-      if (!result?.session) throw new Error('Failed to send Bot message');
-      this.session = result.session;
       this.draft = '';
       this.attempted = null;
     } catch {
       this.error = 'send';
     } finally {
       this.pending = '';
+      this.pendingAnswer = '';
       this.phase = 'ready';
       this.emit();
     }

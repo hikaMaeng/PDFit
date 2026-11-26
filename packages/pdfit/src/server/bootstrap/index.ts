@@ -40,7 +40,7 @@ const SILENT_PATTERNS = [
 ];
 
 export type { PdfitBackgroundTaskOptions, PdfitServerRouterMount } from './createCommonRouters.js';
-export { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl } from '../services/aiModelRequest.js';
+export { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from '../services/aiModelRequest.js';
 export { defineTask, DEFAULT_TASK_PRIORITY, INTERACTIVE_TASK_PRIORITY } from '../tasks/taskProtocol.js';
 export type { TaskEnvelope, TaskFailure, TaskOutcome, TaskRunContext, TaskScript } from '../tasks/taskProtocol.js';
 export { TaskScheduler } from '../tasks/taskScheduler.js';

@@ -32,6 +32,6 @@
 * `GET /api/ocr/scan`, `POST /api/ocr/scan`, `POST /api/ocr/scan/cancel`, `GET /api/ocr/scan/pages` — [local document scan](../../../packages/pdfit/docs/api.md#document-scan)
 * `POST /api/bookmarks/:id/ocr` — read a clip's text again; clips are read automatically after they are saved (contract in `packages/pdfit/docs/api.md`, "OCR")
 * `/api/settings/ai-servers` — AI server CRUD. `ocrConcurrency` is an optional positive PostgreSQL integer on create or update. List responses include the configured value. Existing entries and creates that omit it use 1.
-* `POST /api/settings/translations` — display-name translation through the first AI server that has an `llm` model; the upstream chat-completions call aborts after 300 s (reasoning models on a local server can take minutes)
+* `POST /api/settings/translations` — display-name translation through the first AI server that has an `llm` model. The server collects the streamed completion under the 20-minute model deadline and returns validated translations as JSON.
 
 The shared route factories are exported by `@pdfit/pdfit/server`; app-owned settings are wired in `src/server/index.ts`.

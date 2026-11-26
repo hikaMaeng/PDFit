@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, IconButton, List, ListItem, ListItemButton, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import HistoryIcon from '@mui/icons-material/History';
@@ -115,13 +115,21 @@ function SessionList({ model }: { model: Model }) {
 function Conversation({ model, documentUrl }: { model: Model; documentUrl: string }) {
   const { t } = usePdfitI18n();
   const logRef = useRef<HTMLDivElement>(null);
+  const followEnd = useRef(true);
   const turns = model.session?.turns ?? [];
   const busy = model.phase !== 'ready';
   useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [model.pending, model.session]);
+    followEnd.current = true;
+  }, [model.pending, model.session?.id]);
+  useEffect(() => {
+    if (followEnd.current && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [model.pending, model.pendingAnswer, model.session]);
   return <>
     <Stack ref={logRef} role="log" aria-label={t(BOT.CHAT)} gap={1.5}
+      onScroll={(event) => {
+        const { scrollTop, clientHeight, scrollHeight } = event.currentTarget;
+        followEnd.current = scrollHeight - scrollTop - clientHeight < 48;
+      }}
       sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', px: 1.5, py: 1.5 }}>
       {turns.length === 0 && !model.pending && model.phase !== 'loading' &&
         <Typography color="text.secondary" sx={{ px: 0.5 }}>{t(BOT.EMPTY)}</Typography>}
@@ -130,7 +138,9 @@ function Conversation({ model, documentUrl }: { model: Model; documentUrl: strin
         <ChatMessage author={t(BOT.BUTTON)} text={turn.answer} />
       </Stack>)}
       {model.pending && <ChatMessage author={t(BOT.YOU)} text={model.pending} reader />}
-      {model.phase === 'sending' && <Typography role="status" variant="body2" color="text.secondary">{t(BOT.WAITING)}</Typography>}
+      {model.pendingAnswer && <ChatMessage author={t(BOT.BUTTON)} text={model.pendingAnswer} streaming />}
+      {model.phase === 'sending' && !model.pendingAnswer &&
+        <Typography role="status" variant="body2" color="text.secondary">{t(BOT.WAITING)}</Typography>}
     </Stack>
     <Stack component="form" direction="row" gap={0.75} alignItems="end"
       onSubmit={(event) => { event.preventDefault(); void model.send(documentUrl); }}
@@ -153,8 +163,10 @@ function Conversation({ model, documentUrl }: { model: Model; documentUrl: strin
   </>;
 }
 
-function ChatMessage({ author, text, reader = false }: { author: string; text: string; reader?: boolean }) {
-  return <Box sx={{ alignSelf: reader ? 'end' : 'start', maxWidth: '94%', px: 1.25, py: 0.85, borderRadius: 2,
+const ChatMessage = memo(function ChatMessage({ author, text, reader = false, streaming = false }: {
+  author: string; text: string; reader?: boolean; streaming?: boolean;
+}) {
+  return <Box aria-live={streaming ? 'off' : undefined} sx={{ alignSelf: reader ? 'end' : 'start', maxWidth: '94%', px: 1.25, py: 0.85, borderRadius: 2,
     bgcolor: reader ? 'action.selected' : 'action.hover', overflowWrap: 'anywhere' }}>
     <Typography variant="caption" fontWeight={700} color="text.secondary">{author}</Typography>
     <Box dir="auto" sx={{ fontSize: '0.875rem', whiteSpace: reader ? 'pre-wrap' : undefined, '& p': { my: 0.55 },
@@ -162,4 +174,4 @@ function ChatMessage({ author, text, reader = false }: { author: string; text: s
       {reader ? text : <Markdown skipHtml disallowedElements={['img', 'a']} unwrapDisallowed>{text}</Markdown>}
     </Box>
   </Box>;
-}
+});

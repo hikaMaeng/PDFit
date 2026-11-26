@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import {
-  BOOK_BOT_ID, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, parseBookBotBook, parseBookBotQuestion,
-  type BookBotBook, type BookBotSessionPayload, type BookBotSessionsPayload,
+  BOOK_BOT_ID, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotBook, parseBookBotQuestion,
+  type BookBotBook, type BookBotSession, type BookBotTurn, type BookBotSessionPayload, type BookBotSessionsPayload,
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
+import { openBookBotStream } from './stream.js';
 import type { BookBotModelConfig, BookBotStore } from './types.js';
 
 export interface BookBotOptions {
@@ -60,12 +61,25 @@ export function createBookBotRouter(options: BookBotOptions): Router {
     const key = JSON.stringify([book.folder, book.filename, sessionId ?? turnId]);
     if (running.has(key)) { res.status(409).end(); return; }
     running.add(key);
+    const wantsStream = req.accepts(['json', BOOK_BOT_STREAM_TYPE]) === BOOK_BOT_STREAM_TYPE;
+    let stream: ReturnType<typeof openBookBotStream> | undefined;
+    const succeed = (session: BookBotSession, turn: BookBotTurn) => {
+      if (wantsStream && !res.destroyed) {
+        stream ??= openBookBotStream(res);
+        const { id, title, createdAt, turns } = session;
+        stream.write({ type: 'saved', session: { id, title, createdAt }, turn, revision: turns.length });
+      } else if (!res.destroyed) res.json({ session } satisfies BookBotSessionPayload);
+    };
+    const fail = (status: 409 | 500 | 502) => {
+      if (stream) stream.write({ type: 'error', status });
+      else if (!res.destroyed) res.status(status).end();
+    };
     try {
       const existing = await store.get(book, sessionId ?? turnId);
       const replay = existing?.turns.find((turn) => turn.id === turnId);
-      if (replay) {
+      if (existing && replay) {
         if (replay.question !== question) { res.status(409).end(); return; }
-        res.json({ session: existing } satisfies BookBotSessionPayload);
+        succeed(existing, replay);
         return;
       }
       if (sessionId && !existing) { res.status(404).end(); return; }
@@ -75,20 +89,31 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       const source = await store.source(book);
       if (!source) { res.status(404).end(); return; }
       if (source.outline === null) source.outline = input.embeddedOutline ?? null;
+      if (wantsStream && !res.destroyed) stream = openBookBotStream(res);
       const vision = source.clips.length ? await options.resolveVision?.() : null;
       const result = await answerBookQuestion({
         model, vision, source, store, question, turns: existing?.turns ?? [], request,
         pageText: (page) => options.getCachedPageText?.(book, page) ?? Promise.resolve(null),
+        onAnswerDelta: stream && ((text) => stream?.write({ type: 'delta', text })),
       }).catch((error: unknown) => {
         console.warn('[book-bot] generation failed:', error instanceof Error ? error.name : 'unknown');
         return null;
       });
-      if (!result) { res.status(502).end(); return; }
-      const session = await store.saveTurn(book, sessionId, revision, { id: turnId, question, answer: result.answer }, result.title);
-      if (!session) { res.status(409).end(); return; }
-      res.json({ session } satisfies BookBotSessionPayload);
-    } catch (error) { next(error); }
-    finally { running.delete(key); }
+      if (!result) { fail(502); return; }
+      // A closed browser connection may be retried by turn ID. Finish saving upstream success.
+      const turn = { id: turnId, question, answer: result.answer };
+      const session = await store.saveTurn(book, sessionId, revision, turn, result.title);
+      if (!session) { fail(409); return; }
+      succeed(session, turn);
+    } catch (error) {
+      if (stream) {
+        console.error('[book-bot] turn save failed:', error instanceof Error ? error.name : 'unknown');
+        fail(500);
+      } else next(error);
+    } finally {
+      stream?.close();
+      running.delete(key);
+    }
   });
   return router;
 }

@@ -266,6 +266,8 @@ See the [session and turn API](book-bot.md#api).
 
 ## AI model requests
 
+The shared [AI completion transport](../src/server/services/aiModelRequest.ts#streamAiCompletion) requests `stream: true` for Bot answers, evidence summaries, clip descriptions, visual OCR, display translation, and model-based tagging. It collects only answer content from SSE. The server validates the completed output before writing OCR, tags, or a chat turn. Translation and the OCR and tagging APIs continue returning their structured results. Compatible providers that return a single JSON body still work. A stream without a completion marker or finish reason is treated as incomplete.
+
 The Free runtime uses the [20-minute model deadline](../src/server/services/aiModelRequest.ts#AI_MODEL_REQUEST_TIMEOUT_MS) for document, page and clip OCR, Book Bot, display translation, and automatic tagging from either Settings or environment configuration. The [Free AI transport](../../../apps/pdfit/src/server/services/aiModelFetch.ts#fetchAiModel) also permits 20 minutes for response headers or an idle response body. A Bot turn shares one 20-minute budget across its model calls. The upstream OCR deadline starts when a request leaves the vision queue.
 
 ## OCR (local runtime)

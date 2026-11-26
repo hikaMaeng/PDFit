@@ -6,6 +6,7 @@ export const BOOK_BOT_SESSIONS = '/sessions';
 export const BOOK_BOT_TURNS = '/turns';
 export const BOOK_BOT_QUESTION_LIMIT = 4000;
 export const BOOK_BOT_ID = BOOK_COMMENT_ID;
+export const BOOK_BOT_STREAM_TYPE = 'text/event-stream';
 
 export type BookBotBook = CommentBook;
 
@@ -32,6 +33,11 @@ export interface BookBotSessionsPayload {
 export interface BookBotSessionPayload {
   session: BookBotSession | null;
 }
+
+export type BookBotStreamEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'saved'; session: BookBotSessionSummary; turn: BookBotTurn; revision: number }
+  | { type: 'error'; status: 409 | 500 | 502 };
 
 export interface BookBotQuestion {
   sessionId: string | null;
@@ -66,6 +72,13 @@ function parseSummary(value: unknown): BookBotSessionSummary | null {
   return { id, title, createdAt };
 }
 
+function parseTurn(value: unknown): BookBotTurn | null {
+  if (!value || typeof value !== 'object') return null;
+  const { id, question, answer } = value as Record<string, unknown>;
+  return typeof id === 'string' && BOOK_BOT_ID.test(id) && typeof question === 'string' && typeof answer === 'string'
+    ? { id, question, answer } : null;
+}
+
 export function parseBookBotSessions(value: unknown): BookBotSessionsPayload | null {
   if (!value || typeof value !== 'object' || !('sessions' in value) || !Array.isArray(value.sessions)) return null;
   const sessions = value.sessions.map(parseSummary);
@@ -79,10 +92,28 @@ export function parseBookBotSession(value: unknown): BookBotSessionPayload | nul
   const summary = parseSummary(entry);
   if (!summary || !entry || typeof entry !== 'object' || !('turns' in entry) || !Array.isArray(entry.turns)) return null;
   const turns: BookBotTurn[] = [];
-  for (const turn of entry.turns) {
-    if (typeof turn?.id !== 'string' || !BOOK_BOT_ID.test(turn.id) ||
-      typeof turn.question !== 'string' || typeof turn.answer !== 'string') return null;
-    turns.push({ id: turn.id, question: turn.question, answer: turn.answer });
+  for (const row of entry.turns) {
+    const turn = parseTurn(row);
+    if (!turn) return null;
+    turns.push(turn);
   }
   return { session: { ...summary, turns } };
+}
+
+export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | null {
+  if (!value || typeof value !== 'object' || !('type' in value)) return null;
+  if (value.type === 'delta' && 'text' in value && typeof value.text === 'string') {
+    return { type: 'delta', text: value.text };
+  }
+  if (value.type === 'saved') {
+    const session = 'session' in value ? parseSummary(value.session) : null;
+    const turn = 'turn' in value ? parseTurn(value.turn) : null;
+    const revision = 'revision' in value ? value.revision : null;
+    return session && turn && typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0
+      ? { type: 'saved', session, turn, revision } : null;
+  }
+  if (value.type === 'error' && 'status' in value && (value.status === 409 || value.status === 500 || value.status === 502)) {
+    return { type: 'error', status: value.status };
+  }
+  return null;
 }
