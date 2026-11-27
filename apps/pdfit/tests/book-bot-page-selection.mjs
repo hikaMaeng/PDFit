@@ -56,7 +56,7 @@ const upstream = createServer(async (req, res) => {
   const data = [];
   for await (const chunk of req) data.push(chunk);
   const { messages } = JSON.parse(Buffer.concat(data));
-  const context = JSON.parse(messages[1].content);
+  const context = JSON.parse(messages.at(-1).content);
   const emit = (content) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, index: 0 }] }) + '\n\n';
   const done = 'data: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
   res.setHeader('Content-Type', 'text/event-stream');
@@ -64,7 +64,7 @@ const upstream = createServer(async (req, res) => {
     res.end(emit(JSON.stringify(context)) + done);
     return;
   }
-  calls.push({ context, userMessage: messages[2] });
+  calls.push({ context, messages });
   if (!context.evidence) {
     if (holdBrowserStages) await browserPlan.promise;
     const outlineKeys = context.question === 'Summarize chapter four' ? ['1'] : [];
@@ -106,10 +106,12 @@ try {
   const events = await postTurn(first);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].context, { book: opened.context, history: { summary: null, turns: [] }, question: first.question });
-  assert.equal(calls[0].userMessage, undefined);
+  assert.equal(calls[0].messages.length, 2);
   assert.deepEqual(calls[1].context.book, opened.context);
   assert.equal(calls[1].context.question, undefined);
-  assert.deepEqual(calls[1].userMessage, { role: 'user', content: first.question });
+  assert.deepEqual(calls[1].messages[1], { role: 'user', content: first.question });
+  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool']);
+  assert.equal(calls[1].messages[2].tool_calls[0].id, calls[1].messages[3].tool_call_id);
   const wantedPages = Array.from({ length: 14 }, (_, i) => i + 8).filter((page) => page !== 12);
   assert.deepEqual(calls[1].context.evidence.pages.map(({ page }) => page), wantedPages);
   assert.deepEqual(events.filter(({ type }) => type === 'progress').map(({ phase }) => phase),

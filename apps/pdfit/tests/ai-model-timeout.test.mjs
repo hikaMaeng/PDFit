@@ -109,7 +109,7 @@ const botOutline = [
   { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
 ];
 
-test('Bot reads only the chosen OCR and streams the reply to the final user message', async () => {
+test('Bot provides chosen OCR as a tool result and streams only the reply to the user', async () => {
   const calls = [];
   const phases = [];
   const visible = [];
@@ -127,7 +127,7 @@ test('Bot reads only the chosen OCR and streams the reply to the final user mess
     } },
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      const reference = JSON.parse(messages[1].content);
+      const reference = JSON.parse(messages.at(-1).content);
       calls.push(reference);
       if (calls.length === 1) {
         assert.equal(reference.question, question);
@@ -135,8 +135,11 @@ test('Bot reads only the chosen OCR and streams the reply to the final user mess
         return streamReply('{"outlineKeys":["unknown","1.0",', '"1","1"]}');
       }
       assert.equal(reference.question, undefined);
-      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
-      assert.match(messages[0].content, /Open with the answer or main takeaway/);
+      assert.deepEqual(messages[1], { role: 'user', content: question });
+      assert.deepEqual(messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool']);
+      assert.equal(messages[2].tool_calls[0].id, messages[3].tool_call_id);
+      assert.equal(messages[2].tool_calls[0].function.name, 'read_book_context');
+      assert.match(messages[0].content, /Put the direct answer in the opening sentence/);
       return streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
     },
     onProgress: ({ phase }) => phases.push(phase), onAnswerDelta: (text) => visible.push(text),
@@ -161,7 +164,7 @@ test('an outline-only question skips source reads when there are no retained pag
       book: botBook, source: { title: 'Fixture', outline }, store: {}, turns: [], historySummary: null,
       question: 'What is in the table of contents?',
       request: async (_url, init) => {
-        const { evidence } = JSON.parse(JSON.parse(init.body).messages[1].content);
+        const { evidence } = JSON.parse(JSON.parse(init.body).messages.at(-1).content);
         if (++calls === 1) return streamReply('{"outlineKeys":[]}');
         assert.deepEqual(evidence.pages, []);
         return streamReply('Overview without a title line');
@@ -188,7 +191,7 @@ test('a follow-up sees previous page references and adds only new page reference
     } },
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      const prompt = JSON.parse(messages[1].content);
+      const prompt = JSON.parse(messages.at(-1).content);
       assert.deepEqual(prompt.history.turns[0].addedPages, [128, 129]);
       assert.equal(prompt.history.turns[0].answer, 'Earlier answer');
       if (++calls === 1) {
@@ -196,7 +199,7 @@ test('a follow-up sees previous page references and adds only new page reference
         return streamReply('{"outlineKeys":["2"]}');
       }
       assert.deepEqual(prompt.evidence.pages.map(({ page }) => page), [162, 128]);
-      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
+      assert.deepEqual(messages[1], { role: 'user', content: question });
       return streamReply('Compared');
     },
   });
@@ -217,7 +220,7 @@ test('repeated rollover summarizes the previous summary and tail while keeping t
       question: 'What have we discussed?',
       request: async (_url, init) => {
         const { messages } = JSON.parse(init.body);
-        const { book, history, evidence } = JSON.parse(messages[1].content);
+        const { book, history, evidence } = JSON.parse(messages.at(-1).content);
         assert.deepEqual(book.outline, botOutline);
         if (++calls === 1) {
           assert.match(messages[0].content, /rolling summary/);
@@ -251,7 +254,7 @@ test('oversized selected OCR fits the Qwen answer window without extra model cal
   assert.equal(calls.length, 2);
   const count = await bookBotPromptTokenCounter(model.model);
   assert.ok(calls.every((call) => count(call.messages) + call.max_tokens <= model.contextTokens));
-  const { evidence } = JSON.parse(calls[1].messages[1].content);
+  const { evidence } = JSON.parse(calls[1].messages.at(-1).content);
   assert.ok(evidence.omittedOcrPages > 0);
   assert.ok(evidence.pages.length > 0);
   assert.equal(evidence.pages.length + evidence.omittedOcrPages, pages.length);

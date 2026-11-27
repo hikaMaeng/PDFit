@@ -9,7 +9,7 @@ Opening a chat loads the book title and original table of contents. The [viewer 
 1. [Plan the turn](../src/server/book-bot/turnPlan.ts) with the question, outline and active dialogue. Previous OCR enters this prompt as page references. The model selects outline keys to fill gaps in the available material. An outline-only question can return no keys.
 2. [Stream the answer](../src/server/book-bot/answer.ts#answerBookQuestion) after PostgreSQL reads current OCR in the selected sections and restores OCR referenced by active turns. A section stops before the next page-bearing entry outside its subtree. The last section can run to the end of the PDF. The prompt includes PDF page numbers and how many indexed pages fit, so the answer can report gaps. When an indexed page reaches the text length limit, Bot tries the full page OCR cache.
 
-The answer call receives the title, outline, dialogue and OCR in a reference message. The reader's request is a separate final user message. It sets the scope and form of the answer. The model uses the reference message to support its response. Only answer text reaches the browser as deltas.
+The answer call has one user message containing the reader's request. A matched tool call and result carry the title, outline, dialogue and OCR from the lookup. The reader's request sets the scope and form of the answer. Only answer text reaches the browser as deltas. [LM Studio tool result format](https://lmstudio.ai/docs/developer/openai-compat/tools)
 
 A turn can also request reader comments and clips. Clips supply their OCR, notes and any saved visual description. The answer reports missing image details when they matter.
 
