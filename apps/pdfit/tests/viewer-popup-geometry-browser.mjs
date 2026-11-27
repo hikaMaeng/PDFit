@@ -8,10 +8,10 @@ assert.ok(origin && artifacts, 'Set PDFIT_TEST_ORIGIN and PDFIT_TEST_ARTIFACT_DI
 await mkdir(artifacts, { recursive: true });
 
 const definitions = [
-  { id: 'bot', trigger: (p) => p.getByRole('button', { name: 'Bot', exact: true }), name: 'Bot' },
-  { id: 'comments', trigger: (p) => p.getByRole('button', { name: 'Comments', exact: true }), name: 'Comments' },
-  { id: 'ocr', trigger: (p) => p.getByTestId('page-ocr-open'), name: /page 1|1.*page/i },
-  { id: 'outline', trigger: (p) => p.getByTestId('viewer-outline-open'), name: 'Table of contents' },
+  { id: 'bot', trigger: (p) => p.getByRole('button', { name: 'Bot', exact: true }), name: 'Bot', min: [320, 300] },
+  { id: 'comments', trigger: (p) => p.getByRole('button', { name: 'Comments', exact: true }), name: 'Comments', min: [320, 300] },
+  { id: 'ocr', trigger: (p) => p.getByTestId('page-ocr-open'), name: /^Page 1 text$/i, min: [340, 280] },
+  { id: 'outline', trigger: (p) => p.getByTestId('viewer-outline-open'), name: 'Table of contents', min: [300, 260] },
 ];
 const selected = (process.env.PDFIT_TEST_POPUPS ?? '').split(',').filter(Boolean);
 const large = { width: 1440, height: 1000 };
@@ -94,7 +94,7 @@ async function checkPopup(definition, engine) {
 
   await drag(resize, -moved.width + 40, -moved.height + 60);
   const minimum = await bounds(popup);
-  assert.ok(minimum.width >= 280 && minimum.height >= 240, `${id}: minimum size`);
+  assert.deepEqual([minimum.width, minimum.height], definition.min, `${id}: minimum size`);
   assert.ok(minimum.width < moved.width && minimum.height < moved.height, `${id}: shrink in both axes`);
   assert.equal(minimum.x, moved.x, `${id}: resize keeps the left edge`);
   assert.equal(minimum.y, moved.y, `${id}: resize keeps the top edge`);

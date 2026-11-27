@@ -90,7 +90,7 @@ export function useViewerPopupGeometry({ kind, bookKey, defaultRect, minWidth, m
     return {
       onPointerDown(event: PointerEvent<HTMLElement>) {
         if (!event.isPrimary || event.button !== 0 || dragRef.current) return;
-        event.preventDefault();
+        if (event.pointerType !== 'touch') event.preventDefault();
         event.stopPropagation();
         event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
