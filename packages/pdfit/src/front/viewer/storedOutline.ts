@@ -9,15 +9,29 @@ export interface PdfOutlineStorage {
   remove(): Promise<boolean>;
 }
 
-export type OutlineReader = () => Promise<PdfOutlineResult>;
+export type OutlineReader = (signal: AbortSignal) => Promise<PdfOutlineResult>;
 export type ViewerOutlineResult = PdfOutlineResult | { status: 'deleted' };
+
+const OUTLINE_READ_TIMEOUT_MS = 30_000;
 
 function storedOutline(entries: BookOutlineEntry[]): ViewerOutlineResult {
   return entries.length ? { status: 'ok', entries, source: 'stored' } : { status: 'deleted' };
 }
 
-export function tryReadPdfOutline(read: OutlineReader): Promise<PdfOutlineResult> {
-  return Promise.resolve().then(read).catch(() => ({ status: 'failed', reason: 'error' }));
+export async function tryReadPdfOutline(read: OutlineReader): Promise<PdfOutlineResult> {
+  const controller = new AbortController();
+  const { signal } = controller;
+  const timer = setTimeout(() => controller.abort(), OUTLINE_READ_TIMEOUT_MS);
+  const aborted = new Promise<never>((_, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  try {
+    return await Promise.race([read(signal), aborted]);
+  } catch {
+    return { status: 'failed', reason: 'error' };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function hasOutlineDestination(entries: BookOutlineEntry[]): boolean {
@@ -26,12 +40,12 @@ export function hasOutlineDestination(entries: BookOutlineEntry[]): boolean {
 
 export async function loadOutlineWithStorage(readFromPdf: OutlineReader, storage?: PdfOutlineStorage | null):
 Promise<{ result: ViewerOutlineResult; canSave: boolean }> {
-  const stored = await storage?.load().catch(() => undefined);
-  if (stored) return { result: storedOutline(stored), canSave: true };
+  const stored = await storage?.load().catch(() => 'failed' as const);
+  if (Array.isArray(stored)) return { result: storedOutline(stored), canSave: true };
 
   const result = await tryReadPdfOutline(readFromPdf);
   const canSave = stored === null;
-  if (result.status !== 'ok') return { result, canSave };
+  if (result.status !== 'ok') return { result: stored === 'failed' ? { status: 'failed', reason: 'error' } : result, canSave };
   const initialized = canSave && hasOutlineDestination(result.entries)
     ? await storage?.initialize(result.entries).catch(() => 'failed') : undefined;
   if (initialized === 'exists') {

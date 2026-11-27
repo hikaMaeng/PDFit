@@ -142,7 +142,7 @@ export default function PdfGpuViewer({
   const pageText = useMemo(() => new PageTextModel(), [url]);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const outlineId = useId();
-  const readOutline = useCallback(() => readPdfOutlineFromUrl(url, outlineLookup), [url, outlineLookup]);
+  const readOutline = useCallback((signal: AbortSignal) => readPdfOutlineFromUrl(url, outlineLookup, signal), [url, outlineLookup]);
   const clipPanelId = useId();
   const clipArmed = annotation.tool === 'bookmark';
   const bookmark = usePdfBookmarks({ enabled: clipArmed, controller, onCaptured: onBookmarkCaptured, onSelectionFinished: annotation.finishClipSelection, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });

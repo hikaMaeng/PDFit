@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { describe, it } from 'node:test';
 import express from 'express';
 import pg from 'pg';
-import { loadOutlineWithStorage } from '../dist/front/viewer/storedOutline.js';
+import { loadOutlineWithStorage, tryReadPdfOutline } from '../dist/front/viewer/storedOutline.js';
 import { createOutlinesRouter } from '../dist/server/routes/outlines.js';
 import { PostgresMetadataStore } from '../dist/server/postgres/index.js';
 
@@ -59,6 +59,30 @@ describe('stored table of contents (viewer side)', () => {
       assert.deepEqual((await loadOutlineWithStorage(async () => ({ status: 'failed', reason }), storage)).result, { status: 'failed', reason });
       assert.equal(calls.save.length, 0, reason);
     }
+  });
+
+  it('allows retry after a failed storage lookup even if the PDF has no outline', async () => {
+    const { storage } = memoryStorage();
+    const read = async () => ({ status: 'failed', reason: 'empty' });
+    const failed = await loadOutlineWithStorage(read, { ...storage, load: async () => { throw new Error('Timed out'); } });
+    assert.deepEqual(failed, { result: { status: 'failed', reason: 'error' }, canSave: false });
+    const unsupported = await loadOutlineWithStorage(read, { ...storage, load: async () => undefined });
+    assert.deepEqual(unsupported, { result: { status: 'failed', reason: 'empty' }, canSave: false });
+  });
+
+  it('cancels a stalled PDF read, reports an error and allows another read', async ({ mock }) => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    let readSignal;
+    const reading = tryReadPdfOutline((signal) => {
+      readSignal = signal;
+      return new Promise(() => {});
+    });
+    mock.timers.tick(30_000);
+    assert.deepEqual(await reading, { status: 'failed', reason: 'error' });
+    assert.equal(readSignal.aborted, true);
+    assert.deepEqual(await tryReadPdfOutline(async () => ({ status: 'ok', entries: ENTRIES })), {
+      status: 'ok', entries: ENTRIES,
+    });
   });
 
   it('still shows a fresh outline when the server does not store it', async () => {

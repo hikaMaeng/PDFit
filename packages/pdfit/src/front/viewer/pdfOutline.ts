@@ -112,14 +112,16 @@ async function readEmbeddedOutline(source: PdfOutlineSource): Promise<PdfOutline
   return { status: 'ok', entries };
 }
 
-export async function readPdfOutline(source: PdfOutlineSource, lookup?: BookstoreOutlineLookup): Promise<PdfOutlineResult> {
+export async function readPdfOutline(source: PdfOutlineSource, lookup?: BookstoreOutlineLookup, signal?: AbortSignal): Promise<PdfOutlineResult> {
+  signal?.throwIfAborted();
   let embedded = await readEmbeddedOutline(source);
+  signal?.throwIfAborted();
   if (embedded.status === 'ok') {
     const named = embedded.entries.filter(({ title }) => /\p{L}/u.test(title) && !/^[ivx]+$/i.test(title));
     if (named.some(({ page }) => page !== null)) return embedded;
     if (!named.length) embedded = { status: 'failed', reason: 'empty' };
   }
   if (!lookup || !source.getPage || !source.getPageLabels) return embedded;
-  const entries = await readBookstoreOutline(source as OutlinePageSource, lookup);
+  const entries = await readBookstoreOutline(source as OutlinePageSource, lookup, signal);
   return entries ? { status: 'ok', entries, source: 'yes24' } : embedded;
 }

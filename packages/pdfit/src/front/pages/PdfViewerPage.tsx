@@ -269,7 +269,7 @@ export default function PdfViewerPage() {
     save: (entries, generated) => outlinesApi.save(folderName, fileName, entries, driveFileId, generated),
     remove: () => outlinesApi.remove(folderName, fileName, driveFileId),
   }), [driveFileId, fileName, folderName, pendingUpload, sample]);
-  const outlineLookup = useCallback((isbn?: string) => outlinesApi.lookupYes24(folderName, fileName, isbn), [folderName, fileName]);
+  const outlineLookup = useCallback((isbn?: string, signal?: AbortSignal) => outlinesApi.lookupYes24(folderName, fileName, isbn, signal), [folderName, fileName]);
 
   useEffect(() => {
     let active = true;

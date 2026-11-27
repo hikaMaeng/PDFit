@@ -174,6 +174,8 @@ PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, fi
 
 [`OutlineModel`](../src/front/viewer/outlineModel.ts#OutlineModel) owns dialog operations for both engines. [`loadOutlineWithStorage`](../src/front/viewer/storedOutline.ts#loadOutlineWithStorage) initializes an outline that has at least one destination and reads back current storage on `412`. PostgreSQL treats automatically generated sequences of numeric top-level placeholders as missing. Existing copies with unknown provenance are kept until explicit regeneration. Normal `PUT` writes record a manual edit, and an explicit regeneration sends `generated: true`.
 
+The viewer gives each stored-outline read and initial write 5 seconds. A failed storage read falls back to the PDF and offers a retry if extraction also fails. A stalled initial write still lets the viewer show the extracted outline. [PDF extraction](../src/front/viewer/storedOutline.ts#tryReadPdfOutline) has a 30-second budget shared with YES24 lookup and page matching. When the budget expires, PDFGPU destroys its temporary PDF.js task and the dialog shows a retryable error.
+
 [`PdfOutlineDialog`](../src/front/components/PdfViewer/PdfOutlineDialog.tsx) keeps the dialog open after navigation. Its **Set to current page** action passes the toolbar's page and the row key to [`OutlineModel.setEntryPage`](../src/front/viewer/outlineModel.ts#setEntryPage). The model updates the row only after the manual outline write succeeds.
 
 ## Book file actions and comments

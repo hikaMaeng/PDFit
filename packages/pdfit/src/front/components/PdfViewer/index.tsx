@@ -508,9 +508,9 @@ export default function PdfViewer({
 
   // ── 목차 ──────────────────────────────────────────────────────
   const outlineDocument = docReady ? docRef.current : null;
-  const readOutline = useCallback((): Promise<PdfOutlineResult> => {
+  const readOutline = useCallback((signal: AbortSignal): Promise<PdfOutlineResult> => {
     if (!outlineDocument) return Promise.resolve({ status: 'failed', reason: 'error' });
-    return readPdfOutline(outlineDocument, outlineLookup);
+    return readPdfOutline(outlineDocument, outlineLookup, signal);
   }, [outlineDocument, outlineLookup]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────

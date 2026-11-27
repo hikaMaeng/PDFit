@@ -5,7 +5,7 @@ export interface BookstoreContents {
   contents: string;
 }
 
-export type BookstoreOutlineLookup = (isbn?: string) => Promise<BookstoreContents | null>;
+export type BookstoreOutlineLookup = (isbn?: string, signal?: AbortSignal) => Promise<BookstoreContents | null>;
 
 interface TextItem { str: string; transform: number[]; width: number }
 interface OutlinePage {
@@ -202,10 +202,11 @@ function matchHeadings(rows: ContentsRow[], pages: Map<number, PageText>): Array
   });
 }
 
-export async function readBookstoreOutline(source: OutlinePageSource, lookup: BookstoreOutlineLookup): Promise<BookOutlineEntry[] | null> {
+export async function readBookstoreOutline(source: OutlinePageSource, lookup: BookstoreOutlineLookup, signal?: AbortSignal): Promise<BookOutlineEntry[] | null> {
   const pages = new Map<number, PageText>();
   const readPages = async (numbers: number[]) => {
     for (let start = 0; start < numbers.length; start += 8) {
+      signal?.throwIfAborted();
       await Promise.all(numbers.slice(start, start + 8).map(async (number) => {
         const page = await readPage(source, number).catch(() => null);
         if (page) pages.set(number, page);
@@ -220,16 +221,20 @@ export async function readBookstoreOutline(source: OutlinePageSource, lookup: Bo
   const candidates = [...new Set(detectedIsbns)].slice(0, 2);
   let book: BookstoreContents | null = null;
   for (const isbn of candidates) {
-    book = await lookup(isbn);
+    signal?.throwIfAborted();
+    book = await lookup(isbn, signal);
     if (book) break;
   }
-  if (candidates.length === 0) book = await lookup();
+  signal?.throwIfAborted();
+  if (candidates.length === 0) book = await lookup(undefined, signal);
   if (!book) return null;
+  signal?.throwIfAborted();
   const rows = readContents(book);
   if (!rows.length) return null;
   const labels = await source.getPageLabels().catch(() => null);
   const remaining = Array.from({ length: Math.min(source.numPages, 600) }, (_, i) => i + 1).filter((page) => !pages.has(page));
   await readPages(remaining);
+  signal?.throwIfAborted();
   const anchors = printedPageNumbers(pages);
   const labelIndex = pageLabelIndex(labels, anchors);
   const headingPages = matchHeadings(rows, pages);

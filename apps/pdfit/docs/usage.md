@@ -139,7 +139,7 @@ The contents button in the viewer toolbar opens the book's table of contents. It
 
 In an editable outline, select **Set to current page** beside a row to assign the page shown in the viewer toolbar. This also works for **No page** entries. The reader stays on the same page, and the row updates in the open dialog after the save succeeds. If the save fails, the row keeps its previous destination and the dialog shows an error. Select the icon again to retry.
 
-If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
+If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. Use **Retry** if a read times out or fails. You can create a manual outline for a library book with no outline.
 
 An outline with a verified destination is saved in the database. Later opens use that copy until the PDF is replaced or the saved outline is changed. **Regenerate** repeats the PDF and YES24 lookup and can replace an older saved numeric outline. **Edit outline** lets you add or remove entries and change titles, page numbers, and levels. **Delete outline** asks for confirmation and keeps the outline empty on later opens.
 
