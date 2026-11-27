@@ -87,7 +87,7 @@ Open a document with `engine=gpu` in the viewer URL to enable PDFium's progressi
 
 The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to open the text dialog on the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 
-Select **Comments** on a library book to open its book comments in a narrow floating window. Drag the title using a mouse or touch, or focus the title and use the arrow keys. You can keep reading while the window is open. Each page shows up to five full posts. Scroll the posts to read longer entries. The book card and viewer share the same posts. Select **Close** or press the toolbar's **Comments** button again to dismiss the window.
+Select **Comments** in the viewer toolbar to open the book's floating comment window. Drag the title to move it or drag the bottom-right corner to resize it. Both handles support touch and arrow keys. The browser saves each book's window size and position. Use the top-right X or press Escape from inside the window to dismiss it. The book card and viewer share the same posts and images. [Comment attachments and window controls](../../../packages/pdfit/docs/usage.md#book-comments-markdown)
 
 The annotation tool palette and clip list float above the full-width PDF. Use the chevron at the top of the palette to collapse or expand the tools. Drag the grip at the top of the palette or the clip list's title to move that panel. You can also focus either grip and move it with the arrow keys. The browser remembers both positions.
 

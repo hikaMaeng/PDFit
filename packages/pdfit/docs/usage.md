@@ -89,6 +89,15 @@ Open **Comments** from a cover card, a library list row, or the PDF.js or PDFGPU
 viewer toolbar. Enter Markdown in the comment text area. Saving stores the
 source text and reopening the editor returns that text.
 
+Choose **Attach images** while creating or editing a post. Add up to four PNG,
+JPEG, WebP or GIF files of up to 3 MiB each. You can save an image-only post.
+Uploaded images fill the post width and keep their proportions.
+
+In the PDF viewer, drag the title to move the window and the bottom-right
+handle to resize it. Focus either handle to use the arrow keys. The browser
+remembers the size and position for each book. The window stays at least
+320 × 300 px when the available viewer area permits.
+
 The shared [comment renderer](../src/front/components/book-comments/BookCommentMarkdown.tsx#BookCommentMarkdown)
 formats existing and new posts in the reading view and delete confirmation.
 It supports line breaks, headings, emphasis, links, images, quotes, lists,

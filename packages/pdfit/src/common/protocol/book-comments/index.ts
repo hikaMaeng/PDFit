@@ -9,7 +9,23 @@ export interface BookComment {
   body: string;
   createdAt: string;
   updatedAt: string;
+  images?: BookCommentImage[];
 }
+
+export interface BookCommentImage {
+  id: string;
+  name: string;
+}
+
+export const BOOK_COMMENT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+export type BookCommentImageType = typeof BOOK_COMMENT_IMAGE_TYPES[number];
+export const BOOK_COMMENT_IMAGE_LIMIT = 4;
+export const BOOK_COMMENT_IMAGE_BYTES = 3 * 1024 * 1024;
+export const BOOK_COMMENT_IMAGE_NAME_LIMIT = 200;
+export const BOOK_COMMENT_IMAGE_PATH = '/image';
+
+export type BookCommentImageContent = { mimeType: BookCommentImageType; data: Uint8Array };
+export type WriteBookCommentImage = { id: string } | (BookCommentImage & BookCommentImageContent);
 
 export interface BookCommentPage {
   comments: BookComment[];
@@ -27,6 +43,7 @@ export const BOOK_COMMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
 export interface WriteBookComment {
   id: string;
   body: string;
+  images?: WriteBookCommentImage[];
 }
 
 export interface BookCommentStore {
@@ -35,6 +52,35 @@ export interface BookCommentStore {
   createBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   updateBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   deleteBookComment(book: CommentBook, id: string): Promise<void>;
+  readBookCommentImage(book: CommentBook, id: string, imageId: string): Promise<BookCommentImageContent | null>;
+}
+
+function bookQuery(book: CommentBook): URLSearchParams {
+  const query = new URLSearchParams({ folder: book.folder, filename: book.filename });
+  if (book.driveFileId) query.set('driveFileId', book.driveFileId);
+  return query;
+}
+
+export function bookCommentUrl(book: CommentBook): string {
+  return `${BOOK_COMMENTS_PATH}?${bookQuery(book)}`;
+}
+
+export function bookCommentImageUrl(book: CommentBook, id: string, imageId: string): string {
+  const query = bookQuery(book);
+  query.set('id', id);
+  query.set('imageId', imageId);
+  return `${BOOK_COMMENTS_PATH}${BOOK_COMMENT_IMAGE_PATH}?${query}`;
+}
+
+export function isBookCommentImageType(value: unknown): value is BookCommentImageType {
+  return BOOK_COMMENT_IMAGE_TYPES.some((type) => type === value);
+}
+
+export function parseBookCommentImage(value: unknown): BookCommentImage | null {
+  if (!value || typeof value !== 'object' || !('id' in value) || !('name' in value) ||
+    typeof value.id !== 'string' || !BOOK_COMMENT_ID.test(value.id) || typeof value.name !== 'string' ||
+    !value.name.trim() || value.name.length > BOOK_COMMENT_IMAGE_NAME_LIMIT || value.name.includes('\0')) return null;
+  return { id: value.id.toLowerCase(), name: value.name };
 }
 
 export function parseCommentBook(value: unknown): CommentBook | null {
@@ -52,7 +98,11 @@ export function parseBookComment(value: unknown): BookComment | null {
     typeof value.id !== 'string' || typeof value.body !== 'string' ||
     typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string' ||
     !Number.isFinite(Date.parse(value.createdAt)) || !Number.isFinite(Date.parse(value.updatedAt))) return null;
-  return { id: value.id, body: value.body, createdAt: value.createdAt, updatedAt: value.updatedAt };
+  const comment = { id: value.id, body: value.body, createdAt: value.createdAt, updatedAt: value.updatedAt };
+  if (!('images' in value) || value.images === undefined) return comment;
+  if (!Array.isArray(value.images) || value.images.length > BOOK_COMMENT_IMAGE_LIMIT) return null;
+  const images = value.images.map(parseBookCommentImage);
+  return images.every((image) => image !== null) ? { ...comment, images } : null;
 }
 
 export function parseBookCommentPage(value: unknown): BookCommentPage | null {

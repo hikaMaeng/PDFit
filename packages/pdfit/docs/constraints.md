@@ -64,7 +64,11 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
   target one book from either view.
 * Consumers: PDF.js and PDFGPU viewers. [FloatingBookComments](../src/front/components/book-comments/BookCommentsDialog.tsx)
   shares the book comments protocol and board with the cover card. Keep the floating
-  window within the viewer body and leave the PDF and toolbar interactive.
+  window within the viewer body and leave the PDF and toolbar interactive. The
+  title drag handle and named **Resize popup** button use the shared
+  [viewer popup geometry](../src/front/hooks/useViewerPopupGeometry.ts#useViewerPopupGeometry).
+  Browser preferences are scoped to the book. Attached images occupy the article
+  width and use the file name as their accessible name.
 * Consumers: both viewers' **Bot** dialog. The named status region reports generation phases. Page citations are links by visible text and use the active engine's navigation callback. The dialog stays open on a page jump.
 * PDFit must consume the exact `@pdfgpu/core` version recorded by the active
   release contract from the clean sibling `pdfgpu`

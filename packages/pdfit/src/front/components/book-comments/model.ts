@@ -1,11 +1,24 @@
 import {
-  BOOK_COMMENTS_PATH, parseBookComment, parseBookCommentPage,
-  type BookCommentPage, type CommentBook,
+  BOOK_COMMENT_IMAGE_BYTES, BOOK_COMMENT_IMAGE_LIMIT, BOOK_COMMENT_IMAGE_NAME_LIMIT,
+  bookCommentUrl, isBookCommentImageType, parseBookComment, parseBookCommentPage,
+  type BookCommentImage, type BookCommentPage, type CommentBook,
 } from '../../../common/protocol/book-comments/index.js';
 import { createBrowserUuid } from '../../browserUuid.js';
 import { publishBookCommentChange } from './countModel.js';
 
 type Mode = 'read' | 'create' | 'edit' | 'delete';
+type DraftImage = BookCommentImage & { file?: File };
+
+async function encodeImage({ id, name, file }: DraftImage) {
+  if (!file) return { id };
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  return { id, name, mimeType: file.type, base64 };
+}
 
 class BookCommentsModel {
   private readonly listeners = new Set<() => void>();
@@ -21,6 +34,8 @@ class BookCommentsModel {
   loading = false;
   saving = false;
   error: 'load' | 'save' | null = null;
+  draftImages: DraftImage[] = [];
+  imageError = false;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -39,6 +54,8 @@ class BookCommentsModel {
     this.mode = 'read';
     this.selectedId = null;
     this.saving = false;
+    this.draftImages = [];
+    this.imageError = false;
     void this.load(1);
   }
 
@@ -46,12 +63,7 @@ class BookCommentsModel {
     this.readRequest?.abort();
     this.book = null;
     this.page = null;
-  }
-
-  private url(book: CommentBook) {
-    const query = new URLSearchParams({ folder: book.folder, filename: book.filename });
-    if (book.driveFileId) query.set('driveFileId', book.driveFileId);
-    return `${BOOK_COMMENTS_PATH}?${query}`;
+    this.draftImages = [];
   }
 
   async load(page: number) {
@@ -64,7 +76,7 @@ class BookCommentsModel {
     this.error = null;
     this.emit();
     try {
-      const response = await fetch(`${this.url(this.book)}&page=${page}`, { signal: request.signal });
+      const response = await fetch(`${bookCommentUrl(this.book)}&page=${page}`, { signal: request.signal });
       const result = response.ok ? parseBookCommentPage(await response.json()) : null;
       if (!result) throw new Error('Unable to load book comments.');
       if (!request.signal.aborted) this.page = result;
@@ -84,7 +96,32 @@ class BookCommentsModel {
     this.mode = mode;
     this.selectedId = commentId;
     this.error = null;
+    this.imageError = false;
+    const images = mode === 'edit' ? this.page?.comments.find(({ id }) => id === commentId)?.images : undefined;
+    this.draftImages = images?.slice() ?? [];
     if (mode === 'create') this.draftId = createBrowserUuid();
+    this.emit();
+  }
+
+  addImages(files: File[]) {
+    if (this.saving || (this.mode !== 'create' && this.mode !== 'edit')) return;
+    this.imageError = false;
+    for (const file of files) {
+      const name = file.name.trim().slice(0, BOOK_COMMENT_IMAGE_NAME_LIMIT);
+      if (!name || !file.size || file.size > BOOK_COMMENT_IMAGE_BYTES || !isBookCommentImageType(file.type) ||
+        this.draftImages.length >= BOOK_COMMENT_IMAGE_LIMIT) {
+        this.imageError = true;
+        continue;
+      }
+      this.draftImages.push({ id: createBrowserUuid(), name, file });
+    }
+    this.emit();
+  }
+
+  removeImage(id: string) {
+    if (this.saving) return;
+    this.draftImages = this.draftImages.filter((image) => image.id !== id);
+    this.imageError = false;
     this.emit();
   }
 
@@ -93,19 +130,22 @@ class BookCommentsModel {
     const mode = this.mode;
     if (!book || mode === 'read' || this.saving) return;
     const id = mode === 'create' ? this.draftId : this.selectedId;
-    if (!id || (mode !== 'delete' && !body?.trim())) return;
+    if (!id || (mode !== 'delete' && !body?.trim() && !this.draftImages.length)) return;
     this.saving = true;
     this.error = null;
     this.emit();
     try {
-      const response = await fetch(`${this.url(book)}&id=${encodeURIComponent(id)}`, mode === 'delete'
+      const images = mode === 'delete' ? undefined : await Promise.all(this.draftImages.map(encodeImage));
+      const response = await fetch(`${bookCommentUrl(book)}&id=${encodeURIComponent(id)}`, mode === 'delete'
         ? { method: 'DELETE' }
-        : { method: mode === 'create' ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+        : { method: mode === 'create' ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: body ?? '', images }) });
       if (!response.ok || (mode !== 'delete' && !parseBookComment(await response.json()))) throw new Error('Unable to save book comment.');
       if (mode !== 'edit') publishBookCommentChange(book);
       if (this.book !== book) return;
       this.mode = 'read';
       this.selectedId = null;
+      this.draftImages = [];
+      this.imageError = false;
       this.page = null;
       void this.load(mode === 'create' ? 1 : this.requestedPage);
     } catch {
