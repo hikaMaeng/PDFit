@@ -64,7 +64,7 @@ const upstream = createServer(async (req, res) => {
     res.end(emit(JSON.stringify(context)) + done);
     return;
   }
-  calls.push({ system: messages[0].content, context });
+  calls.push({ context, userMessage: messages[2] });
   if (!context.evidence) {
     if (holdBrowserStages) await browserPlan.promise;
     const outlineKeys = context.question === 'Summarize chapter four' ? ['1'] : [];
@@ -106,12 +106,15 @@ try {
   const events = await postTurn(first);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].context, { book: opened.context, history: { summary: null, turns: [] }, question: first.question });
+  assert.equal(calls[0].userMessage, undefined);
   assert.deepEqual(calls[1].context.book, opened.context);
+  assert.equal(calls[1].context.question, undefined);
+  assert.deepEqual(calls[1].userMessage, { role: 'user', content: first.question });
   const wantedPages = Array.from({ length: 14 }, (_, i) => i + 8).filter((page) => page !== 12);
   assert.deepEqual(calls[1].context.evidence.pages.map(({ page }) => page), wantedPages);
   assert.deepEqual(events.filter(({ type }) => type === 'progress').map(({ phase }) => phase),
     ['preparing', 'analyzing', 'loadingPages', 'generating', 'saving']);
-  assert.equal(events.filter(({ type }) => type === 'delta').length, 2);
+  assert.deepEqual(events.filter(({ type }) => type === 'delta').map(({ text }) => text), ['First fragment. ', 'Second fragment.']);
   assert.equal(events.at(-1).revision, 1);
   assert.deepEqual(Object.keys(events.at(-1).turn), ['id', 'question', 'answer']);
   assert.equal((await postTurn(first)).at(-1).revision, 1);

@@ -4,7 +4,9 @@ import { bookBotPromptTokenCounter, type BotTextMessage } from './promptTokens.j
 import { HISTORY_SUMMARY_RULE, PLAN_RULE, historyPageRanges, parseTurnPlan } from './turnPlan.js';
 import type { BookBotHistoryPage, BookBotHistorySummary, BookBotModelConfig, BookBotPage, BookBotStore, BookBotStoredTurn } from './types.js';
 
-const SYSTEM = `You are PDFit's reading companion for the current book. Help the reader answer questions, explain difficult passages, compare ideas, and summarize the requested scope. Follow the language of the reader's latest question, using the ongoing conversation if their preference is ambiguous.
+const SYSTEM = `You are PDFit's reading companion. The earlier user message contains reference material as JSON. The final user message tells you what to answer or do. Respond directly to that request in the reader's language. Open with the answer or main takeaway. Follow the scope, level of detail, and format the reader asks for.
+
+Use the reference material to support your answer. Select and connect the relevant facts in your own words. Do not substitute a recital of the pages or outline, or a report about retrieval, for an answer to the reader.
 
 Ground book-specific claims in the provided evidence. Cite actual PDF page numbers for page OCR and clips (for example, [PDF p. 24]), and cite named outline entries or dated reader comments when relevant. A PDF page number is a viewer position, which may differ from the printed page number. Distinguish the book's words from the reader's clip notes and book comments, and distinguish your interpretation from either. Never attribute a reader's note to the author.
 
@@ -84,8 +86,10 @@ export async function answerBookQuestion({
       question, addedPages: addedPages?.map(({ page }) => page) ?? [], outlineKeys: outlineKeys ?? [], answer,
     })),
   });
-  const answerPrompt = (dialogue: ReturnType<typeof history>, evidence: object) =>
-    prompt(answerSystem, { book: bookContext, history: dialogue, evidence, question });
+  const answerPrompt = (dialogue: ReturnType<typeof history>, evidence: object): BotTextMessage[] => [
+    ...prompt(answerSystem, { book: bookContext, history: dialogue, evidence }),
+    { role: 'user', content: question },
+  ];
   const planPrompt = (dialogue: ReturnType<typeof history>, summarize: boolean) =>
     prompt(summarize ? PLAN_RULE + '\n\n' + HISTORY_SUMMARY_RULE +
       ' Include it in the same JSON object under "historySummary".' : PLAN_RULE,

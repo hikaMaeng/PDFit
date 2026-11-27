@@ -109,26 +109,35 @@ const botOutline = [
   { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
 ];
 
-test('Bot first plans from the full outline and then reads only the chosen OCR pages', async () => {
+test('Bot reads only the chosen OCR and streams the reply to the final user message', async () => {
   const calls = [];
   const phases = [];
   const visible = [];
+  const question = '4장의 내용을 요약해줘';
   const result = await answerBookQuestion({
     model: { baseUrl: 'http://scope.test/v1', model: 'qwen36-35b', contextTokens: 150_000 },
-    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: '4장의 내용을 요약해줘',
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question,
     turns: [], historySummary: null,
     store: { pages: async (book, ranges) => {
       assert.deepEqual(book, botBook);
       assert.equal(calls.length, 1);
+      assert.deepEqual(visible, []);
       assert.deepEqual(ranges, [{ first: 128, last: 161 }]);
       return [{ page: 128, text: 'Saved OCR' }, { page: 161, text: 'Last page OCR' }];
     } },
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      calls.push(JSON.parse(messages[1].content));
-      return calls.length === 1
-        ? streamReply('{"outlineKeys":["unknown","1.0","1","1"]}')
-        : streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
+      const reference = JSON.parse(messages[1].content);
+      calls.push(reference);
+      if (calls.length === 1) {
+        assert.equal(reference.question, question);
+        assert.equal(messages.length, 2);
+        return streamReply('{"outlineKeys":["unknown","1.0",', '"1","1"]}');
+      }
+      assert.equal(reference.question, undefined);
+      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
+      assert.match(messages[0].content, /Open with the answer or main takeaway/);
+      return streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
     },
     onProgress: ({ phase }) => phases.push(phase), onAnswerDelta: (text) => visible.push(text),
   });
@@ -165,19 +174,21 @@ test('an outline-only question skips source reads when there are no retained pag
 
 test('a follow-up sees previous page references and adds only new page references to the transcript', async () => {
   let calls = 0;
+  const question = 'Compare that chapter with the next one.';
   const turns = [{ id: 'saved', question: 'Summarize chapter four', answer: 'Earlier answer', outlineKeys: ['1'],
     addedPages: [{ page: 128, tokens: 20 }, { page: 129, tokens: 20 }] }];
   const result = await answerBookQuestion({
     model: { baseUrl: 'http://scope.test/v1', model: 'fixture' },
     book: botBook, source: { title: 'Fixture', outline: botOutline }, turns, historySummary: null,
-    question: 'Compare that chapter with the next one.',
+    question,
     store: { pages: async (_book, ranges) => {
       assert.equal(calls, 1);
       assert.deepEqual(ranges, [{ first: 162, last: null }, { first: 128, last: 129 }]);
       return [{ page: 128, text: 'Earlier OCR' }, { page: 162, text: 'New OCR' }];
     } },
     request: async (_url, init) => {
-      const prompt = JSON.parse(JSON.parse(init.body).messages[1].content);
+      const { messages } = JSON.parse(init.body);
+      const prompt = JSON.parse(messages[1].content);
       assert.deepEqual(prompt.history.turns[0].addedPages, [128, 129]);
       assert.equal(prompt.history.turns[0].answer, 'Earlier answer');
       if (++calls === 1) {
@@ -185,6 +196,7 @@ test('a follow-up sees previous page references and adds only new page reference
         return streamReply('{"outlineKeys":["2"]}');
       }
       assert.deepEqual(prompt.evidence.pages.map(({ page }) => page), [162, 128]);
+      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
       return streamReply('Compared');
     },
   });
