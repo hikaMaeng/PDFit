@@ -119,6 +119,10 @@ See [context and storage](../../../packages/pdfit/docs/book-bot.md).
 
 The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and closes the dialog.
 
+Select the save icon beside a page number to jump there and save the reading position immediately. The dialog closes after the save succeeds. If the save fails, select the icon again to retry. In two-page mode, the saved position is the first page of the spread containing the destination.
+
+You can keep reading while the outline is open. Drag its title to move it and use the bottom-right handle to resize it. The browser remembers the position and size for each book. Close the outline with the top-right X or press Escape while the outline has focus.
+
 If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
 
 An outline with a verified destination is saved in the database. Later opens use that copy until the PDF is replaced or the saved outline is changed. **Regenerate** repeats the PDF and YES24 lookup and can replace an older saved numeric outline. **Edit outline** lets you add or remove entries and change titles, page numbers, and levels. **Delete outline** asks for confirmation and keeps the outline empty on later opens.

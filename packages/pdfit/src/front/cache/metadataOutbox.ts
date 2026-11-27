@@ -22,14 +22,15 @@ export function configureMetadataOutbox(value?: MetadataOutboxOptions) {
   if (typeof window !== 'undefined') window.setTimeout(() => { void flushMetadataOutbox(); }, 1000);
 }
 
-export async function requestWithMetadataOutbox(input: MetadataOutboxRequest): Promise<Response> {
+export async function requestWithMetadataOutbox(input: MetadataOutboxRequest, keepalive = false): Promise<Response> {
   const scope = options?.scope() ?? '';
-  if (!scope || typeof indexedDB === 'undefined') return fetch(input.url, { method: input.method, headers: input.headers, body: input.body });
+  const request = { method: input.method, headers: input.headers, body: input.body, keepalive };
+  if (!scope || typeof indexedDB === 'undefined') return fetch(input.url, request);
   const operationId = input.operationId ?? createBrowserUuid();
   const row: OutboxRow = { ...input, id: input.coalesceKey ?? operationId, operationId, createdAt: new Date().toISOString(), attempts: 0 };
   await put(scope, row);
   try {
-    const response = await fetch(row.url, { method: row.method, headers: row.headers, body: row.body });
+    const response = await fetch(row.url, request);
     if (response.ok || response.status < 500) {
       await remove(scope, row.id, row.operationId);
       if (!response.ok) await options?.onFlushed?.();

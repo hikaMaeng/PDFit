@@ -8,6 +8,7 @@ const DEBOUNCE_MS = 800;
  * - 마운트 시 서버에서 저장된 상태 로드 (없으면 null)
  * - reportState() 호출 시 디바운스 후 서버에 저장
  *   (DEBOUNCE_MS 내 마지막 값만 전송, 이전 전송값과 동일하면 스킵)
+ * - 즉시 저장은 대기 중인 상태를 대체하고 저장 결과를 반환
  */
 export function useViewerState(folder: string, filename: string, driveFileId?: string | null) {
   const [savedState, setSavedState] = useState<ViewerStatePayload | null>(null);
@@ -31,12 +32,22 @@ export function useViewerState(folder: string, filename: string, driveFileId?: s
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [folder, filename]);
+  }, [driveFileId, folder, filename]);
 
   const reportState = useCallback(
-    (state: ViewerStatePayload) => {
+    (state: ViewerStatePayload, immediate = false) => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      if (immediate) {
+        const key = JSON.stringify(state);
+        lastSentRef.current = key;
+        return Promise.resolve(viewerStateApi.save(folder, filename, state, driveFileId, true)).catch((error) => {
+          if (lastSentRef.current === key) lastSentRef.current = null;
+          throw error;
+        });
+      }
       timerRef.current = setTimeout(() => {
+        timerRef.current = null;
         const key = JSON.stringify(state);
         if (lastSentRef.current === key) return; // 이전 전송값과 동일하면 스킵
         lastSentRef.current = key;

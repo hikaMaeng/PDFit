@@ -260,10 +260,10 @@ export default function PdfViewerPage() {
   }, [driveFileId, fileName, folderName, sample]);
 
   const handleStateChange = useCallback(
-    (state: Omit<ViewerStatePayload, 'uiHidden'>) => {
+    (state: Omit<ViewerStatePayload, 'uiHidden'>, immediate?: boolean) => {
       const next = { ...state, uiHidden: false };
       latestViewerStateRef.current = next;
-      reportState(next);
+      return reportState(next, immediate);
     },
     [reportState],
   );

@@ -1,18 +1,29 @@
-import { Fragment, useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  Alert, AlertTitle, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, LinearProgress, List, ListItemButton, ListItemText, TextField, Typography,
+  Alert, AlertTitle, Box, Button, CircularProgress, IconButton, LinearProgress,
+  List, ListItem, ListItemButton, ListItemText, Paper, TextField, Typography,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import { BOOK_OUTLINE_MAX_DEPTH, BOOK_OUTLINE_MAX_ENTRIES, BOOK_OUTLINE_MAX_TITLE_LENGTH } from '../../../common/protocol/outlines/index.js';
+import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { getOutlineModel } from '../../viewer/outlineModel.js';
 import type { OutlineReader, PdfOutlineStorage } from '../../viewer/storedOutline.js';
+import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { RSC } from './resource.js';
 
-const EDITOR_ID = 'pdf-outline-editor';
+function defaultOutlineRect(bounds: { width: number; height: number }) {
+  const width = Math.min(560, Math.max(1, bounds.width - 24));
+  const height = Math.min(660, Math.max(1, bounds.height - 24));
+  return { x: Math.round((bounds.width - width) / 2), y: 12, width, height };
+}
 
 type Props = {
+  id: string;
+  bookKey: string;
   open: boolean;
   readOutline: OutlineReader;
   storage?: PdfOutlineStorage | null;
@@ -21,29 +32,55 @@ type Props = {
   currentPage: number;
   /** Moves the viewer to a 1-based page. The dialog closes itself afterwards. */
   onSelectPage: (page: number) => void;
+  onSavePage?: (page: number) => void | Promise<void>;
   onClose: () => void;
 };
 
-export default function PdfOutlineDialog({ open, readOutline, storage, pageCount, currentPage, onSelectPage, onClose }: Props) {
+export default function PdfOutlineDialog({ id, bookKey, open, readOutline, storage, pageCount, currentPage, onSelectPage, onSavePage, onClose }: Props) {
   const { t } = usePdfitI18n();
+  const editorId = useId();
+  const titleId = useId();
+  const headingRef = useRef<HTMLDivElement>(null);
+  const { popupRef, rect, moveHandleProps, resizeHandleProps } = useViewerPopupGeometry({
+    kind: 'outline', bookKey, defaultRect: defaultOutlineRect, minWidth: 300, minHeight: 260, open,
+  });
   const model = getOutlineModel(readOutline, storage);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   const { result, canSave, draft, error, mode, pending } = model;
   const loading = pending === 'load' || !result;
-  const changing = pending === 'change';
+  const [pageSave, setPageSave] = useState<'saving' | 'error' | null>(null);
+  const changing = pending === 'change' || pageSave === 'saving';
   const messages = {
     empty: 'tocFailedEmpty', read: 'tocFailedError',
     write: RSC.VIEWER_OUTLINE_WRITE_FAILED_ALERT, invalid: RSC.VIEWER_OUTLINE_INVALID_ALERT,
   } as const;
 
   useEffect(() => {
-    if (open) void model.load();
+    if (open) {
+      void model.load();
+      headingRef.current?.focus({ preventScroll: true });
+    }
   }, [open, model]);
 
   const close = () => {
     if (changing) return;
+    setPageSave(null);
     model.cancel();
+    if (document.activeElement === document.body || popupRef.current?.contains(document.activeElement)) {
+      document.getElementById(`${id}-trigger`)?.focus({ preventScroll: true });
+    }
     onClose();
+  };
+
+  const selectAndSave = async (page: number) => {
+    if (!onSavePage || changing) return;
+    setPageSave('saving');
+    try {
+      await onSavePage(page);
+      close();
+    } catch {
+      setPageSave('error');
+    }
   };
 
   // The current chapter is the last entry that starts at or before the current page.
@@ -55,11 +92,38 @@ export default function PdfOutlineDialog({ open, readOutline, storage, pageCount
     }
   }
 
-  return <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby="pdf-outline-dialog-title" data-testid="pdf-outline-dialog">
-    <DialogTitle id="pdf-outline-dialog-title">{t('tableOfContents')}</DialogTitle>
-    <DialogContent dividers aria-busy={Boolean(pending)} sx={{ p: 0, minHeight: 120 }}>
+  if (!open) return null;
+
+  return <Paper ref={popupRef} id={id} role="dialog" aria-modal={false} aria-labelledby={titleId} data-testid="pdf-outline-dialog"
+    elevation={16}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.key === 'Escape' && !event.defaultPrevented) close();
+    }}
+    sx={{
+      boxSizing: 'border-box', position: 'absolute', zIndex: 26,
+      left: rect.x, top: rect.y, width: rect.width, height: rect.height,
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      border: 1, borderColor: 'divider', borderRadius: 2,
+      bgcolor: 'background.paper', backgroundImage: 'none',
+    }}
+  >
+    <Box dir="ltr" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
+      <Box ref={headingRef} {...moveHandleProps} dir="auto" tabIndex={0} title={t(RSC.VIEWER_OUTLINE_MOVE_LABEL)}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+        sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, p: 0.5, cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
+      >
+        <DragIndicatorIcon fontSize="small" color="action" />
+        <Typography id={titleId} component="h2" variant="subtitle2" fontWeight={700}>{t('tableOfContents')}</Typography>
+      </Box>
+      <IconButton type="button" size="small" aria-label={t('close')} title={t('close')} disabled={changing} onClick={close}>
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    </Box>
+    <Box aria-busy={loading || changing} sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       {changing && <LinearProgress aria-label={t('tableOfContents')} />}
       {error && <Alert severity="error" sx={{ m: 2 }}>{t(messages[error])}</Alert>}
+      {pageSave === 'error' && <Alert severity="error" sx={{ m: 2 }}>{t(RSC.VIEWER_OUTLINE_PAGE_SAVE_FAILED_ALERT)}</Alert>}
       {loading ? (
         <Box role="status" data-testid="pdf-outline-loading" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 5 }}>
           <CircularProgress size={22} />
@@ -68,7 +132,7 @@ export default function PdfOutlineDialog({ open, readOutline, storage, pageCount
       ) : mode === 'delete' ? (
         <Alert severity="warning" sx={{ m: 2 }}>{t(RSC.VIEWER_OUTLINE_DELETE_MESSAGE)}</Alert>
       ) : mode === 'edit' ? (
-        <Box component="form" id={EDITOR_ID} sx={{ p: 2 }} onSubmit={(event) => {
+        <Box component="form" id={editorId} sx={{ p: 2 }} onSubmit={(event) => {
           event.preventDefault();
           void model.save(new FormData(event.currentTarget), pageCount);
         }}>
@@ -112,46 +176,55 @@ export default function PdfOutlineDialog({ open, readOutline, storage, pageCount
           </Alert>
         </Box>
       ) : (
-        <List dense aria-label={t('tableOfContents')} data-testid="pdf-outline-list" data-source={result.source ?? ''} sx={{ maxHeight: '64vh', overflowY: 'auto', py: 0.5 }}>
+        <List dense aria-label={t('tableOfContents')} data-testid="pdf-outline-list" data-source={result.source ?? ''} sx={{ py: 0.5 }}>
           {result.entries.map((entry) => {
             const current = entry.key === currentKey;
-            return <ListItemButton
-              key={entry.key}
-              data-testid="pdf-outline-entry"
-              data-page={entry.page ?? ''}
-              data-depth={entry.depth}
-              disabled={entry.page === null || changing}
-              selected={current}
-              aria-current={current ? 'location' : undefined}
-              onClick={() => { if (entry.page !== null) { onSelectPage(entry.page); close(); } }}
-              sx={{ paddingInlineStart: (theme) => theme.spacing(2 + Math.min(entry.depth, 8) * 2), py: 0.5 }}
-            >
-              <ListItemText
-                primary={entry.title || '—'}
-                primaryTypographyProps={{ variant: 'body2', fontWeight: entry.depth === 0 ? 600 : 400, sx: { overflowWrap: 'anywhere' } }}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ marginInlineStart: (theme) => theme.spacing(2), flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                {entry.page ?? t('tocNoPage')}
-              </Typography>
-            </ListItemButton>;
+            const { page } = entry;
+            const saveLabel = onSavePage && page !== null ? t(RSC.VIEWER_OUTLINE_SAVE_PAGE_BUTTON, { page }) : null;
+            return <ListItem key={entry.key} disablePadding sx={{ paddingInlineEnd: saveLabel ? 1 : 0 }}>
+              <ListItemButton
+                component="button"
+                type="button"
+                data-testid="pdf-outline-entry"
+                data-page={page ?? ''}
+                data-depth={entry.depth}
+                disabled={page === null || changing}
+                selected={current}
+                aria-current={current ? 'location' : undefined}
+                onClick={() => { if (page !== null) { onSelectPage(page); close(); } }}
+                sx={{ minWidth: 0, textAlign: 'start', paddingInlineStart: (theme) => theme.spacing(2 + Math.min(entry.depth, 8) * 2), paddingInlineEnd: saveLabel ? 0.5 : 2, py: 0.5 }}
+              >
+                <ListItemText
+                  primary={entry.title || '—'}
+                  primaryTypographyProps={{ variant: 'body2', fontWeight: entry.depth === 0 ? 600 : 400, sx: { overflowWrap: 'anywhere' } }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ marginInlineStart: (theme) => theme.spacing(2), flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                  {page ?? t('tocNoPage')}
+                </Typography>
+              </ListItemButton>
+              {page !== null && saveLabel && (
+                <IconButton type="button" size="small" aria-label={saveLabel} title={saveLabel} disabled={changing} onClick={() => void selectAndSave(page)}>
+                  <SaveOutlinedIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              )}
+            </ListItem>;
           })}
         </List>
       )}
-    </DialogContent>
-    <DialogActions disableSpacing sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+    </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, py: 0.75, paddingInlineStart: 1, paddingInlineEnd: 3, borderTop: 1, borderColor: 'divider' }}>
       {/* Remount the controls so an edit click cannot submit the newly opened form. */}
-      {mode === 'view' ? <Fragment key="view">
+      {mode === 'view' ? <>
         {!loading && <Button onClick={model.regenerate} disabled={changing}>{t(RSC.VIEWER_OUTLINE_REGENERATE_BUTTON)}</Button>}
         {!loading && canSave && <Button onClick={model.edit} disabled={changing}>{t(RSC.VIEWER_OUTLINE_EDIT_BUTTON)}</Button>}
         {!loading && canSave && result.status === 'ok' && <Button color="error" onClick={model.confirmDelete} disabled={changing}>{t(RSC.VIEWER_OUTLINE_DELETE_BUTTON)}</Button>}
-        <Box sx={{ flexGrow: 1 }} />
-        <Button onClick={close} disabled={changing}>{t('close')}</Button>
-      </Fragment> : <Fragment key={mode}>
+      </> : <Box key={mode} sx={{ display: 'flex', gap: 0.5, marginInlineStart: 'auto' }}>
         <Button onClick={model.cancel} disabled={changing}>{t('cancel')}</Button>
         {mode === 'edit'
-          ? <Button variant="contained" type="submit" form={EDITOR_ID} disabled={changing || !draft.length}>{t('save')}</Button>
+          ? <Button variant="contained" type="submit" form={editorId} disabled={changing || !draft.length}>{t('save')}</Button>
           : <Button variant="contained" color="error" onClick={model.remove} disabled={changing}>{t('delete')}</Button>}
-      </Fragment>}
-    </DialogActions>
-  </Dialog>;
+      </Box>}
+    </Box>
+    <ViewerPopupResizeHandle {...resizeHandleProps} />
+  </Paper>;
 }

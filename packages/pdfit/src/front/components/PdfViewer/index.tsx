@@ -8,7 +8,7 @@ import { readPdfOutline, type PdfOutlineResult } from '../../viewer/pdfOutline.j
 import { isTransientPdfOpenError, openPdfWithRetry } from '../../viewer/pdfOpenRetry.js';
 import type { BookstoreOutlineLookup } from '../../viewer/bookstoreOutline.js';
 import type { PdfOutlineStorage } from '../../viewer/storedOutline.js';
-import type { ViewerStatePayload } from '../../api/viewerState';
+import type { ViewerStatePayload, ViewerStateReporter } from '../../api/viewerState';
 import {
   createViewerInteractionState,
   normalizeViewerPage,
@@ -122,7 +122,7 @@ interface Props {
   initialScrollTop?: number;
   onPageChange?: (page: number) => void;
   /** 뷰어 내부 상태(page/scale/fitMode/viewMode/inverted/scrollTop) 변경 시 호출 */
-  onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
+  onStateChange?: ViewerStateReporter;
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
@@ -186,6 +186,7 @@ export default function PdfViewer({
   const [docReady, setDocReady] = useState(false);
   const clipPanelId = useId();
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const outlineId = useId();
   const captureStartRef = useRef<{ pageIndex: number; canvas: HTMLCanvasElement; x: number; y: number; clientX: number; clientY: number } | null>(null);
   const [captureDrag, setCaptureDrag] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
@@ -513,7 +514,7 @@ export default function PdfViewer({
   }, [outlineDocument, outlineLookup]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
-  const goToPage = useCallback((n: number, mode?: ViewMode) => {
+  const goToPage = useCallback((n: number, mode?: ViewMode, behavior: ScrollBehavior = 'smooth') => {
     const m = mode ?? viewModeRef.current;
     const total = totalPagesRef.current;
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: m }).state;
@@ -524,9 +525,20 @@ export default function PdfViewer({
     setCurrentPage(target);
     setPageInput(String(target));
     if (m === 'scroll') {
-      pageRefs.current[target - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      pageRefs.current[target - 1]?.scrollIntoView({ behavior, block: behavior === 'instant' ? 'center' : 'start' });
     }
+    return target;
   }, []);
+
+  const goToAndSavePage = (page: number) => {
+    const target = goToPage(page, undefined, 'instant');
+    stateSnapshotRef.current = {
+      ...stateSnapshotRef.current,
+      page: target,
+      scrollTop: viewModeRef.current === 'scroll' ? containerRef.current?.scrollTop ?? 0 : 0,
+    };
+    return onStateChange?.(stateSnapshotRef.current, true);
+  };
 
   const prevPage = useCallback(() => {
     const m = viewModeRef.current;
@@ -897,6 +909,7 @@ export default function PdfViewer({
           scanBook={scanBook}
           outlineOpen={outlineOpen}
           outlineDisabled={!docReady}
+          outlineId={outlineId}
           pageInput={pageInput}
           pageCount={totalPages}
           previousDisabled={isPrevDisabled}
@@ -1072,8 +1085,10 @@ export default function PdfViewer({
 
       </Box>
         {floatingPanel?.(goToPage, totalPages)}
+        <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
+          storage={outlineStorage} pageCount={totalPages} currentPage={currentPage}
+          onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />
       </Box>
-      <PdfOutlineDialog open={outlineOpen} readOutline={readOutline} storage={outlineStorage} pageCount={totalPages} currentPage={currentPage} onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
     </Box>
   );
 }

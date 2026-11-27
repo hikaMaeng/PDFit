@@ -11,7 +11,7 @@ import {
   type PdfGpuViewerController,
   type PdfGpuViewerState,
 } from '@pdfgpu/core';
-import type { ViewerStatePayload } from '../../api/viewerState.js';
+import type { ViewerStatePayload, ViewerStateReporter } from '../../api/viewerState.js';
 import type { BookmarkRecord, UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
 import type { PdfGpuCaptureResult } from '@pdfgpu/core';
 import {
@@ -61,7 +61,7 @@ type Props = {
   colorAdjustments: PdfGpuColorAdjustmentState;
   onColorAdjustmentsChange: (adjustments: PdfGpuColorAdjustments) => void;
   initialScrollTop?: number;
-  onStateChange?: (state: Omit<ViewerStatePayload, 'uiHidden'>) => void;
+  onStateChange?: ViewerStateReporter;
   onUnavailable?: () => void;
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
@@ -135,6 +135,7 @@ export default function PdfGpuViewer({
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const annotation = usePdfAnnotations(url);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const outlineId = useId();
   const readOutline = useCallback(() => readPdfOutlineFromUrl(url, outlineLookup), [url, outlineLookup]);
   const clipPanelId = useId();
   const clipArmed = annotation.tool === 'bookmark';
@@ -197,6 +198,7 @@ export default function PdfGpuViewer({
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
     const target = normalizeViewerPage(page, state.pageCount, mode, state.spreadPairing);
     controller?.scrollToPage(target - 1);
+    return target;
   }, [controller, state.pageCount, state.scrollMode, state.spreadPairing, state.viewMode]);
   // A pairing switch lands on the new row containing the current page; switching straight
   // back returns to the page the reader switched from (see spreadPairing.ts).
@@ -288,18 +290,20 @@ export default function PdfGpuViewer({
     setPageInput(String(state.activePage));
   }, [state.activePage]);
 
-  useEffect(() => {
-    if (!state.activePage) return;
-    const legacyState: Omit<ViewerStatePayload, 'uiHidden'> = {
-      page: state.activePage,
-      scale: state.zoom,
-      fitMode: state.fitMode === 'page' ? state.viewMode === 'spread' ? 'height' : 'none' : state.fitMode,
-      viewMode: toLegacyViewMode(state),
+  const reportViewerState = useCallback((page: number, snapshot: PdfGpuViewerState, immediate?: boolean) => {
+    return onStateChange?.({
+      page,
+      scale: snapshot.zoom,
+      fitMode: snapshot.fitMode === 'page' ? snapshot.viewMode === 'spread' ? 'height' : 'none' : snapshot.fitMode,
+      viewMode: toLegacyViewMode(snapshot),
       inverted,
       scrollTop: viewportRef.current?.scrollTop ?? 0,
-    };
-    onStateChange?.(legacyState);
-  }, [inverted, onStateChange, state]);
+    }, immediate);
+  }, [inverted, onStateChange]);
+
+  useEffect(() => {
+    if (state.activePage) reportViewerState(state.activePage, state);
+  }, [reportViewerState, state]);
 
   useEffect(() => {
     // @pdfgpu/core >= 0.1.10 binds the same paging keys on its focused viewport and calls
@@ -334,6 +338,12 @@ export default function PdfGpuViewer({
   // Key: the controller instance (one per opened document); set when the active page leaves
   // page 1 before the first apply; cleared when the controller changes.
   const movedBeforeInitialViewRef = useRef<PdfGpuViewerController | null>(null);
+  const goToAndSavePage = (page: number) => {
+    if (!controller) return;
+    movedBeforeInitialViewRef.current = controller;
+    const target = goToPage(page);
+    return reportViewerState(target, controller.getState(), true);
+  };
   useEffect(() => {
     if (!controller || state.loadPhase === 'ready') return;
     if (initialViewAppliedRef.current?.controller === controller) return;
@@ -428,6 +438,7 @@ export default function PdfGpuViewer({
           scanBook={scanBook}
           outlineOpen={outlineOpen}
           outlineDisabled={!state.pageCount}
+          outlineId={outlineId}
           pageInput={pageInput}
           pageCount={state.pageCount}
           previousDisabled={currentPage <= 1}
@@ -469,10 +480,12 @@ export default function PdfGpuViewer({
         {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
         {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         {floatingPanel?.(goToPage, state.pageCount)}
+        <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
+          storage={outlineStorage} pageCount={state.pageCount} currentPage={currentPage}
+          onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />
-      <PdfOutlineDialog open={outlineOpen} readOutline={readOutline} storage={outlineStorage} pageCount={state.pageCount} currentPage={currentPage} onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
     </Box>
   );
 }
