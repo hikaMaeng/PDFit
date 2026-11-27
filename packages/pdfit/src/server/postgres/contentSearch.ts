@@ -62,6 +62,7 @@ export const contentSearchSchema = `
     FOREIGN KEY (folder, filename) REFERENCES books (folder, filename) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_page_ocr_search_terms ON book_page_ocr_search USING GIN (terms);
+  ALTER TABLE book_page_ocr_search ADD COLUMN IF NOT EXISTS embedding_body TEXT;
   CREATE OR REPLACE FUNCTION clear_stale_page_ocr_search() RETURNS trigger LANGUAGE plpgsql AS $$
   BEGIN
     DELETE FROM book_page_ocr_search WHERE folder = OLD.folder AND filename = OLD.filename;
@@ -148,13 +149,13 @@ export async function savePageOcrSearchText(
   const body = text.trim().slice(0, 64_000).replaceAll('\u0000', '');
   if (!source) return;
   await db.query(`
-    INSERT INTO book_page_ocr_search AS ocr (folder, filename, page_index, source_size, source_modified_at, body)
-    SELECT b.folder, b.filename, $5, b.size, b.modified_at, $6 FROM books b
+    INSERT INTO book_page_ocr_search AS ocr (folder, filename, page_index, source_size, source_modified_at, body, embedding_body)
+    SELECT b.folder, b.filename, $5, b.size, b.modified_at, $6, $7 FROM books b
     WHERE b.folder = $1 AND b.filename = $2 AND b.size = $3 AND b.modified_at = $4
     FOR SHARE OF b
     ON CONFLICT (folder, filename, page_index) DO UPDATE SET body = EXCLUDED.body,
-      source_size = EXCLUDED.source_size, source_modified_at = EXCLUDED.source_modified_at
-    WHERE (ocr.body, ocr.source_size, ocr.source_modified_at)
-      IS DISTINCT FROM (EXCLUDED.body, EXCLUDED.source_size, EXCLUDED.source_modified_at)
-  `, [folder, filename, source.size, source.modifiedAt, pageIndex, body]);
+      source_size = EXCLUDED.source_size, source_modified_at = EXCLUDED.source_modified_at, embedding_body = EXCLUDED.embedding_body
+    WHERE (ocr.body, ocr.source_size, ocr.source_modified_at, ocr.embedding_body)
+      IS DISTINCT FROM (EXCLUDED.body, EXCLUDED.source_size, EXCLUDED.source_modified_at, EXCLUDED.embedding_body)
+  `, [folder, filename, source.size, source.modifiedAt, pageIndex, body, text.replaceAll('\u0000', '\uFFFD')]);
 }

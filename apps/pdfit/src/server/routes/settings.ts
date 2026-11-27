@@ -1,8 +1,10 @@
 import { Router, type Request, type Response } from 'express';
-import { aiServerConcurrency, type SettingsStore } from '../services/settingsStore.js';
-import { createAiProgressResponse } from '@pdfit/pdfit/server';
+import { randomUUID } from 'node:crypto';
+import { ActiveModelConflict, aiServerConcurrency, type AiServerInput, type PostgresSettingsStore } from '../services/settingsStore.js';
+import { createAiProgressResponse, type EmbeddingService } from '@pdfit/pdfit/server';
 import { translateDisplayTexts, type DisplayTranslationLanguage } from '../services/displayTranslation.js';
 import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
+import { isEmbeddingModel, type ModelChoice } from '@pdfit/pdfit/common/protocol/embedding-search';
 
 const DISPLAY_TRANSLATION_LANGUAGES = new Set<DisplayTranslationLanguage>(['en', 'ko', 'zh', 'es', 'hi', 'ar', 'fr', 'pt', 'ru', 'ms', 'bn', 'ja']);
 
@@ -16,8 +18,69 @@ function validBotContextTokens(value: unknown) {
 
 const contextTokensError = `botContextTokens must be null or an integer from ${BOOK_BOT_MIN_CONTEXT_TOKENS} to ${BOOK_BOT_MAX_CONTEXT_TOKENS}.`;
 
-export function createSettingsRouter(store: SettingsStore): Router {
+function validCandidates(input: Partial<AiServerInput>): boolean {
+  return ([input.llmCandidates, input.embeddingCandidates] as const).every((list) => list === undefined || (
+    Array.isArray(list) && list.length <= 64 && new Set(list.flatMap((model) => model?.id ? [model.id] : [])).size
+      === list.filter((model) => model?.id).length
+  )) && (input.llmCandidates === undefined || input.llmCandidates.every((model) => model && typeof model.name === 'string'
+    && !!model.name.trim() && model.name.length <= 300 && !model.name.includes('\0')
+    && (model.id === undefined || (typeof model.id === 'string' && model.id.length <= 100))))
+    && (input.embeddingCandidates === undefined || input.embeddingCandidates.every((model) => isEmbeddingModel(model)
+      && Buffer.byteLength(model.documentPrefix) + 12 <= Math.min(512, model.maxInputTokens)
+      && Buffer.byteLength(model.queryPrefix) + 12 <= model.maxInputTokens));
+}
+
+export function createSettingsRouter(store: PostgresSettingsStore, embedding: EmbeddingService): Router {
   const router = Router();
+
+  router.get('/ai-models/defaults', async (_req, res, next) => {
+    try { res.json(await store.defaultModels()); } catch (error) { next(error); }
+  });
+
+  router.patch('/ai-models/defaults', async (req, res, next) => {
+    const { role, choice } = req.body ?? {};
+    if ((role !== 'llm' && role !== 'embedding') || (choice !== null && (!choice || !Number.isSafeInteger(choice.serverId)
+      || choice.serverId < 1 || typeof choice.modelId !== 'string' || !choice.modelId || choice.modelId.length > 100))) {
+      res.sendStatus(400); return;
+    }
+    const selected: ModelChoice | null = choice;
+    try {
+      if (role === 'llm') {
+        await embedding.store.transaction(async (client) => {
+          await store.lockDefaults(client);
+          await store.selectLlm(client, selected);
+        });
+      } else {
+        const token = randomUUID();
+        const endpoint = await embedding.store.transaction(async (client) => {
+          await store.lockDefaults(client);
+          const candidate = selected ? await store.embeddingEndpoint(selected, client) : null;
+          if (selected && !candidate) throw new ActiveModelConflict('Embedding candidate no longer exists');
+          await client.query('UPDATE embedding_control SET selection = $1 WHERE singleton', [token]);
+          return candidate;
+        });
+        if (endpoint) {
+          try {
+            const input = ['PDFit index check', 'PDFit search check'].slice(0, endpoint.model.embeddingConcurrency);
+            await embedding.client.embed(endpoint, input);
+          } catch { res.status(502).json({ error: 'Embedding model check failed' }); return; }
+        }
+        await embedding.store.transaction(async (client) => {
+          const { rows: [{ selection }] } = await client.query('SELECT selection FROM embedding_control WHERE singleton FOR UPDATE');
+          const current = selected ? await store.embeddingEndpoint(selected, client) : null;
+          if (selection !== token || (selected && (!current || current.version !== endpoint?.version))) {
+            throw new ActiveModelConflict('Model settings changed during verification');
+          }
+          await embedding.store.activate(client, selected, current);
+        });
+        embedding.wake();
+      }
+      res.json(await store.defaultModels());
+    } catch (error) {
+      if (error instanceof ActiveModelConflict) { res.status(409).json({ error: error.message }); return; }
+      next(error);
+    }
+  });
 
   router.get('/ai-servers', async (_req: Request, res: Response) => {
     try {
@@ -28,15 +91,8 @@ export function createSettingsRouter(store: SettingsStore): Router {
   });
 
   router.post('/ai-servers', async (req: Request, res: Response) => {
-    const { name, type, url, headers = {}, models = {}, ocrConcurrency, botContextTokens } = (req.body ?? {}) as {
-      name?: string;
-      type?: 'lm-studio' | 'openai-compat';
-      url?: string;
-      headers?: Record<string, string>;
-      models?: Record<string, string>;
-      ocrConcurrency?: number;
-      botContextTokens?: number | null;
-    };
+    const input = (req.body ?? {}) as Partial<AiServerInput>;
+    const { name, type, url, headers = {}, models = {}, ocrConcurrency, botContextTokens } = input;
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required.' });
@@ -47,6 +103,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       return;
     }
     if (!validBotContextTokens(botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
+    if (!validCandidates(input)) { res.status(400).json({ error: 'Invalid model candidates' }); return; }
 
     try {
       const id = await store.createAiServer({
@@ -57,6 +114,8 @@ export function createSettingsRouter(store: SettingsStore): Router {
         models,
         ocrConcurrency,
         botContextTokens,
+        llmCandidates: input.llmCandidates,
+        embeddingCandidates: input.embeddingCandidates,
       });
       res.status(201).json({ id });
     } catch (error) {
@@ -77,6 +136,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       return;
     }
     if (!validBotContextTokens(patch.botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
+    if (!validCandidates(patch)) { res.status(400).json({ error: 'Invalid model candidates' }); return; }
     try {
       const updated = await store.updateAiServer(id, patch);
       if (!updated) {
@@ -85,7 +145,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       }
       res.json({ ok: true });
     } catch (error) {
-      res.status(500).json({ error: String(error) });
+      res.status(error instanceof ActiveModelConflict ? 409 : 500).json({ error: String(error) });
     }
   });
 
@@ -104,7 +164,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
       }
       res.json({ ok: true });
     } catch (error) {
-      res.status(500).json({ error: String(error) });
+      res.status(error instanceof ActiveModelConflict ? 409 : 500).json({ error: String(error) });
     }
   });
 
@@ -122,7 +182,7 @@ export function createSettingsRouter(store: SettingsStore): Router {
     const progress = createAiProgressResponse(req, res);
     try {
       const servers = await store.listAiServers();
-      const server = servers.find((candidate) => Boolean(candidate.models.llm));
+      const server = await store.resolveLlm(servers);
       if (!server) {
         res.status(503).json({ error: 'Configure an AI server with an LLM model to translate display names.' });
         return;

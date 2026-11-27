@@ -38,6 +38,8 @@ import { thumbnailSourceStamp } from '../thumbnails/thumbnailStore.js';
 import type { BookmarkOcrQueue } from '../api/bookmarks/index.js';
 import { BOOK_BOT_PATH } from '../../common/protocol/book-bot/index.js';
 import { createBookBotRouter, type BookBotOptions } from '../book-bot/router.js';
+import { SEMANTIC_SEARCH_PATH } from '../../common/protocol/embedding-search/index.js';
+import type { EmbeddingService } from '../embedding/service.js';
 
 export interface PdfitServerRouterMount {
   path: string;
@@ -70,6 +72,7 @@ export interface PdfitBackgroundTaskOptions extends PdfitTaskSchedulerOptions {
    */
   resolveVisionServer?: () => Promise<VisionOcrServer | null>;
   requestVision?: typeof fetch;
+  embedding?: EmbeddingService;
 }
 
 /** Builds the canonical PDFit metadata, bookmark, viewer-state, and event routes. */
@@ -173,6 +176,10 @@ export function createPdfitCommonRouterAssembly(options: {
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
       pageSearchIndex: store.savePageOcrText ? {
         listBooks: () => store.listTrackedBooks(),
+        ...(background.embedding && {
+          prepareCacheLookup: () => background.embedding!.store.prepareCacheBooks(),
+          findCacheBook: (hash: string) => background.embedding!.store.findCacheBook(hash),
+        }),
         save: store.savePageOcrText.bind(store),
         listPages: store.listPageOcrIndexes?.bind(store),
       } : undefined,
@@ -190,6 +197,7 @@ export function createPdfitCommonRouterAssembly(options: {
       log: (message) => console.log(`[ocr] ${message}`),
     });
     scheduler.register(ocr.definition);
+    background.embedding?.register(scheduler);
     if (background.autoStart ?? true) scheduler.start();
     tasks = scheduler;
   }
@@ -234,8 +242,10 @@ export function createPdfitCommonRouterAssembly(options: {
       }) }] : []),
       ...(tasks ? [{ path: '/api/tasks', router: createTasksRouter(tasks, async () => ({
         thumbnail: { lastPlan: thumbnailService?.lastPlan() ?? null },
+        ...(options.backgroundTasks?.embedding && { embedding: await options.backgroundTasks.embedding.status() }),
         ...(fileOperations && { libraryFileOperations: await fileOperations.status() }),
       })) }] : []),
+      ...(options.backgroundTasks?.embedding ? [{ path: SEMANTIC_SEARCH_PATH, router: options.backgroundTasks.embedding.router() }] : []),
       ...createPdfitMetadataRouterMounts(options.metadataStore, watcher.bus, options.suggestBookTags, undefined, ocr),
       { path: '/api/bookmark-assets', router: express.Router().use(express.static(bookmarkAssetRoot)).use(express.static(legacyBookmarkAssetRoot)) },
     ],

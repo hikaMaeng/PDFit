@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./common/protocol/embedding-search": {
+      "types": "./dist/common/protocol/embedding-search/index.d.ts",
+      "default": "./dist/common/protocol/embedding-search/index.js"
+    },
     "./common/protocol/book-bot": {
       "types": "./dist/common/protocol/book-bot/index.d.ts",
       "default": "./dist/common/protocol/book-bot/index.js"

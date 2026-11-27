@@ -31,3 +31,13 @@
 - 기존 OCR 복원 · [restorePageOcrSearchIndex](../src/server/ocr/pageOcrSearchIndex.ts) · [createOcrService](../src/server/ocr/ocrService.ts)
 - 탭 전환 · [SearchPage](../src/front/pages/SearchPage.tsx) · [ContentSearchResults](../src/front/pages/ContentSearchResults.tsx)
 - 검증 · [콘텐츠 검색 테스트 계획](../../../apps/pdfit/tests/plans/content-search-20261123.md)
+
+## 의미 검색
+
+Free의 의미 검색 탭은 페이지 OCR, 클립 OCR, 클립 메모, 일반 코멘트를 조회한다. 원문은 출처별 레코드와 페이지를 유지한다. 일반 코멘트의 링크는 책과 코멘트 UUID를 함께 확인한다. [검색 화면](../src/front/pages/semantic-search/Results.tsx#SemanticResults) · [API 계약](../src/common/protocol/embedding-search/index.ts)
+
+OCR 투영은 전체 본문을 `embedding_body`에 저장한다. 캐시에서 전체 원문을 얻기 전에는 기존 `body`를 부분 색인한다. 페이지 본문을 문장·단어·유니코드 문자 경계에서 나누고 일부 문맥을 겹친다. 호환 서버의 입력 한도는 프리픽스와 여유분을 포함한 UTF-8 바이트 예산으로 보수적으로 적용한다. 원문 위치는 PostgreSQL 문자 단위로 기록한다. [OCR 저장](../src/server/postgres/contentSearch.ts#savePageOcrSearchText) · [청크 분할](../src/server/embedding/chunks.worker.ts#splitEmbeddingChunk)
+
+기존 시간별 스케줄러가 변경 표식을 읽는다. PostgreSQL 큐에서 짧은 단위로 일감을 받아 `{ input: [...] }` 배열을 하나씩 전송한다. 설정의 임베딩 동시성은 배열 원소 수의 상한이다. 원본 차원과 전송 예산에 맞춰 배치 크기를 줄인다. 원격 대기 중에는 공용 작업 슬롯을 반납한다. 색인은 모델별 테이블에 원본·HNSW 차원을 나눠 저장한다. HNSW 후보 중 현재 리비전의 청크를 골라 원본 차원으로 다시 정렬한다. [큐·테이블과 조회](../src/server/embedding/store.ts#EmbeddingStore) · [스케줄러 연결과 디스패치](../src/server/embedding/service.ts#EmbeddingService)
+
+[Free 설정 계약](../../../apps/pdfit/docs/api.md#기본-ai-모델) · [통합 테스트 계획](../../../apps/pdfit/tests/plans/embedding-search-20261127.md)

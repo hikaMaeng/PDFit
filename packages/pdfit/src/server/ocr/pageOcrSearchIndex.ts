@@ -6,6 +6,8 @@ type BookKey = { folder: string; filename: string };
 
 export interface PageOcrSearchIndex {
   listBooks(): Promise<BookKey[]>;
+  prepareCacheLookup?(): Promise<void>;
+  findCacheBook?(hash: string): Promise<BookKey | undefined>;
   save(folder: string, filename: string, stamp: string, pageIndex: number, text: string): Promise<void>;
   listPages?(folder: string, filename: string, stamp: string, pageIndex?: number): Promise<number[]>;
 }
@@ -15,18 +17,26 @@ export async function restorePageOcrSearchIndex(
   cacheRoot: string, cacheVersion: string, index: PageOcrSearchIndex,
   persist: (write: () => Promise<void>) => Promise<void> = (write) => write(),
 ) {
-  const files = await fs.readdir(cacheRoot).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT') return [];
+  const files = await fs.opendir(cacheRoot).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
     throw error;
   });
+  if (!files) return;
   const cacheName = /^([a-f0-9]{40})\.(v\d+)-(\d+-\d+)\.p(\d+)\.json$/;
-  const candidates = files.map((name) => ({ name, match: cacheName.exec(name) }))
-    .filter(({ match }) => match?.[2] === cacheVersion);
-  if (!candidates.length) return;
-  const books = new Map((await index.listBooks()).map((book) => [thumbnailIdentityHash(book.folder, book.filename), book]));
-  for (const { name, match } of candidates) {
-    const [, identity, , stamp, indexText] = match!;
-    const book = books.get(identity);
+  let books: Map<string, BookKey> | undefined;
+  let prepared = false;
+  let count = 0;
+  for await (const { name } of files) {
+    if (++count % 16 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+    const match = cacheName.exec(name);
+    if (match?.[2] !== cacheVersion) continue;
+    if (!prepared) {
+      if (index.findCacheBook) await index.prepareCacheLookup?.();
+      else books = new Map((await index.listBooks()).map((book) => [thumbnailIdentityHash(book.folder, book.filename), book]));
+      prepared = true;
+    }
+    const [, identity, , stamp, indexText] = match;
+    const book = index.findCacheBook ? await index.findCacheBook(identity) : books?.get(identity);
     const pageIndex = Number(indexText);
     if (!book || pageIndex >= 2_147_483_647) continue;
     await persist(async () => {

@@ -92,6 +92,13 @@ export function createBookCommentsRouter(resolver: MetadataStoreResolver): Route
       res.set('Cache-Control', 'no-store');
       switch (req.method) {
         case 'GET': {
+          if (id !== undefined) {
+            if (typeof id !== 'string' || !BOOK_COMMENT_ID.test(id)) { res.status(400).end(); return; }
+            const comment = await store.readBookComment?.(book, id.toLowerCase());
+            if (!comment) { res.status(404).end(); return; }
+            res.json({ page: 1, total: 1, comments: [comment] } satisfies BookCommentPage);
+            return;
+          }
           const offset = Number(page);
           if (typeof page !== 'string' || !Number.isSafeInteger(offset) || offset < 1) { res.status(400).end(); return; }
           const filter = referencePage === undefined ? undefined : Number(referencePage);

@@ -1,4 +1,5 @@
 import { AI_MODEL_PROGRESS_MEDIA_TYPE, readAiProgressResponse } from '@pdfit/pdfit/client/shared';
+import type { DefaultAiModels, EmbeddingModel, LanguageModelCandidate, ModelChoice } from '@pdfit/pdfit/common/protocol/embedding-search';
 
 // ─── 공유 타입 ─────────────────────────────────────────────────
 export type AiServerType = 'lm-studio' | 'openai-compat';
@@ -18,6 +19,8 @@ export interface AiServer {
   models: AiServerModels;
   ocrConcurrency: number;
   botContextTokens: number | null;
+  llmCandidates: LanguageModelCandidate[];
+  embeddingCandidates: EmbeddingModel[];
   created_at: number;
   updated_at: number;
 }
@@ -30,6 +33,23 @@ export interface AiServerInput {
   models?: AiServerModels;
   ocrConcurrency?: number;
   botContextTokens?: number | null;
+  llmCandidates?: LanguageModelCandidate[];
+  embeddingCandidates?: EmbeddingModel[];
+}
+
+export async function readDefaultAiModels(): Promise<DefaultAiModels> {
+  const res = await fetch('/api/settings/ai-models/defaults');
+  if (!res.ok) throw new Error('Could not load default AI models');
+  return res.json();
+}
+
+export async function selectDefaultAiModel(role: 'llm' | 'embedding', choice: ModelChoice | null): Promise<DefaultAiModels> {
+  const res = await fetch('/api/settings/ai-models/defaults', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role, choice }),
+  });
+  if (!res.ok) throw new Error('Could not select the default AI model');
+  displayTranslationAvailability = undefined;
+  return res.json();
 }
 
 // ─── AI 서버 API ───────────────────────────────────────────────
@@ -73,8 +93,8 @@ const displayTranslationCache = new Map<string, string>();
 let displayTranslationAvailability: Promise<boolean> | undefined;
 
 async function hasDisplayTranslationServer(): Promise<boolean> {
-  displayTranslationAvailability ??= listAiServers()
-    .then((servers) => servers.some((server) => Boolean(server.models.llm?.trim())))
+  displayTranslationAvailability ??= Promise.all([readDefaultAiModels(), listAiServers()])
+    .then(([defaults, servers]) => defaults.llmExplicit ? Boolean(defaults.llm) : servers.some((server) => server.llmCandidates.length > 0))
     .catch(() => false);
   return displayTranslationAvailability;
 }

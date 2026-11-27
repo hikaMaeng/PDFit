@@ -127,7 +127,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   async function indexPage(folder: string, filename: string, stamp: string, result: PageOcrResult) {
     if (pageSearchIndex && result.source !== 'none' && (result.edited || result.text.trim())) {
       await pageSearchIndex.save(folder, filename, stamp, result.pageIndex, result.text)
-        .catch(() => log('Could not index page OCR text.'));
+        .catch(() => { restoringPageIndex = undefined; log('Could not index page OCR text.'); });
     }
   }
 
@@ -415,7 +415,10 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
         const result = pageResult({ ...cached, text, edited: true }, document.stamp, false, started);
         await assertCurrent(document);
         await cachePage(document, result, false);
-        await pageSearchIndex?.save(folder, filename, document.stamp, pageIndex, text);
+        await pageSearchIndex?.save(folder, filename, document.stamp, pageIndex, text).catch((error) => {
+          restoringPageIndex = undefined;
+          throw error;
+        });
         return { ...result, cached: true, durationMs: Date.now() - started };
       });
     },

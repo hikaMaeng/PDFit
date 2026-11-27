@@ -49,6 +49,7 @@ export interface WriteBookComment {
 }
 
 export interface BookCommentStore {
+  readBookComment?(book: CommentBook, id: string): Promise<BookComment | null>;
   listBookCommentCounts(books: readonly CommentBook[]): Promise<number[]>;
   listBookComments(book: CommentBook, page: number, referencePage?: number): Promise<BookCommentPage>;
   createBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;

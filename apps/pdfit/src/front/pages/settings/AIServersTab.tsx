@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 import {
   Box,
@@ -38,6 +38,8 @@ import {
 } from '../../api/settings';
 import { usePdfitI18n } from '@pdfit/pdfit/client/service';
 import { settingsKeys } from './resource';
+import { DefaultModelSelects, ModelCandidatesEditor } from './AiModelSettings';
+import { CandidateDraft } from './aiModelSettingsModel';
 
 interface HeadersEditorProps {
   value: Record<string, string>;
@@ -119,6 +121,8 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
   const [botContext, setBotContext] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [candidates] = useState(() => new CandidateDraft());
+  useSyncExternalStore(candidates.subscribe, candidates.getVersion);
 
   useEffect(() => {
     if (!open) {
@@ -142,17 +146,18 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
     );
     setOcrConcurrency(String(initial?.ocrConcurrency ?? 1));
     setBotContext(initial?.botContextTokens == null ? '' : String(initial.botContextTokens));
+    candidates.reset(initial);
     setError('');
-  }, [initial, open]);
+  }, [initial, open, candidates]);
 
   function setField<K extends keyof AiServerInput>(key: K, value: AiServerInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function setModel(role: keyof NonNullable<AiServerInput['models']>, value: string) {
+  function setVision(value: string) {
     setForm((current) => ({
       ...current,
-      models: { ...current.models, [role]: value },
+      models: { ...current.models, vision: value },
     }));
   }
 
@@ -169,7 +174,8 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ ...form, ocrConcurrency: Number(ocrConcurrency), botContextTokens: contextTokens }, initial?.id);
+      await onSave({ ...form, llmCandidates: candidates.llm, embeddingCandidates: candidates.embedding,
+        ocrConcurrency: Number(ocrConcurrency), botContextTokens: contextTokens }, initial?.id);
       onClose();
     } catch (caught) {
       setError(String(caught));
@@ -201,12 +207,11 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
             fullWidth
           >
-            <MenuItem value="openai-compat">OpenAI compatible</MenuItem>
-            <MenuItem value="lm-studio">LM Studio</MenuItem>
+            <MenuItem value="openai-compat">{t(settingsKeys.openaiCompatible)}</MenuItem>
+            <MenuItem value="lm-studio">{t(settingsKeys.lmStudio)}</MenuItem>
           </Select>
           <TextField
             label={t('serverUrl')}
-            placeholder="http://localhost:1234/v1"
             value={form.url}
             onChange={(event) => setField('url', event.target.value)}
             fullWidth
@@ -224,9 +229,8 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
           </Typography>
           <TextField
             label={t('visionModel')}
-            placeholder="llava:7b"
             value={form.models?.vision ?? ''}
-            onChange={(event) => setModel('vision', event.target.value)}
+            onChange={(event) => setVision(event.target.value)}
             fullWidth
             size="small"
           />
@@ -241,14 +245,6 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
-            label={t('llmModel')}
-            placeholder="mistral:7b"
-            value={form.models?.llm ?? ''}
-            onChange={(event) => setModel('llm', event.target.value)}
-            fullWidth
-            size="small"
-          />
-          <TextField
             label={t(settingsKeys.botContextTokens)}
             type="number"
             value={botContext}
@@ -258,14 +254,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             fullWidth
             size="small"
           />
-          <TextField
-            label={t('embeddingModel')}
-            placeholder="nomic-embed-text"
-            value={form.models?.embedding ?? ''}
-            onChange={(event) => setModel('embedding', event.target.value)}
-            fullWidth
-            size="small"
-          />
+          <ModelCandidatesEditor draft={candidates} />
 
           {error ? (
             <Typography color="error" variant="caption">
@@ -278,7 +267,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
         <Button onClick={onClose} disabled={saving}>
           {t('cancel')}
         </Button>
-        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit || !validContext}>
+        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit || !validContext || !candidates.valid}>
           {saving ? t('saving') : t('save')}
         </Button>
       </DialogActions>
@@ -293,11 +282,14 @@ export default function AIServersTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AiServer | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [mutationError, setMutationError] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
       setServers(await listAiServers());
+    } catch {
+      setMutationError(true);
     } finally {
       setLoading(false);
     }
@@ -320,13 +312,13 @@ export default function AIServersTab() {
     if (deleteId === null) return;
     const id = deleteId;
     setDeleteId(null);
-    await deleteAiServer(id);
-    await load();
+    try { await deleteAiServer(id); await load(); setMutationError(false); }
+    catch { setMutationError(true); }
   }
 
   const serverTypeLabel: Record<string, string> = {
-    'openai-compat': 'OpenAI compatible',
-    'lm-studio': 'LM Studio',
+    'openai-compat': t(settingsKeys.openaiCompatible),
+    'lm-studio': t(settingsKeys.lmStudio),
   };
 
   return (
@@ -347,6 +339,8 @@ export default function AIServersTab() {
           {t('addServer')}
         </Button>
       </Stack>
+      <DefaultModelSelects servers={servers} />
+      {mutationError && <Typography color="error" role="alert" sx={{ mb: 1 }}>{t(settingsKeys.modelError)}</Typography>}
 
       {loading ? (
         <Typography color="text.secondary" variant="body2">
@@ -363,7 +357,7 @@ export default function AIServersTab() {
               <TableRow>
                 <TableCell>{t('name')}</TableCell>
                 <TableCell>{t('type')}</TableCell>
-                <TableCell>URL</TableCell>
+                <TableCell>{t('serverUrl')}</TableCell>
                 <TableCell>{t('models')}</TableCell>
                 <TableCell align="right">{t('actions')}</TableCell>
               </TableRow>
@@ -382,11 +376,9 @@ export default function AIServersTab() {
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                      {server.models.vision ? <Chip label={`Vision: ${server.models.vision}`} size="small" variant="outlined" /> : null}
-                      {server.models.llm ? <Chip label={`LLM: ${server.models.llm}`} size="small" variant="outlined" /> : null}
-                      {server.models.embedding ? (
-                        <Chip label={`Embedding: ${server.models.embedding}`} size="small" variant="outlined" />
-                      ) : null}
+                      {server.models.vision ? <Chip label={`${t('visionModel')} · ${server.models.vision}`} size="small" variant="outlined" /> : null}
+                      {server.llmCandidates.map((model) => <Chip key={model.id} label={`${t('llmModel')} · ${model.name}`} size="small" variant="outlined" />)}
+                      {server.embeddingCandidates.map((model) => <Chip key={model.id} label={`${t('embeddingModel')} · ${model.name}`} size="small" variant="outlined" />)}
                     </Stack>
                   </TableCell>
                   <TableCell align="right">

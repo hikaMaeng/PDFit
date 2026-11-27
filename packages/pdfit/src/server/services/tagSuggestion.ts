@@ -542,6 +542,7 @@ export interface TagSuggestionRuntimeOptions {
    * HTTPS rule for SERVICE_AI_BASE_URL does not apply to it.
    */
   resolveAiServer?: () => Promise<OpenAiCompatibleTagSuggestionConfig | null>;
+  useEnvironmentClassifier?: () => Promise<boolean>;
 }
 
 /**
@@ -585,7 +586,7 @@ export function createTagSuggestionProviderFromEnvironment(
   const publicLookup = createYes24PublicBookLookup(request);
   const subjectFallback = createWikidataSubjectTagSuggestionProvider(request);
   const resolveClassifier = async (): Promise<BookTagSuggestionProvider | null> => {
-    if (environmentClassifier) return environmentClassifier;
+    if (environmentClassifier && (await options.useEnvironmentClassifier?.() ?? true)) return environmentClassifier;
     const server = options.resolveAiServer ? await options.resolveAiServer().catch(() => null) : null;
     return server ? createOpenAiCompatibleTagSuggestionProvider(server, requestAi) : null;
   };

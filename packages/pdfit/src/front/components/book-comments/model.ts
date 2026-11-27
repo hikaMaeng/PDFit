@@ -36,6 +36,7 @@ class BookCommentsModel {
   private requestedPage = 1;
   private viewerPage: number | undefined;
   private refreshOnRead = false;
+  private targetId?: string;
 
   page: BookCommentPage | null = null;
   filter: ListFilter = 'latest';
@@ -60,10 +61,11 @@ class BookCommentsModel {
     this.listeners.forEach((listener) => listener());
   }
 
-  open(book: CommentBook, viewerPage?: number) {
+  open(book: CommentBook, viewerPage?: number, targetId?: string) {
     this.book = book;
     this.page = null;
     this.viewerPage = viewerPage;
+    this.targetId = targetId;
     this.filter = 'latest';
     this.refreshOnRead = false;
     this.mode = 'read';
@@ -93,6 +95,7 @@ class BookCommentsModel {
     this.emit();
     try {
       const query = new URLSearchParams({ page: String(page) });
+      if (this.targetId) query.set('id', this.targetId);
       if (this.filter === 'current' && this.viewerPage !== undefined) query.set('referencePage', String(this.viewerPage));
       const response = await fetch(`${bookCommentUrl(this.book)}&${query}`, { signal: request.signal });
       const result = response.ok ? parseBookCommentPage(await response.json()) : null;

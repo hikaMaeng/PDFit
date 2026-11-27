@@ -19,6 +19,8 @@ export interface PeriodicTaskDefinition<Payload = unknown, Result = unknown> {
   /** ES module whose default export is a TaskScript for this job. */
   script: URL | string;
   timeoutMs?: number;
+  /** For task types that schedule their own bounded continuations from durable state. */
+  preservePending?: boolean;
   plan(): Promise<PlannedTask<Payload>[]>;
   /**
    * Runs on the main thread just before a task is handed to a worker and returns the
@@ -28,6 +30,8 @@ export interface PeriodicTaskDefinition<Payload = unknown, Result = unknown> {
   prepare?(task: TaskEnvelope<Payload>): Promise<unknown> | unknown;
   /** Runs on the main thread after each task settles, before its slot is reused. */
   onSettled?(task: TaskEnvelope<Payload>, outcome: TaskOutcome<Result>): void | Promise<void>;
+  /** Runs after a shared slot is released, including when another task type finishes. */
+  onCapacity?(): void;
 }
 
 export interface TaskSchedulerOptions {
@@ -234,7 +238,9 @@ export class TaskScheduler {
         const envelopes = planned
           .filter((task) => !this.running.has(taskIdentity(definition.type, task.key)))
           .map((task) => this.envelope(definition, task));
-        const { dropped, queued, rejected } = this.queue.replaceType(definition.type, envelopes);
+        const { dropped, queued, rejected } = definition.preservePending
+          ? { dropped: 0, queued: envelopes.filter((envelope) => this.queue.submit(envelope) === 'queued').length, rejected: 0 }
+          : this.queue.replaceType(definition.type, envelopes);
         state.planned = planned.length;
         state.completedSincePlan = 0;
         state.failedSincePlan = 0;
@@ -319,10 +325,15 @@ export class TaskScheduler {
     this.running.delete(identity);
     if (this.cooldownMs > 0 && this.queue.size > 0) {
       this.cooling += 1;
-      const timer = setTimeout(() => { this.cooling -= 1; this.pump(); }, this.cooldownMs);
+      const timer = setTimeout(() => { this.cooling -= 1; this.notifyCapacity(); }, this.cooldownMs);
       timer.unref?.();
       return;
     }
+    this.notifyCapacity();
+  }
+
+  private notifyCapacity(): void {
+    if (this.started) for (const { definition } of this.types.values()) definition.onCapacity?.();
     this.pump();
   }
 

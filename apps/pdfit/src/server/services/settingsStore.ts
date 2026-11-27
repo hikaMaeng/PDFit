@@ -1,5 +1,7 @@
-import { Pool } from 'pg';
-import { aiModelQueueKey, chatCompletionsUrl } from '@pdfit/pdfit/server';
+import { randomUUID } from 'node:crypto';
+import { Pool, type PoolClient } from 'pg';
+import { aiModelQueueKey, chatCompletionsUrl, type EmbeddingEndpoint } from '@pdfit/pdfit/server';
+import type { DefaultAiModels, EmbeddingModel, LanguageModelCandidate, ModelChoice } from '@pdfit/pdfit/common/protocol/embedding-search';
 
 export type AiServerType = 'lm-studio' | 'openai-compat';
 
@@ -18,6 +20,9 @@ export interface AiServer {
   models: AiServerModels;
   ocrConcurrency: number;
   botContextTokens: number | null;
+  llmCandidates: LanguageModelCandidate[];
+  embeddingCandidates: EmbeddingModel[];
+  connectionVersion: string;
   created_at: number;
   updated_at: number;
 }
@@ -30,6 +35,8 @@ export interface AiServerInput {
   models?: AiServerModels;
   ocrConcurrency?: number;
   botContextTokens?: number | null;
+  llmCandidates?: LanguageModelCandidate[];
+  embeddingCandidates?: EmbeddingModel[];
 }
 
 // Multiple Settings entries can point to the same upstream with different model roles.
@@ -45,15 +52,13 @@ export function aiServerConcurrency(servers: readonly AiServer[], baseUrl: strin
   return limit;
 }
 
-export interface SettingsStore {
-  ensureSchema(): Promise<void>;
-  listAiServers(): Promise<AiServer[]>;
-  createAiServer(input: AiServerInput): Promise<number>;
-  updateAiServer(id: number, input: Partial<AiServerInput>): Promise<boolean>;
-  deleteAiServer(id: number): Promise<boolean>;
+export class ActiveModelConflict extends Error {}
+
+export function candidatesWithIds<T extends { id?: string }>(candidates: T[] | undefined): string {
+  return JSON.stringify((candidates ?? []).map((candidate) => ({ ...candidate, id: candidate.id || randomUUID() })));
 }
 
-export class PostgresSettingsStore implements SettingsStore {
+export class PostgresSettingsStore {
   constructor(private readonly pool: Pool) {}
 
   async ensureSchema(): Promise<void> {
@@ -73,6 +78,9 @@ export class PostgresSettingsStore implements SettingsStore {
         CHECK (ocr_concurrency > 0)
     `);
     await this.pool.query('ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS bot_context_tokens INTEGER');
+    await this.pool.query(`ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS llm_candidates JSONB,
+      ADD COLUMN IF NOT EXISTS embedding_candidates JSONB NOT NULL DEFAULT '[]',
+      ADD COLUMN IF NOT EXISTS connection_version UUID NOT NULL DEFAULT gen_random_uuid()`);
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS ai_server_models (
         id BIGSERIAL PRIMARY KEY,
@@ -101,32 +109,21 @@ export class PostgresSettingsStore implements SettingsStore {
     `);
   }
 
-  async listAiServers(): Promise<AiServer[]> {
-    const servers = await this.pool.query(`
-      SELECT id, name, type, url, headers, ocr_concurrency, bot_context_tokens, created_at, updated_at
-      FROM ai_servers
-      ORDER BY id
-    `);
-    const models = await this.pool.query(`
-      SELECT server_id, role, model_name
-      FROM ai_server_models
-      ORDER BY server_id, role
-    `);
-    const byServer = new Map<number, AiServerModels>();
-
-    for (const row of models.rows) {
-      const current = byServer.get(Number(row.server_id)) ?? {};
-      current[row.role as keyof AiServerModels] = row.model_name;
-      byServer.set(Number(row.server_id), current);
-    }
-
+  async listAiServers(db: Pool | PoolClient = this.pool, id?: number): Promise<AiServer[]> {
+    const servers = await db.query(`
+      SELECT s.*, COALESCE((SELECT jsonb_object_agg(role, model_name) FROM ai_server_models WHERE server_id = s.id), '{}') AS models
+      FROM ai_servers s WHERE ($1::bigint IS NULL OR s.id = $1) ORDER BY s.id
+    `, [id ?? null]);
     return servers.rows.map((row) => ({
       id: Number(row.id),
       name: row.name,
       type: row.type,
       url: row.url,
       headers: row.headers ?? {},
-      models: byServer.get(Number(row.id)) ?? {},
+      models: row.models,
+      llmCandidates: row.llm_candidates ?? (row.models.llm?.trim() ? [{ id: `legacy-${row.id}`, name: row.models.llm }] : []),
+      embeddingCandidates: row.embedding_candidates,
+      connectionVersion: row.connection_version,
       ocrConcurrency: row.ocr_concurrency,
       botContextTokens: row.bot_context_tokens,
       created_at: Number(row.created_at),
@@ -140,11 +137,12 @@ export class PostgresSettingsStore implements SettingsStore {
       await client.query('BEGIN');
       const inserted = await client.query(
         `
-          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency, bot_context_tokens)
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency, bot_context_tokens, llm_candidates, embedding_candidates)
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
           RETURNING id
         `,
-        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1, input.botContextTokens ?? null],
+        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1, input.botContextTokens ?? null,
+          input.llmCandidates ? candidatesWithIds(input.llmCandidates) : null, candidatesWithIds(input.embeddingCandidates)],
       );
       const id = Number(inserted.rows[0].id);
 
@@ -176,8 +174,9 @@ export class PostgresSettingsStore implements SettingsStore {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const exists = await client.query('SELECT id FROM ai_servers WHERE id = $1', [id]);
-      if (exists.rowCount === 0) {
+      const defaults = await this.lockDefaults(client);
+      const [before] = await this.listAiServers(client, id);
+      if (!before) {
         await client.query('ROLLBACK');
         return false;
       }
@@ -208,11 +207,20 @@ export class PostgresSettingsStore implements SettingsStore {
         fields.push(`bot_context_tokens = $${fields.length + 1}`);
         values.push(input.botContextTokens);
       }
+      if (input.llmCandidates !== undefined) {
+        fields.push(`llm_candidates = $${fields.length + 1}::jsonb`);
+        values.push(candidatesWithIds(input.llmCandidates));
+      }
+      if (input.embeddingCandidates !== undefined) {
+        fields.push(`embedding_candidates = $${fields.length + 1}::jsonb`);
+        values.push(candidatesWithIds(input.embeddingCandidates));
+      }
 
       if (fields.length > 0) {
         values.push(id);
         await client.query(
-          `UPDATE ai_servers SET ${fields.join(', ')}, updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $${values.length}`,
+          `UPDATE ai_servers SET ${fields.join(', ')}, connection_version = gen_random_uuid(),
+            updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $${values.length}`,
           values,
         );
       }
@@ -230,6 +238,18 @@ export class PostgresSettingsStore implements SettingsStore {
         }
       }
 
+      const [after] = await this.listAiServers(client, id);
+      if (defaults.llm?.serverId === id && !after.llmCandidates.some((candidate) => candidate.id === defaults.llm?.modelId)) {
+        throw new ActiveModelConflict('Choose another default LLM or clear the selection');
+      }
+      if (defaults.embedding?.serverId === id) {
+        const oldModel = before.embeddingCandidates.find((candidate) => candidate.id === defaults.embedding?.modelId);
+        const newModel = after.embeddingCandidates.find((candidate) => candidate.id === defaults.embedding?.modelId);
+        if (!oldModel || !newModel || before.url !== after.url || before.type !== after.type || JSON.stringify(before.headers) !== JSON.stringify(after.headers)
+          || Object.keys(oldModel).some((key) => key !== 'embeddingConcurrency' && oldModel[key as keyof EmbeddingModel] !== newModel[key as keyof EmbeddingModel])) {
+          throw new ActiveModelConflict('Choose another default embedding model or clear the selection');
+        }
+      }
       await client.query('COMMIT');
       return true;
     } catch (error) {
@@ -241,7 +261,56 @@ export class PostgresSettingsStore implements SettingsStore {
   }
 
   async deleteAiServer(id: number): Promise<boolean> {
-    const result = await this.pool.query('DELETE FROM ai_servers WHERE id = $1', [id]);
-    return (result.rowCount ?? 0) > 0;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const defaults = await this.lockDefaults(client);
+      if (defaults.llm?.serverId === id || defaults.embedding?.serverId === id) throw new ActiveModelConflict('Clear the active model selections first');
+      const result = await client.query('DELETE FROM ai_servers WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async lockDefaults(client: PoolClient): Promise<DefaultAiModels> {
+    await client.query('SELECT singleton FROM embedding_control WHERE singleton FOR UPDATE');
+    return this.defaultModels(client);
+  }
+
+  async defaultModels(db: Pool | PoolClient = this.pool): Promise<DefaultAiModels> {
+    const { rows: [row] } = await db.query<{ llm: ModelChoice | null; llmExplicit: boolean; embedding: ModelChoice | null }>(`
+      SELECT (s.value::jsonb) AS llm, s.key IS NOT NULL AS "llmExplicit", c.model_choice AS embedding
+      FROM embedding_control c LEFT JOIN app_settings s ON s.key = 'default-llm-v1' WHERE c.singleton
+    `);
+    return row;
+  }
+
+  async selectLlm(client: PoolClient, choice: ModelChoice | null): Promise<void> {
+    if (choice && !(await this.listAiServers(client, choice.serverId))[0]?.llmCandidates.some((model) => model.id === choice.modelId)) {
+      throw new ActiveModelConflict('LLM candidate no longer exists');
+    }
+    await client.query(`INSERT INTO app_settings(key, value) VALUES ('default-llm-v1', $1)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value`, [JSON.stringify(choice)]);
+  }
+
+  async embeddingEndpoint(choice: ModelChoice, db: Pool | PoolClient = this.pool): Promise<(EmbeddingEndpoint & { version: string }) | null> {
+    const [server] = await this.listAiServers(db, choice.serverId);
+    const model = server?.embeddingCandidates.find((candidate) => candidate.id === choice.modelId);
+    return model ? { model, baseUrl: server.url, headers: server.headers, version: server.connectionVersion } : null;
+  }
+
+  async resolveLlm(servers?: AiServer[]): Promise<AiServer | null> {
+    const settings = await this.defaultModels();
+    servers ??= await this.listAiServers();
+    if (!settings.llmExplicit) {
+      const server = servers.find((candidate) => candidate.llmCandidates.length > 0);
+      return server ? { ...server, models: { ...server.models, llm: server.llmCandidates[0].name } } : null;
+    }
+    const server = servers.find((candidate) => candidate.id === settings.llm?.serverId);
+    const model = server?.llmCandidates.find((candidate) => candidate.id === settings.llm?.modelId);
+    return server && model ? { ...server, models: { ...server.models, llm: model.name } } : null;
   }
 }

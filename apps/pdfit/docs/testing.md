@@ -97,6 +97,8 @@ checked-in report directory.
 
 Plans and reports are under `apps/pdfit/tests/plans/` and `apps/pdfit/tests/reports/`. Browser screenshots and machine-readable artifacts belong under `test/YYYYMMDD/<run>/`.
 
+의미 검색은 격리 Free 컨테이너와 Chromium에서 검증한다. 브라우저에서 기본 모델을 선택한 뒤 OCR 끝부분을 찾고, HTTP 서버에서 요청당 배열 크기와 최대 진행 중 요청 수를 기록한다. [임베딩 검색 검증 계획](../tests/plans/embedding-search-20261127.md)
+
 The LinkCpp-inspired shell verification is recorded in `apps/pdfit/tests/reports/ui-theme/20260805_205600.md`, with browser evidence under `test/20260805/20260805_linkcpp-theme-smoke/`.
 
 `tests/free-settings-globe-deployed-browser.mjs` is a read-only check of a deployed Free app (`PDFIT_BASE_URL`, `PDFIT_EVIDENCE_DIR`, `PDFIT_BROWSER_CHANNEL=chrome`): the upper-left globe button (`lnb-preferences`) opens the language/theme dialog and `/settings` shows only the AI servers tab. Latest report: `tests/reports/settings-globe-pgvector-removal-20261110.md`.

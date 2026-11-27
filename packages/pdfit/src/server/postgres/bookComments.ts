@@ -56,6 +56,11 @@ function fromRow(row?: CommentRow | null): BookComment | null {
 
 export function createPostgresBookComments(db: Pool): BookCommentStore {
   return {
+    async readBookComment({ folder, filename }, id) {
+      const { rows: [row] } = await db.query<CommentRow>(`SELECT ${commentColumns}
+        FROM book_comments WHERE (folder, filename, id) = ($1, $2, $3)`, [folder, filename, id]);
+      return fromRow(row);
+    },
     async listBookCommentCounts(books) {
       const { rows } = await db.query<{ total: number }>(`
         SELECT (SELECT COUNT(*)::int FROM book_comments c

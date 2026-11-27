@@ -2,7 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
-import { createPdfitServer, createTagSuggestionProviderFromEnvironment, readPdfitTaskSchedulerEnvironment } from '@pdfit/pdfit/server';
+import { createPdfitServer, createTagSuggestionProviderFromEnvironment, EmbeddingService, EmbeddingStore, readPdfitTaskSchedulerEnvironment } from '@pdfit/pdfit/server';
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
 import { createSettingsRouter } from './routes/settings.js';
 import { fetchAiModel } from './services/aiModelFetch.js';
@@ -59,9 +59,12 @@ const migrated = await migrateSqliteMetadata(path.join(path.dirname(booksRoot), 
 if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
+const embeddingStore = new EmbeddingStore(pool);
+await embeddingStore.ensureSchema();
+const embedding = new EmbeddingService(embeddingStore, (choice) => settingsStore.embeddingEndpoint(choice));
 const resolveChatModel = async () => {
   const servers = await settingsStore.listAiServers();
-  const server = servers.find((candidate) => Boolean(candidate.models.llm));
+  const server = await settingsStore.resolveLlm(servers);
   return server?.models.llm ? {
     baseUrl: server.url, model: server.models.llm, headers: server.headers,
     ocrConcurrency: aiServerConcurrency(servers, server.url), contextTokens: server.botContextTokens,
@@ -70,17 +73,15 @@ const resolveChatModel = async () => {
 // OCR can use a multimodal LLM when no vision model is set.
 const resolveVisionModel = async () => {
   const servers = await settingsStore.listAiServers();
-  const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
+  const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? await settingsStore.resolveLlm(servers);
   const model = server?.models.vision || server?.models.llm;
   return server && model ? {
     baseUrl: server.url, model, headers: server.headers, ocrConcurrency: aiServerConcurrency(servers, server.url),
   } : null;
 };
-// Tag classification uses the first Settings AI server that has an LLM model, read on every
-// request so a server added or changed in Settings applies without a restart. SERVICE_AI_*
-// still wins when set. Local reasoning models can need minutes per reply.
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
   requestAi: fetchAiModel,
+  useEnvironmentClassifier: async () => !(await settingsStore.defaultModels()).llmExplicit,
   resolveEnvironmentConcurrency: async (baseUrl) => aiServerConcurrency(await settingsStore.listAiServers(), baseUrl),
   resolveAiServer: async () => {
     const model = await resolveChatModel();
@@ -94,7 +95,7 @@ const app = createPdfitServer({
   booksRootName,
   staticDir: path.resolve(__dirname, '..'),
   logLabel: 'pdfit',
-  extraRouters: [{ path: '/api/settings', router: createSettingsRouter(settingsStore) }],
+  extraRouters: [{ path: '/api/settings', router: createSettingsRouter(settingsStore, embedding) }],
   watcherEnabled: true,
   viewerBasePath: '/viewer',
   viewerIndexFile: path.join('viewer', 'index.html'),
@@ -110,6 +111,7 @@ const app = createPdfitServer({
     ...taskSchedulerOptions,
     resolveVisionServer: resolveVisionModel,
     requestVision: fetchAiModel,
+    embedding,
   },
 });
 

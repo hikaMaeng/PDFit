@@ -39,3 +39,9 @@
 AI server records accept `botContextTokens` on create and update. An integer from 16,384 to 2,097,152 sets the Bot window for that record. `null` returns to automatic chunking. See [Bot context preparation](../../../packages/pdfit/docs/book-bot.md#answer-context).
 
 The shared route factories are exported by `@pdfit/pdfit/server`; app-owned settings are wired in `src/server/index.ts`.
+
+## 기본 AI 모델
+
+`/api/settings/ai-servers`의 `llmCandidates`와 `embeddingCandidates`에 서버별 후보를 저장한다. `GET /api/settings/ai-models/defaults`는 역할별 선택값을 반환한다. 같은 주소에 `PATCH`로 `{ role, choice }`를 보내 선택한다. `role`은 `llm` 또는 `embedding`이다. `choice`는 `{ serverId, modelId }` 또는 `null`이다. 임베딩을 고르면 배열 요청과 테이블 준비를 확인한 뒤 선택값을 저장한다. 활성 임베딩을 다른 배포로 바꿀 때는 새 후보를 추가하고 선택한다. 배치 크기만 바꾸면 기존 테이블을 쓴다. [설정 라우터](../src/server/routes/settings.ts#createSettingsRouter)
+
+`POST /api/search/semantic`은 `{ q, scope?, limit? }`를 받는다. `scope`는 `page-ocr`, `clip-ocr`, `clip-memo`, `book-comment` 중 하나이며 생략하면 모두 검색한다. `limit`은 1~50이다. 응답은 `status`와 `hits`를 담는다. 색인과 원격 호출 상태는 `/api/tasks/status`의 `details.embedding`에서 읽는다. [임베딩 검색과 원문 연결](../../../packages/pdfit/docs/content-search.md#의미-검색)

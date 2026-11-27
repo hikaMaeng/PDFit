@@ -18,18 +18,22 @@ import { usePdfitFrontConfig } from '../context';
 import { usePdfitI18n } from '../i18n/usePdfitI18n';
 import { CONTENT_SEARCH_SCOPES, isContentSearchScope, type ContentSearchScope } from '../../common/protocol/search/index.js';
 import ContentSearchResults from './ContentSearchResults.js';
+import { isSemanticScope } from '../../common/protocol/embedding-search/index.js';
+import SemanticResults from './semantic-search/Results.js';
+import { SEMANTIC } from './semantic-search/resource.js';
 
 const bookKey = (book: BookRef, index: number) => `${book.driveFileId ?? `${book.folder}/${book.filename}`}\u0000${index}`;
 
-type SearchTab = 'title' | ContentSearchScope;
+type SearchTab = 'title' | ContentSearchScope | 'semantic';
 const TAB_LABELS = {
   title: 'searchScopeTitle',
   outline: 'searchScopeOutline',
   'page-ocr': 'searchScopePageOcr',
   'clip-ocr': 'searchScopeClipOcr',
   'clip-memo': 'searchScopeClipMemo',
+  semantic: SEMANTIC.tab,
 } as const;
-const SEARCH_TABS: SearchTab[] = ['title', ...CONTENT_SEARCH_SCOPES];
+const SEARCH_TABS: SearchTab[] = ['title', ...CONTENT_SEARCH_SCOPES, 'semantic'];
 
 /** See docs/content-search.md#tabs for the lazy request contract. */
 export default function SearchPage() {
@@ -38,7 +42,10 @@ export default function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = (params.get('q') ?? '').trim();
   const requestedTab = params.get('scope');
-  const selected = query && contentSearch && isContentSearchScope(requestedTab) ? requestedTab : 'title';
+  const requestedMode = params.get('mode');
+  const source = params.get('source');
+  const selected = query && contentSearch && requestedMode === 'semantic' ? 'semantic'
+    : query && contentSearch && isContentSearchScope(requestedTab) ? requestedTab : 'title';
   return <Box data-testid="search-results-page" sx={{ py: 0.5 }}>
     <Box sx={{ px: 1, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
       <SearchIcon sx={{ fontSize: 30, color: 'primary.main' }} />
@@ -49,8 +56,12 @@ export default function SearchPage() {
         aria-label={t('searchResultsTitle')} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
         onChange={(_, tab: SearchTab) => {
           const next = new URLSearchParams(params);
-          if (tab === 'title') next.delete('scope');
-          else next.set('scope', tab);
+          if (tab === 'semantic') { next.set('mode', 'semantic'); next.delete('scope'); }
+          else {
+            next.delete('mode'); next.delete('source');
+            if (tab === 'title') next.delete('scope');
+            else next.set('scope', tab);
+          }
           setParams(next);
         }}>
         {SEARCH_TABS.map((tab) => <Tab key={tab} value={tab} label={t(TAB_LABELS[tab])}
@@ -60,6 +71,12 @@ export default function SearchPage() {
       {SEARCH_TABS.map((tab) => <Box key={tab} role="tabpanel" hidden={selected !== tab}
         id={`search-panel-${tab}`} aria-labelledby={`search-tab-${tab}`}>
         {selected === tab && (tab === 'title' ? <TitleSearchResults query={query} />
+          : tab === 'semantic' ? <SemanticResults key={query} q={query} scope={isSemanticScope(source) ? source : undefined}
+            selectScope={(scope) => {
+              const next = new URLSearchParams(params);
+              if (scope) next.set('source', scope); else next.delete('source');
+              setParams(next);
+            }} />
           : <ContentSearchResults key={JSON.stringify([query, tab])} scope={tab} query={query} />)}
       </Box>)}
     </> : <TitleSearchResults query={query} />}
