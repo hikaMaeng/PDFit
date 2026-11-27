@@ -10,3 +10,4 @@
 | Agent guardrails | docs/06-agent-guardrails.md |
 | Cutover history | docs/07-cutover-and-migration.md |
 | Verification evidence | docs/08-verification-and-evidence.md |
+| OCR·코멘트 임베딩 검색 계획 | [docs/09-embedding-search-plan.md](09-embedding-search-plan.md) |
