@@ -15,7 +15,7 @@ import { foldersApi, type FolderInfo } from '../api/folders.js';
 import { tagsApi, type BookRef } from '../api/tags.js';
 import { folderLibraryModel } from '../model/folderLibraryModel.js';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents.js';
-import { useTagMutationLocks } from './useTagMutationLocks.js';
+import { useTagMutationLocks, type TagMutationLocks } from './useTagMutationLocks.js';
 import { usePdfitFrontConfig } from '../context.js';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { isPendingUploadDriveFileId } from '../viewer/openViewer.js';
@@ -39,6 +39,7 @@ export interface BookLibraryActions {
   bookMetadataEnabled: boolean;
   /** 이 책의 AI 자동 태그가 진행 중인지(스피너). */
   isAutoTagging: (bookKey: string) => boolean;
+  autoTagPhase: TagMutationLocks['autoTagPhase'];
   /** 이 책의 AI 버튼을 잠가야 하는지. 다른 책이 도는 것은 이유가 되지 않는다. */
   isAutoTagDisabled: (bookKey: string) => boolean;
   openMoveDialog: (folder: string, filename: string, driveFileId?: string) => Promise<void>;
@@ -257,7 +258,7 @@ export function useBookLibraryActions(options: {
     const key = bookActionIdentity(book);
     if (!locks.begin('ai', key)) return;
     try {
-      const result = await tagsApi.autoTag(book.folder, book.filename, book.driveFileId);
+      const result = await tagsApi.autoTag(book.folder, book.filename, book.driveFileId, (phase) => locks.setAutoTagPhase(key, phase));
       // 서버가 적용한 태그를 그대로 반영한다. 목록 전체를 다시 불러오면 같은 화면에서
       // 동시에 돌고 있는 다른 책의 낙관적 갱신까지 서버 응답으로 덮어쓴다.
       setTagOverrides((prev) => {
@@ -372,6 +373,7 @@ export function useBookLibraryActions(options: {
     canUseAiAutoTag,
     bookMetadataEnabled: bookMetadataEnabled ?? false,
     isAutoTagging: locks.isAutoTagging,
+    autoTagPhase: locks.autoTagPhase,
     isAutoTagDisabled: useCallback(
       (bookKey: string) => locks.isBookBusy(bookKey) || (locks.autoTagSlotsFull && !locks.isAutoTagging(bookKey)),
       [locks],

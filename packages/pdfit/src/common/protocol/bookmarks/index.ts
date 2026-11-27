@@ -1,3 +1,5 @@
+import type { AiModelProgress } from '../ai-model/index.js';
+
 export type BookmarkRect = { x: number; y: number; width: number; height: number };
 
 export interface BookClipCount {
@@ -19,6 +21,7 @@ export interface BookmarkOcr {
   source: 'text-layer' | 'vision' | null;
   error: string | null;
   updatedAt: string | null;
+  modelPhase?: AiModelProgress;
 }
 
 export interface BookmarkRecord {

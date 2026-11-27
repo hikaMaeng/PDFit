@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import {
-  BOOK_BOT_ID, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotBook, parseBookBotQuestion,
-  type BookBotBook, type BookBotProgress, type BookBotSession, type BookBotTurn, type BookBotSessionPayload, type BookBotSessionsPayload,
+  BOOK_BOT_ID, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_PROGRESS_VERSION, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotBook, parseBookBotQuestion,
+  type BookBotBook, type BookBotProgress, type BookBotSession, type BookBotStreamEvent, type BookBotTurn, type BookBotSessionPayload, type BookBotSessionsPayload,
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
-import { openBookBotStream } from './stream.js';
+import { openEventStream } from '../services/eventStream.js';
 import type { BookBotModelConfig, BookBotStore } from './types.js';
 
 export interface BookBotOptions {
@@ -62,13 +62,18 @@ export function createBookBotRouter(options: BookBotOptions): Router {
     if (running.has(key)) { res.status(409).end(); return; }
     running.add(key);
     const wantsStream = req.accepts(['json', BOOK_BOT_STREAM_TYPE]) === BOOK_BOT_STREAM_TYPE;
-    let stream: ReturnType<typeof openBookBotStream> | undefined;
-    const reportProgress = req.get(BOOK_BOT_PROGRESS_HEADER) === '1'
-      ? (progress: BookBotProgress) => stream?.write({ type: 'progress', ...progress })
+    let stream: ReturnType<typeof openEventStream<BookBotStreamEvent>> | undefined;
+    const progressVersion = req.get(BOOK_BOT_PROGRESS_HEADER);
+    const reportProgress = progressVersion === '1' || progressVersion === BOOK_BOT_PROGRESS_VERSION
+      ? (progress: BookBotProgress) => {
+        if (progress.phase !== 'queued' || progressVersion === BOOK_BOT_PROGRESS_VERSION) {
+          stream?.write({ type: 'progress', ...progress });
+        }
+      }
       : undefined;
     const succeed = (session: BookBotSession, turn: BookBotTurn) => {
       if (wantsStream && !res.destroyed) {
-        stream ??= openBookBotStream(res);
+        stream ??= openEventStream(res, BOOK_BOT_STREAM_TYPE);
         const { id, title, createdAt, turns } = session;
         stream.write({ type: 'saved', session: { id, title, createdAt }, turn, revision: turns.length });
       } else if (!res.destroyed) res.json({ session } satisfies BookBotSessionPayload);
@@ -92,7 +97,7 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       const source = await store.source(book);
       if (!source) { res.status(404).end(); return; }
       if (source.outline === null) source.outline = input.embeddedOutline ?? null;
-      if (wantsStream && !res.destroyed) stream = openBookBotStream(res);
+      if (wantsStream && !res.destroyed) stream = openEventStream(res, BOOK_BOT_STREAM_TYPE);
       reportProgress?.({ phase: 'preparing' });
       const vision = source.clips.length ? await options.resolveVision?.() : null;
       const result = await answerBookQuestion({

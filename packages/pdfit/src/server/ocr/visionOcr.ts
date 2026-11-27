@@ -1,4 +1,5 @@
-import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from '../services/aiModelRequest.js';
+import { AI_MODEL_PRIORITY, AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from '../services/aiModelRequest.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 /**
  * OCR through an OpenAI-compatible vision model. Used only for areas that have no PDF
@@ -22,52 +23,6 @@ export function visionOcrConcurrency(server: VisionOcrServer | null): number {
   return Number.isSafeInteger(limit) && limit > 0 ? limit : 1;
 }
 
-interface VisionQueue {
-  limit: number;
-  active: number;
-  pending: Array<{ priority: number; run(): Promise<void> }>;
-}
-
-/** Page, clip and scan OCR share the limit for each upstream endpoint. */
-export function createVisionOcrQueue(request: typeof fetch) {
-  const queues = new Map<string, VisionQueue>();
-
-  function pump(endpoint: string, queue: VisionQueue) {
-    while (queue.active < queue.limit) {
-      const next = queue.pending.shift();
-      if (!next) break;
-      queue.active += 1;
-      void next.run().finally(() => {
-        queue.active -= 1;
-        pump(endpoint, queue);
-      });
-    }
-    if (queue.active === 0 && !queue.pending.length) queues.delete(endpoint);
-  }
-
-  return (server: VisionOcrServer, image: { bytes: Buffer; type: VisionImageType }, priority: number, trace?: VisionOcrTrace) => {
-    const endpoint = chatCompletionsUrl(server.baseUrl);
-    const queue = queues.get(endpoint) ?? { limit: 1, active: 0, pending: [] };
-    queues.set(endpoint, queue);
-    queue.limit = visionOcrConcurrency(server);
-    return new Promise<string>((resolve, reject) => {
-      queue.pending.push({
-        priority,
-        async run() {
-          try {
-            trace?.('vision-request', { endpoint: new URL(endpoint).origin, model: server.model, timeoutMs: server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS, visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
-            resolve(await recognizeImageText(server, image, request, trace));
-          }
-          catch (error) { reject(error); }
-        },
-      });
-      queue.pending.sort((left, right) => right.priority - left.priority);
-      trace?.('vision-queued', { visionActive: queue.active, visionPending: queue.pending.length, visionLimit: queue.limit });
-      pump(endpoint, queue);
-    });
-  };
-}
-
 const OCR_INSTRUCTION = [
   'Transcribe every piece of text visible in this image exactly as written, in its original language.',
   'Keep the reading order and line breaks. Do not translate, summarize, explain, or add anything.',
@@ -84,9 +39,13 @@ export async function recognizeImageText(
   image: { bytes: Buffer; type: VisionImageType },
   request: typeof fetch = fetch,
   trace?: VisionOcrTrace,
+  priority: number = AI_MODEL_PRIORITY.background,
+  queueSignal?: AbortSignal,
+  onProgress?: (phase: AiModelProgress) => void,
 ): Promise<string> {
-  const signal = AbortSignal.timeout(server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS);
-  const content = await streamAiCompletion(chatCompletionsUrl(server.baseUrl), {
+  const endpoint = chatCompletionsUrl(server.baseUrl);
+  const timeoutMs = server.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS;
+  const content = await streamAiCompletion(endpoint, {
     model: server.model,
     temperature: 0,
     messages: [{
@@ -99,7 +58,12 @@ export async function recognizeImageText(
   }, {
     headers: server.headers,
     request,
-    signal,
+    timeoutMs, concurrency: visionOcrConcurrency(server), priority, queueSignal, onProgress,
+    onQueued: trace && (({ active, pending, limit }) =>
+      trace('vision-queued', { visionActive: active, visionPending: pending, visionLimit: limit })),
+    onStarted: trace && (({ active, pending, limit }) =>
+      trace('vision-request', { endpoint: new URL(endpoint).origin, model: server.model, timeoutMs,
+        visionActive: active, visionPending: pending, visionLimit: limit })),
     onHttpStatus: (httpStatus) => trace?.('vision-response', { httpStatus }),
   });
   return cleanOcrOutput(content);

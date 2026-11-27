@@ -1,3 +1,5 @@
+import { AI_MODEL_PROGRESS_MEDIA_TYPE, readAiProgressResponse } from '@pdfit/pdfit/client/shared';
+
 // ─── 공유 타입 ─────────────────────────────────────────────────
 export type AiServerType = 'lm-studio' | 'openai-compat';
 
@@ -106,11 +108,12 @@ async function sendBatch(language: string, entries: { text: string; resolve: (va
   const texts = entries.map((entry) => entry.text);
   let translations: string[] = texts;
   try {
-    const res = await fetch('/api/settings/translations', {
+    const response = await fetch('/api/settings/translations', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: AI_MODEL_PROGRESS_MEDIA_TYPE },
       body: JSON.stringify({ texts, language }),
     });
+    const res = await readAiProgressResponse(response);
     if (res.ok) {
       const list = (await res.json() as { translations?: unknown }).translations;
       if (Array.isArray(list)) translations = texts.map((text, index) => (typeof list[index] === 'string' ? list[index] as string : text));

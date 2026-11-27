@@ -169,6 +169,7 @@ export function createPdfitCommonRouterAssembly(options: {
       submit: (task) => scheduler.submit(PAGE_TEXT_TASK_TYPE, task),
       resolveVisionServer: background.resolveVisionServer,
       request: background.requestVision,
+      onBookmarkModelProgress: () => watcher.bus.emit('change', 'bookmarks-changed'),
       cacheRoot: background.ocrCacheRoot ?? path.join(path.dirname(background.thumbnailRoot), 'ocr'),
       pageSearchIndex: store.savePageOcrText ? {
         listBooks: () => store.listTrackedBooks(),

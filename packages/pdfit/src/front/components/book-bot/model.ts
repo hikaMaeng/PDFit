@@ -1,5 +1,5 @@
 import {
-  BOOK_BOT_PATH, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
+  BOOK_BOT_PATH, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_PROGRESS_VERSION, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
   parseBookBotStreamEvent,
   type BookBotBook, type BookBotProgress, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
 } from '../../../common/protocol/book-bot/index.js';
@@ -182,7 +182,7 @@ class BookBotModel {
       input.embeddedOutline = await outline;
       const response = await fetch(this.url(BOOK_BOT_TURNS), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: BOOK_BOT_STREAM_TYPE, [BOOK_BOT_PROGRESS_HEADER]: '1' },
+        headers: { 'Content-Type': 'application/json', Accept: BOOK_BOT_STREAM_TYPE, [BOOK_BOT_PROGRESS_HEADER]: BOOK_BOT_PROGRESS_VERSION },
         body: JSON.stringify(input),
       });
       if (response.status === 503) { this.error = 'settings'; return; }

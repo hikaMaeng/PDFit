@@ -102,7 +102,7 @@ export default function PdfCoverItem(props: LibraryBookProps) {
               {props.tags.map((tag) => <TagChip key={tag} tag={tag} color={props.tagColors[tag]} compact plain disabled={pending} onDelete={props.onTagDelete ? () => props.onTagDelete?.(props.folder, props.filename, tag) : undefined} onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
               {props.onAutoTag && <BookAutoTagButton
                 onClick={() => props.onAutoTag?.(props.folder, props.filename)}
-                disabled={pending || Boolean(props.autoTagDisabled)} running={props.autoTagging} />}
+                disabled={pending || Boolean(props.autoTagDisabled)} running={props.autoTagging} modelPhase={props.autoTagPhase} />}
             </Box>
             {props.onEditMetadata ? <span><Button size="small" data-testid="pdf-cover-document-info" disabled={pending} onMouseEnter={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onFocus={() => { if (props.driveFileId && !pending) bookMetadataApi.prefetch(props.driveFileId); }} onClick={() => props.onEditMetadata?.(props.folder, props.filename)} sx={{ minWidth: 0, p: 0, fontSize: '.75rem', color: 'primary.light', textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('documentInfo')}</Button></span> : null}
             <Typography component="time" data-testid="pdf-cover-opened-at" dateTime={openedAt ?? undefined} variant="caption" sx={OVERLAY_TEXT_SX}>{t('openedAt')}: {openedLabel}</Typography>

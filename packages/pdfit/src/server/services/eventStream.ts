@@ -1,9 +1,8 @@
 import type { Response } from 'express';
-import { BOOK_BOT_STREAM_TYPE, type BookBotStreamEvent } from '../../common/protocol/book-bot/index.js';
 
-export function openBookBotStream(res: Response) {
+export function openEventStream<Event extends object>(res: Response, contentType: string) {
   res.set({
-    'Content-Type': BOOK_BOT_STREAM_TYPE,
+    'Content-Type': contentType,
     'Cache-Control': 'no-store, no-transform',
     'X-Accel-Buffering': 'no',
   });
@@ -13,7 +12,7 @@ export function openBookBotStream(res: Response) {
   heartbeat.unref();
   res.once('close', () => clearInterval(heartbeat));
   return {
-    write(event: BookBotStreamEvent) {
+    write(event: Event) {
       if (!active()) return;
       // Disconnect a stalled reader instead of buffering an unbounded write queue.
       if (res.writableLength > 2 * 1024 * 1024) { res.destroy(); return; }

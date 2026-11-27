@@ -19,7 +19,7 @@ export default function PageOcrDialog({ folder, filename }: { folder: string; fi
     ? state.error instanceof OcrUnreachableError ? t('ocrUnreachable') : String(state.error instanceof Error ? state.error.message : state.error)
     : '';
   let panel: OcrPanelState | undefined;
-  if (state.status === 'pending') panel = { status: 'pending', slowHint: state.slowHint };
+  if (state.status === 'pending') panel = state;
   if (state.status === 'failed' && state.during === 'scan') panel = { status: 'failed', error: reason };
   if (state.status === 'ready') {
     const { source, text } = state.result;

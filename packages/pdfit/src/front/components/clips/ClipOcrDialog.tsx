@@ -11,7 +11,7 @@ function clipOcrState(ocr: BookmarkRecord['ocr']): OcrPanelState | null {
   if (!ocr) return null;
   if (ocr.status === 'done') return { status: 'done', text: ocr.text ?? '', source: ocr.source === 'vision' ? 'vision' : 'text-layer' };
   if (ocr.status === 'failed') return { status: 'failed', error: ocr.error ?? '' };
-  return { status: ocr.status };
+  return ocr.status === 'pending' ? { status: 'pending', modelPhase: ocr.modelPhase } : { status: ocr.status };
 }
 
 export default function ClipOcrDialog({ record, onClose, refresh }: { record: BookmarkRecord; onClose: () => void; refresh: () => Promise<void> }) {

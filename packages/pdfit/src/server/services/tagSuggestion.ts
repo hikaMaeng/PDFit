@@ -1,5 +1,6 @@
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY } from '../../shared/tagTaxonomy.js';
-import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from './aiModelRequest.js';
+import { AI_MODEL_PRIORITY, chatCompletionsUrl, streamAiCompletion } from './aiModelRequest.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 export interface BookTagSuggestionRequest {
   title: string;
@@ -15,6 +16,7 @@ export interface BookTagSuggestionRequest {
   };
   availableTags: string[];
   currentTags: string[];
+  onModelProgress?: (phase: AiModelProgress) => void;
 }
 
 export type BookTagSuggestionProvider = (request: BookTagSuggestionRequest) => Promise<string[]>;
@@ -23,6 +25,7 @@ export interface OpenAiCompatibleTagSuggestionConfig {
   baseUrl: string;
   model: string;
   headers?: Record<string, string>;
+  ocrConcurrency?: number;
   timeoutMs?: number;
   /**
    * Sent as `reasoning_effort` when set. A local reasoning model (LM Studio) given the
@@ -294,7 +297,7 @@ export function createOpenAiCompatibleTagSuggestionProvider(
   request: typeof fetch = fetch,
 ): BookTagSuggestionProvider {
   const endpoint = chatCompletionsUrl(config.baseUrl);
-  return async ({ title, bookstoreMetadata, availableTags, currentTags }) => {
+  return async ({ title, bookstoreMetadata, availableTags, currentTags, onModelProgress }) => {
     const content = await streamAiCompletion(endpoint, {
       model: config.model,
       temperature: 0.1,
@@ -306,7 +309,8 @@ export function createOpenAiCompatibleTagSuggestionProvider(
     }, {
       request,
       headers: config.headers,
-      signal: AbortSignal.timeout(config.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS),
+      timeoutMs: config.timeoutMs,
+      concurrency: config.ocrConcurrency, priority: AI_MODEL_PRIORITY.foreground, onProgress: onModelProgress,
     });
     if (!content) throw new Error('AI server returned an empty tag response.');
     return parseTagResponse(content);
@@ -530,6 +534,7 @@ export function createYes24TagSuggestionProvider(
 export interface TagSuggestionRuntimeOptions {
   /** Transport for model inference. Bookstore and subject lookups use the main request function. */
   requestAi?: typeof fetch;
+  resolveEnvironmentConcurrency?: (baseUrl: string) => Promise<number | undefined>;
   /**
    * AI server resolved on every request, for example from the Settings database, so a
    * server added or changed there applies without a restart. Used only when SERVICE_AI_*
@@ -570,10 +575,12 @@ export function createTagSuggestionProviderFromEnvironment(
     if (parsedUrl.protocol !== 'https:' && parsedUrl.hostname !== '127.0.0.1' && parsedUrl.hostname !== 'localhost') {
       throw new Error('SERVICE_AI_BASE_URL must use HTTPS unless it targets the local host.');
     }
-    environmentClassifier = createOpenAiCompatibleTagSuggestionProvider(
-      { baseUrl, model, headers: { Authorization: `Bearer ${apiKey}` } },
-      requestAi,
-    );
+    environmentClassifier = async (input) => {
+      const ocrConcurrency = await options.resolveEnvironmentConcurrency?.(baseUrl).catch(() => undefined);
+      return createOpenAiCompatibleTagSuggestionProvider(
+        { baseUrl, model, ocrConcurrency, headers: { Authorization: `Bearer ${apiKey}` } }, requestAi,
+      )(input);
+    };
   }
   const publicLookup = createYes24PublicBookLookup(request);
   const subjectFallback = createWikidataSubjectTagSuggestionProvider(request);

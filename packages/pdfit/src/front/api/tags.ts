@@ -1,4 +1,6 @@
 import { uiText } from '../i18n/uiText.js';
+import { AI_MODEL_PROGRESS_MEDIA_TYPE, type AiModelProgress } from '../../common/protocol/ai-model/index.js';
+import { readAiProgressResponse } from './aiProgress.js';
 import type { TagIndexEntry, TagSummary } from '../../shared/index.js';
 import type { TagDetails, TagDetailsPatch } from '../../shared/tagDetails.js';
 export type { TagIndexEntry, TagSummary } from '../../shared/index.js';
@@ -21,8 +23,8 @@ import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCache
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 import { recentTagsForScope } from '../model/recentTags.js';
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch('/api' + url, options);
+async function request<T>(url: string, options?: RequestInit, onModelProgress?: (phase: AiModelProgress) => void): Promise<T> {
+  const res = await readAiProgressResponse(await fetch('/api' + url, options), onModelProgress);
   const data = await res.json();
   if (!res.ok) throw Object.assign(new Error(data.error ?? uiText("요청 실패")), { status: res.status });
   return data as T;
@@ -116,14 +118,15 @@ export const tagsApi = {
   },
 
   /** 책 제목을 AI로 분류하고 추천 태그를 서버에서 바로 저장 */
-  autoTag: async (folder: string, filename: string, driveFileId?: string | null) => {
+  autoTag: async (folder: string, filename: string, driveFileId?: string | null, onModelProgress?: (phase: AiModelProgress) => void) => {
     const result = await request<AutomaticTagResult>(
       `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}/auto`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: AI_MODEL_PROGRESS_MEDIA_TYPE },
         body: JSON.stringify(driveFileId ? { driveFileId } : {}),
       },
+      onModelProgress,
     );
     await Promise.all(result.addedTags.map((tag) => mutateCachedTag(folder, filename, tag, false, driveFileId)));
     await Promise.all(result.removedTags.map((tag) => mutateCachedTag(folder, filename, tag, true, driveFileId)));

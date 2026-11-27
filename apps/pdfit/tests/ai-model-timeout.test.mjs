@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { answerBookQuestion } from '../../../packages/pdfit/dist/server/book-bot/answer.js';
 import { recognizeImageText } from '../../../packages/pdfit/dist/server/ocr/visionOcr.js';
-import { createTagSuggestionProviderFromEnvironment } from '../../../packages/pdfit/dist/server/services/tagSuggestion.js';
+import { createOpenAiCompatibleTagSuggestionProvider, createTagSuggestionProviderFromEnvironment } from '../../../packages/pdfit/dist/server/services/tagSuggestion.js';
 import { streamAiCompletion } from '../../../packages/pdfit/dist/server/services/aiModelRequest.js';
 import { fetchAiModel } from '../dist/server/services/aiModelFetch.js';
 import { translateDisplayTexts } from '../dist/server/services/displayTranslation.js';
@@ -92,6 +93,63 @@ test('stream decoder handles split UTF-8 and rejects incomplete or filtered comp
     signal, request: requestFor(delta('Partial answer') + 'data: {"choices":[{"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'),
   }), /did not finish normally/);
   assert.equal(await streamAiCompletion('http://fixture', {}, { signal, request: async () => completion('JSON fallback') }), 'JSON fallback');
+});
+
+test('chat and tags overtake waiting scan pages without interrupting occupied model slots', async (t) => {
+  const defaultTimeout = AbortSignal.timeout;
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    deadlines.push(ms);
+    return defaultTimeout(ms);
+  });
+  const upstream = { baseUrl: 'http://queue.test/v1', ocrConcurrency: 2 };
+  const image = { bytes: Buffer.from('image'), type: 'image/jpeg' };
+  const left = Promise.withResolvers();
+  const right = Promise.withResolvers();
+  const chatQueued = Promise.withResolvers();
+  const order = [];
+  const phases = { chat: [], tags: [] };
+  const request = (label, reply) => async (_url, init) => {
+    order.push(label);
+    assert.equal(init.signal.aborted, false);
+    return completion(await reply);
+  };
+  const first = recognizeImageText({ ...upstream, model: 'vision' }, image, request('scan A', left.promise));
+  const second = recognizeImageText({ ...upstream, model: 'vision' }, image, request('scan B', right.promise));
+  const next = recognizeImageText({ ...upstream, model: 'vision' }, image, request('next scan', 'text'));
+  const cancel = new AbortController();
+  const cancelled = recognizeImageText({ ...upstream, model: 'vision' }, image, request('cancelled scan', 'text'), undefined, undefined, cancel.signal);
+  cancel.abort();
+  await assert.rejects(cancelled, { name: 'AbortError' });
+  const chat = answerBookQuestion({
+    model: { ...upstream, model: 'chat' }, source: { title: 'Fixture', outline: null, pages: [], clips: [], comments: [] },
+    store: {}, question: 'Question', turns: [], request: request('chat', 'TITLE: Topic\nAnswer'),
+    onProgress: ({ phase }) => {
+      phases.chat.push(phase);
+      if (phase === 'queued') chatQueued.resolve();
+    },
+  });
+  await chatQueued.promise;
+  const suggest = createOpenAiCompatibleTagSuggestionProvider({ ...upstream, model: 'tag', timeoutMs: 15 }, request('tags', '["프로그래밍"]'));
+  const tags = suggest({ title: 'Fixture', availableTags: [], currentTags: [], onModelProgress: (phase) => phases.tags.push(phase) });
+
+  try {
+    await delay(45);
+    assert.deepEqual(order, ['scan A', 'scan B']);
+    assert.deepEqual(deadlines, [1_200_000, 1_200_000]);
+    assert.deepEqual(phases, { chat: ['queued'], tags: ['queued'] });
+    left.resolve('page A');
+    assert.deepEqual(await chat, { title: 'Topic', answer: 'Answer' });
+    assert.deepEqual(await tags, ['프로그래밍']);
+    assert.equal(await next, 'text');
+    assert.deepEqual(order, ['scan A', 'scan B', 'chat', 'tags', 'next scan']);
+    assert.deepEqual(phases, { chat: ['queued', 'generating'], tags: ['queued', 'running'] });
+    assert.deepEqual(deadlines, [1_200_000, 1_200_000, 1_200_000, 15, 1_200_000]);
+  } finally {
+    left.resolve('page A');
+    right.resolve('page B');
+    await Promise.allSettled([first, second, next, chat, tags]);
+  }
 });
 
 test('the AI transport waits for delayed headers and body and respects cancellation', async () => {

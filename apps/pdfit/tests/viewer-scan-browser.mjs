@@ -11,6 +11,7 @@ const fixtures = {
   'Mixed.pdf': ['Outside start', 'Seed text', '', '', 'Tail text'],
   'Other.pdf': ['', '', '', 'Finish text'],
   'Failure.pdf': ['', '', 'Blocked tail'],
+  'Priority.pdf': ['', '', 'Second book tail'],
   'Parallel.pdf': Array.from({ length: 40 }, (_, index) => `Page ${index + 1}`),
 };
 
@@ -39,6 +40,7 @@ async function verifyScan() {
   let inFlight = 0;
   let peak = 0;
   let activeServerId;
+  let activeLlmServerId;
   let browser;
   let failureMessage;
   const vision = createServer(async (req, res) => {
@@ -54,13 +56,13 @@ async function verifyScan() {
     let answered = false;
     outstanding.push({
       model: body.model,
-      image: body.messages[0].content[1].image_url.url.startsWith('data:image/jpeg;base64,'),
-      respond(status = 200) {
+      image: body.messages[0].content?.[1]?.image_url?.url.startsWith('data:image/jpeg;base64,') ?? false,
+      respond(status = 200, content = 'Fixture vision text') {
         if (answered) return;
         answered = true;
         inFlight -= 1;
         res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-          choices: [{ message: { content: 'Fixture vision text' }, finish_reason: 'stop' }],
+          choices: [{ message: { content }, finish_reason: 'stop' }],
         }));
       },
     });
@@ -139,7 +141,7 @@ async function verifyScan() {
     await settings.goto(`${origin}/settings`);
     const edit = settings.getByRole('row').filter({ hasText: 'Scan fixture' }).getByRole('button', { name: '수정' });
     await edit.click();
-    const limit = settings.getByRole('spinbutton', { name: 'OCR 동시 요청 수' });
+    const limit = settings.getByRole('spinbutton', { name: 'AI 동시 요청 수' });
     assert.equal(await limit.inputValue(), '1');
     await limit.fill('2');
     await shot(settings, 'ocr-concurrency.png');
@@ -209,9 +211,8 @@ async function verifyScan() {
     outstanding[0].respond();
     await calls(3);
     const savedDuringScan = await pages('Mixed.pdf');
-    assert.equal(savedDuringScan.length, 3);
-    assert.ok(savedDuringScan.includes(4), 'The text-layer tail saved while the second vision request was held.');
-    await expectCoverage(mixed, 60);
+    assert.equal(savedDuringScan.length, 2);
+    await expectCoverage(mixed, 40);
     const otherJob = await waitJob('Other.pdf', (value) => value.activePages.includes(1));
     const reopened = await viewer(context, 'Other.pdf', 'gpu');
     await progress(reopened, '1페이지 스캔 중').waitFor();
@@ -221,6 +222,8 @@ async function verifyScan() {
     outstanding[2].respond();
     await waitJob('Other.pdf', (value) => value.status === 'cancelled');
     await expectCoverage(reopened, 25);
+    await expectCoverage(mixed, 60);
+    assert.ok((await pages('Mixed.pdf')).includes(4), 'The text-layer tail saved while the second vision request was held.');
     outstanding[1].respond();
     const completed = await waitJob('Mixed.pdf', (value) => value.status === 'completed');
     assert.equal(completed.processedPages, 4);
@@ -344,6 +347,92 @@ async function verifyScan() {
     assert.equal(unavailable.failure, 'unavailable');
     assert.deepEqual(await pages('Other.pdf'), [0]);
     steps.push('An image page without a configured vision server stops the document and preserves saved text');
+
+    const priorityServer = await api(settingsUrl, 'POST', {
+      name: 'Priority fixture', url: `http://${mockHost}:${vision.address().port}/v1`,
+      models: { vision: 'vision-fixture' }, ocrConcurrency: 2,
+    }, 201);
+    activeServerId = priorityServer.id;
+    const llmServer = await api(settingsUrl, 'POST', {
+      name: 'Chat fixture', url: `http://${mockHost}:${vision.address().port}/v1/`,
+      models: { llm: 'llm-fixture' }, ocrConcurrency: 3,
+    }, 201);
+    activeLlmServerId = llmServer.id;
+    // The passive UI label translator has its own request path. Keep this scenario focused
+    // on two model workers, two background documents and two foreground user actions.
+    await context.route('**/api/settings/translations', (route) => route.fulfill({ json: { translations: route.request().postDataJSON().texts } }));
+    const firstIndex = outstanding.length;
+    await api('/api/ocr/scan', 'POST', { folder: 'Scan', filename: 'Other.pdf', startPage: 2 }, 202);
+    await calls(firstIndex + 2);
+    await api('/api/ocr/scan', 'POST', { folder: 'Scan', filename: 'Priority.pdf', startPage: 1 }, 202);
+    await waitJob('Priority.pdf', (value) => value.pageCount === 3 && value.activePages.length === 0);
+
+    await mixed.setViewportSize({ width: 1280, height: 900 });
+    await button(mixed, 'Bot').click();
+    const bot = mixed.getByRole('dialog', { name: 'Bot' });
+    await bot.getByRole('textbox', { name: '질문' }).fill('이 책의 스캔 내용을 알려주세요.');
+    await button(bot, '질문 보내기').click();
+    await bot.getByRole('status').getByText('AI 작업 큐에서 대기 중…', { exact: true }).waitFor();
+    await shot(mixed, 'bot-model-queued.png');
+
+    const library = await context.newPage();
+    library.on('pageerror', (error) => pageErrors.push(`Priority tag UI: ${error.message}`));
+    await library.goto(`${origin}/folder/Scan`);
+    await button(library, '표지 보기').click();
+    const priorityCard = library.getByRole('article').filter({ has: library.getByRole('link', { name: 'Priority.pdf', exact: true }) });
+    await priorityCard.getByTestId('pdf-cover-info-toggle').click();
+    const tag = priorityCard.getByTestId('pdf-ai-auto-tag');
+    await tag.click();
+    await tag.getByRole('progressbar', { name: 'AI 작업 큐에서 대기 중…' }).waitFor({ timeout: 35_000 });
+    assert.equal(outstanding.length, firstIndex + 2, 'Both interactive requests must wait for a running scan worker.');
+    await library.mouse.move(0, 0);
+    await tag.hover({ force: true });
+    await shot(library, 'tag-model-queued.png');
+
+    const { readServerSentData } = await import('../../../packages/pdfit/dist/common/protocol/server-sent-data.js');
+    const translation = await fetch(`${origin}/api/settings/translations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/vnd.pdfit.ai-progress+event-stream' },
+      body: JSON.stringify({ texts: ['Scan'], language: 'ko' }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    assert.match(translation.headers.get('content-type'), /^text\/event-stream/);
+    const translationEvents = readServerSentData(translation.body);
+    assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'progress', phase: 'queued' });
+
+    outstanding[firstIndex].respond();
+    await calls(firstIndex + 3);
+    assert.equal(outstanding[firstIndex + 2].model, 'llm-fixture');
+    await bot.getByRole('status').getByText('답변을 생성하는 중…', { exact: true }).waitFor();
+    await shot(mixed, 'bot-model-running.png');
+    outstanding[firstIndex + 1].respond();
+    await calls(firstIndex + 4);
+    assert.equal(outstanding[firstIndex + 3].model, 'llm-fixture');
+    await tag.getByRole('progressbar', { name: 'AI 모델의 응답을 기다리는 중…' }).waitFor();
+    assert.equal(inFlight, 2);
+
+    outstanding[firstIndex + 2].respond(200, 'TITLE: Queue test\n우선순위 큐 응답입니다.');
+    await bot.getByRole('log').getByText('우선순위 큐 응답입니다.', { exact: true }).waitFor();
+    outstanding[firstIndex + 3].respond(200, '["컴퓨터 공학", "프로그래밍", "소프트웨어 공학", "알고리즘", "자료구조"]');
+    await tag.getByRole('progressbar').waitFor({ state: 'hidden' });
+    const assigned = await api('/api/tags/book/Scan/Priority.pdf');
+    assert.ok(assigned.includes('프로그래밍'), JSON.stringify(assigned));
+    await calls(firstIndex + 5);
+    assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'progress', phase: 'running' });
+    outstanding[firstIndex + 4].respond(200, '["스캔"]');
+    assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'result', status: 200, body: { translations: ['스캔'] } });
+    await translationEvents.return();
+    await calls(firstIndex + 7);
+    assert.ok(outstanding.slice(firstIndex + 5).every(({ image }) => image));
+    outstanding[firstIndex + 5].respond();
+    outstanding[firstIndex + 6].respond();
+    await waitJob('Other.pdf', (value) => value.status === 'completed');
+    await waitJob('Priority.pdf', (value) => value.status === 'completed');
+    assert.deepEqual(await pages('Priority.pdf'), [0, 1, 2]);
+    assert.equal(peak, 2);
+    assert.deepEqual(pageErrors, []);
+    steps.push('With two scans sharing two workers, chat and automatic tags waited in the AI queue, ran in arrival order before the next scan calls, and both documents finished at a peak of two');
+    steps.push('Display translation waited in the same queue and emitted queued, running, and result events');
     console.log(JSON.stringify({ origin, peak, calls: outstanding.length, steps }, null, 2));
   } catch (error) {
     failureMessage = String(error);
@@ -353,6 +442,8 @@ async function verifyScan() {
     for (const call of outstanding) call.respond(503);
     if (vision.listening) vision.close();
     await browser?.close();
-    if (activeServerId !== undefined) await api(`/api/settings/ai-servers/${activeServerId}`, 'DELETE');
+    for (const id of [activeServerId, activeLlmServerId]) {
+      if (id !== undefined) await api(`/api/settings/ai-servers/${id}`, 'DELETE');
+    }
   }
 }

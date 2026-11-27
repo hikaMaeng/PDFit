@@ -15,6 +15,7 @@ export const BOT = {
   CLIPS: 'bookBotPreparingClips',
   HISTORY_PROGRESS: 'bookBotPreparingHistory',
   EVIDENCE: 'bookBotPreparingEvidence',
+  QUEUED: 'aiModelQueued',
   GENERATING: 'bookBotGenerating',
   THINKING: 'bookBotThinking',
   SAVING: 'bookBotSaving',

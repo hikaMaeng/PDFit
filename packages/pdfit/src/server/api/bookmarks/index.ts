@@ -1,10 +1,12 @@
 import { Router, type Request, type RequestHandler, type Response, type Router as ExpressRouter } from 'express';
-import { CLIP_COUNT_HEADER, CLIP_COUNT_REVISION_HEADER, type CreateBookmarkRequest, type UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
+import { CLIP_COUNT_HEADER, CLIP_COUNT_REVISION_HEADER, type BookmarkRecord, type CreateBookmarkRequest, type UpdateBookmarkRequest } from '../../../common/protocol/bookmarks/index.js';
+import type { AiModelProgress } from '../../../common/protocol/ai-model/index.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from '../../routes/metadataStoreResolver.js';
 
 /** Clip OCR hook (local runtime). Absent where the runtime does not run OCR. */
 export interface BookmarkOcrQueue {
   enqueueBookmark(bookmark: import('../../../common/protocol/bookmarks/index.js').BookmarkRecord): Promise<boolean>;
+  bookmarkModelPhase?(id: string): AiModelProgress | undefined;
 }
 
 const BOOKMARK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,8 +30,14 @@ function asyncRoute(handler: (req: Request, res: Response) => Promise<unknown>):
 
 export function createBookmarksRouter(storeResolver: MetadataStoreResolver, ocr?: BookmarkOcrQueue): ExpressRouter {
   const router = Router();
-  router.get('/', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listAllBookmarks())));
-  router.get('/:folder/:filename', asyncRoute(async (req, res) => res.json(await (await resolveMetadataStore(storeResolver, req)).listBookmarks(req.params.folder, req.params.filename, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined))));
+  const withModelPhase = (bookmark: BookmarkRecord): BookmarkRecord => {
+    const phase = ocr?.bookmarkModelPhase?.(bookmark.id);
+    return phase && bookmark.ocr?.status === 'pending'
+      ? { ...bookmark, ocr: { ...bookmark.ocr, modelPhase: phase } }
+      : bookmark;
+  };
+  router.get('/', asyncRoute(async (req, res) => res.json((await (await resolveMetadataStore(storeResolver, req)).listAllBookmarks()).map(withModelPhase))));
+  router.get('/:folder/:filename', asyncRoute(async (req, res) => res.json((await (await resolveMetadataStore(storeResolver, req)).listBookmarks(req.params.folder, req.params.filename, typeof req.query.driveFileId === 'string' ? req.query.driveFileId : undefined)).map(withModelPhase))));
   // Reads the clip's text again, for example after an AI server was configured.
   // Registered before the create route, which would otherwise take `/<id>/ocr` as
   // folder `<id>` and file `ocr`. A non-UUID id falls through to that route.
