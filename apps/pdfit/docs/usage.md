@@ -99,6 +99,19 @@ Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**,
 
 Open **Background** to choose one of 20 colors for the area around and between PDF pages. The default is dark gray. The browser remembers your choice across documents and reloads. **Image** controls the colors on the pages.
 
+## Select text on a page
+
+Drag across the text to select and copy it. On a touch screen, press and
+hold a word to select it, then choose **Copy text**. Drag a blank area to
+pan. Text selection starts enabled when a PDF opens. Choose a tool from the left
+toolbar to clear the selection and use that tool. Press the same tool
+again to return to text selection.
+
+The viewer uses embedded PDF text when available. For scans it reads the
+visible page with Korean and English OCR in the browser. The scan may take
+a moment on the first page. Pages with multiple columns or tables can
+copy in a different order from the printed layout.
+
 ## Viewer popups
 
 Bot, Comments, page OCR, and Contents open as floating popups while the viewer remains usable. Drag the header to move a popup or drag the grip at the lower right to resize it. Use the arrow keys when either handle has focus. Hold Shift for larger steps. Close the popup with the X at the upper right or press Escape while it has focus.

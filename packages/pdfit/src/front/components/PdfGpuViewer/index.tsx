@@ -1,5 +1,5 @@
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Box } from '@mui/material';
 import {
@@ -37,6 +37,10 @@ import { BookmarkOverlayLayer } from './BookmarkOverlayLayer.js';
 import { usePdfBookmarks } from './usePdfBookmarks.js';
 import { AnnotationControls } from './AnnotationControls.js';
 import { usePdfPan } from './usePdfPan.js';
+import { DocumentTextLayer } from './DocumentTextLayer.js';
+import { PageTextModel } from '../../viewer/text-selection/pageTextModel.js';
+import { PageTextSource } from '../../viewer/text-selection/pageTextSource.js';
+import { activePdfTextSelection } from '../../viewer/text-selection/selectionDom.js';
 import { forwardPageModeWheel } from '../viewerWheel.js';
 import { useNonPassiveWheel } from '../useNonPassiveWheel.js';
 import { DEFAULT_VIEWER_ZOOM } from '../PdfViewer/pdfDisplayScale.js';
@@ -135,13 +139,17 @@ export default function PdfGpuViewer({
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
   const annotation = usePdfAnnotations(url);
+  const pageText = useMemo(() => new PageTextModel(), [url]);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const outlineId = useId();
   const readOutline = useCallback(() => readPdfOutlineFromUrl(url, outlineLookup), [url, outlineLookup]);
   const clipPanelId = useId();
   const clipArmed = annotation.tool === 'bookmark';
   const bookmark = usePdfBookmarks({ enabled: clipArmed, controller, onCaptured: onBookmarkCaptured, onSelectionFinished: annotation.finishClipSelection, onUpdated: onBookmarkUpdated, onDeleted: onBookmarkDeleted });
-  const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => annotation.setSelectedId(null));
+  const pan = usePdfPan(viewportRef, annotation.tool === 'select', () => {
+    annotation.setSelectedId(null);
+    activePdfTextSelection()?.selection.removeAllRanges();
+  });
   // Wheel on the surface around the core viewport: page modes forward it to the viewport,
   // continuous scroll pans with the select tool. Non-passive so both can call preventDefault.
   const surfaceWheelRef = useNonPassiveWheel<HTMLDivElement>((event) => {
@@ -225,6 +233,7 @@ export default function PdfGpuViewer({
   useEffect(() => {
     let cancelled = false;
     let nextController: PdfGpuViewerController | null = null;
+    let stopPageText: (() => void) | undefined;
 
     const initialize = async () => {
       const viewport = viewportRef.current;
@@ -276,6 +285,12 @@ export default function PdfGpuViewer({
         setController(nextController);
         await nextController.load(url);
         if (cancelled) return;
+        const textSource = new PageTextSource(url, provider);
+        const disconnectText = pageText.connect(textSource.read);
+        stopPageText = () => {
+          disconnectText();
+          textSource.dispose();
+        };
         if (initialFitMode === 'height' && initialViewMode === 'double') nextController.fitPage();
         else if (initialFitMode && initialFitMode !== 'none') nextController.setFitMode(initialFitMode);
       } catch (error) {
@@ -292,11 +307,12 @@ export default function PdfGpuViewer({
     void initialize();
     return () => {
       cancelled = true;
+      stopPageText?.();
       nextController?.dispose();
       controllerRef.current = null;
       setController(null);
     };
-  }, [initialFitMode, initialScale, initialViewMode, url]);
+  }, [initialFitMode, initialScale, initialViewMode, pageText, url]);
 
   useEffect(() => {
     if (!state.activePage) return;
@@ -468,6 +484,7 @@ export default function PdfGpuViewer({
         <ViewerBackground>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
             <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative' }} />
+            {controller && <DocumentTextLayer controller={controller} model={pageText} viewportRef={viewportRef} enabled={annotation.tool === 'select'} visiblePages={state.visiblePages} activePageIndex={activePageIndex} />}
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>

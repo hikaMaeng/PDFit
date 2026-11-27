@@ -1,14 +1,31 @@
-# Text-based Highlight Extension
+# Text selection and highlights
 
-PDFit의 현재 annotation layer는 PDFGPU가 제공하는 page overlay projection을 이용해 PDF page 좌표와 SVG 좌표를 변환한다. 영역 기반 highlight는 이 계약만으로 구현할 수 있다.
+The viewer shares the left toolbar's `select` state with the annotation
+tools. In that state, a [`DocumentTextLayer`][layer] lets the browser select
+text over the open page. Pressing an annotation or clip tool takes the layer
+out of the viewport. A drag on blank space still pans the page.
 
-텍스트 선택 기반 highlight에는 글자별 content, glyph bounds, reading order를 같은 page 좌표계로 제공하는 text layer 또는 공개 extraction API가 필요하다. 현재 PDFGPU viewer 통합에는 이 계약이 없으며, Canvas/WebGPU 결과에서 픽셀을 역추적하는 방식은 사용하지 않는다.
+[PageTextSource][source] reads the embedded text with PDF.js. It checks the
+text rendering mode when the shared hidden-layer quality check flags the
+text. For a scan it requests a full-page raster from the existing PDFGPU
+provider, then uses a single Tesseract.js worker with the bundled Korean and
+English [tessdata_fast 4.1.0 models][models]. The browser fetches the worker
+and models from the viewer origin when a scan first needs them. Image data
+stays in the browser. This path uses single-block OCR, so copied reading
+order can vary on pages with multiple columns or tables.
 
-향후 PDFGPU가 page별 text run과 bounds를 공개하면 다음 순서로 확장한다.
+[PageTextModel][model] prioritizes the active page and keeps up to 24 page
+results per open document. It stores coordinates in display-oriented PDF
+points. The text layer applies `getPageTransform()` on zoom, scroll, and
+Deskew updates. Clipboard copy uses the selected offsets and the line breaks
+and spaces from the text source. If a touch hold has produced no browser
+selection after 650 ms, the viewer selects the word and shows a copy button.
 
-1. PDFGPU text run을 투명 HTML/SVG selection layer로 투영한다.
-2. 브라우저 selection range를 PDF page 좌표의 여러 rectangle로 정규화한다.
-3. 하나의 logical highlight와 여러 geometry rectangle를 저장하도록 protocol을 확장한다.
-4. 현재 SVG annotation layer가 저장된 rectangle들을 합성한다.
+Highlights saved by the palette use the dragged area's existing vector
+geometry. A future text-based highlight would need to convert the selection
+ranges to PDF rectangles and store the multiple rectangles as one annotation.
 
-이 확장은 PDF 렌더러를 교체하거나 원본 PDF를 수정하지 않는다.
+[layer]: ../src/front/components/PdfGpuViewer/DocumentTextLayer.tsx
+[source]: ../src/front/viewer/text-selection/pageTextSource.ts
+[model]: ../src/front/viewer/text-selection/pageTextModel.ts
+[models]: https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0

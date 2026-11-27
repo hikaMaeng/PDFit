@@ -4,6 +4,7 @@ export const RSC = {
   webgpuUnavailable: 'viewer.webgpu.unavailable.alert',
   webgpuInsecure: 'viewer.webgpu.insecure.alert',
   tools: 'annotationTools',
+  copySelectedText: 'ocrCopy',
   movePalette: 'movePalette',
   collapsePalette: 'collapseAnnotationPalette',
   expandPalette: 'expandAnnotationPalette',

@@ -1,5 +1,7 @@
 import { useCallback, useRef, type TouchEvent as ReactTouchEvent, type RefObject } from 'react';
 
+import { activePdfTextSelection } from '../viewer/text-selection/selectionDom.js';
+
 type SwipeStart = { x: number; y: number; atTop: boolean; atBottom: boolean; atLeft: boolean; atRight: boolean };
 
 /** Moves between pages on a touch swipe while preserving zoomed-page panning. */
@@ -33,7 +35,7 @@ export function usePageSwipe(
   const touchEnd = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
     const start = startRef.current;
     startRef.current = null;
-    if (!start || event.touches.length > 0 || !enabled) return;
+    if (!start || event.touches.length > 0 || !enabled || activePdfTextSelection()) return;
     const touch = event.changedTouches[0];
     if (!touch) return;
     const deltaX = touch.clientX - start.x;

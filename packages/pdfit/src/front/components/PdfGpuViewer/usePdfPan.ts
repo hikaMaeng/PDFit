@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import type { ViewerWheelEvent } from '../useNonPassiveWheel.js';
+import { isPdfTextRun } from '../../viewer/text-selection/selectionDom.js';
 
 type PanStart = { pointerId: number; clientX: number; clientY: number; scrollLeft: number; scrollTop: number };
 
@@ -15,6 +16,7 @@ export function usePdfPan(viewportRef: RefObject<HTMLDivElement | null>, enabled
     const viewport = viewportRef.current;
     if (!viewport) return;
     onEmptyPress();
+    if (isPdfTextRun(target)) return;
     startRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop };
     setActive(true);
     event.preventDefault();

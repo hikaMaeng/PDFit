@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const assets = [
   { from: 'src/front/i18n/catalog', to: 'dist/front/i18n/catalog' },
+  { from: 'src/front/viewer/text-selection/assets', to: 'dist/front/viewer/text-selection/assets' },
   { from: 'src/front/components/clips/assets', to: 'dist/front/components/clips/assets' },
   { from: 'src/front/components/book-comments/assets', to: 'dist/front/components/book-comments/assets' },
   { from: 'src/server/book-bot/assets', to: 'dist/server/book-bot/assets' },

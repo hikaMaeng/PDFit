@@ -74,7 +74,9 @@
     "react-router-dom": "7.18.2",
     "remark-breaks": "4.0.0",
     "remark-gfm": "4.0.1",
-    "sharp": "0.35.3"
+    "sharp": "0.35.3",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0"
   },
   "devDependencies": {
     "@types/cors": "2.8.17",

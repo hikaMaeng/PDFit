@@ -2,6 +2,8 @@ import cors from 'cors';
 import express, { type ErrorRequestHandler, type Express, type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { VIEWER_OCR_MODELS_PATH } from '../../common/ocr/modelAssets.js';
 import type { MetadataStore } from '../../shared/index.js';
 import {
   createPdfitCommonRouterAssembly,
@@ -119,6 +121,11 @@ export function createPdfitServer(options: PdfitServerOptions): Express {
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found.' });
   });
+
+  const ocrModels = fileURLToPath(new URL('../../front/viewer/text-selection/assets/', import.meta.url));
+  app.use(VIEWER_OCR_MODELS_PATH, express.static(ocrModels, {
+    fallthrough: false, index: false, redirect: false, immutable: true, maxAge: '1y',
+  }));
 
   if (fs.existsSync(staticDir)) {
     const serviceIndexPath = path.join(staticDir, serviceIndexFile);
