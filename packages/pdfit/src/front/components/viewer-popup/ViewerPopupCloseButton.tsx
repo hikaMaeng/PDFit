@@ -3,6 +3,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import { IconButton } from '@mui/material';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 
+export const VIEWER_POPUP_CLOSE_INSET = '5px';
+
 export function ViewerPopupCloseButton({ onClose, disabled, size = 'small' }: {
   onClose: () => void;
   disabled?: boolean;
