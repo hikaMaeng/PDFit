@@ -42,6 +42,12 @@ an error when the browser cannot provide a WebGPU device.
 `front/components/PdfGpuViewer/index.tsx` is the PDFit React adapter;
 the controller remains the mutable source of truth outside React.
 
+The viewer requires a secure browser context. An HTTPS page can expose
+`navigator.gpu` even if the browser cannot acquire a GPU adapter. In Chrome,
+check **Use graphics acceleration when available** in the browser's System
+settings. If the setting is already on, see the
+[Chrome WebGPU troubleshooting guide](https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips).
+
 The [PDFit adapter](../src/front/components/PdfGpuViewer/index.tsx) requests four
 PDFium workers. Core uses two for previews and two for detail, with one render in
 flight per worker. A visible preview is read from cache or requested immediately.
