@@ -58,6 +58,7 @@
   "dependencies": {
     "@emotion/react": "11.13.0",
     "@emotion/styled": "11.13.0",
+    "@huggingface/tokenizers": "0.2.0",
     "@mui/icons-material": "5.16.0",
     "@mui/material": "5.16.0",
     "@napi-rs/canvas": "1.0.6",

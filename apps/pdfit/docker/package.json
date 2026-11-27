@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@huggingface/tokenizers": "0.2.0",
     "@napi-rs/canvas": "1.0.6",
     "cors": "2.8.5",
     "dotenv": "16.4.5",

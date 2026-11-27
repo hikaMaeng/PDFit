@@ -5,6 +5,7 @@ import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { answerBookQuestion } from '../../../packages/pdfit/dist/server/book-bot/answer.js';
+import { bookBotPromptTokenCounter } from '../../../packages/pdfit/dist/server/book-bot/promptTokens.js';
 import { recognizeImageText } from '../../../packages/pdfit/dist/server/ocr/visionOcr.js';
 import { createOpenAiCompatibleTagSuggestionProvider, createTagSuggestionProviderFromEnvironment } from '../../../packages/pdfit/dist/server/services/tagSuggestion.js';
 import { streamAiCompletion } from '../../../packages/pdfit/dist/server/services/aiModelRequest.js';
@@ -93,6 +94,112 @@ test('stream decoder handles split UTF-8 and rejects incomplete or filtered comp
     signal, request: requestFor(delta('Partial answer') + 'data: {"choices":[{"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'),
   }), /did not finish normally/);
   assert.equal(await streamAiCompletion('http://fixture', {}, { signal, request: async () => completion('JSON fallback') }), 'JSON fallback');
+});
+
+test('a chapter summary sends the verified chapter directly even when the book exceeds the Bot budget', async () => {
+  const outline = [
+    { key: '0', title: '03장', depth: 0, page: 90 },
+    { key: '1', title: '▣ 04장: 컨텍스트 엔진 조립', depth: 0, page: 128 },
+    { key: '1.0', title: '4.1 설명', depth: 1, page: null },
+    { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
+  ];
+  const pages = [
+    ...Array.from({ length: 100 }, (_, index) => ({ page: index + 1, text: 'Unrelated page. '.repeat(200) })),
+    { page: 128, text: 'First requested page.' },
+    { page: 161, text: 'Last requested page.' },
+    { page: 162, text: 'Next chapter.' },
+  ];
+  const calls = [];
+  const phases = [];
+  const visible = [];
+  const store = { clipDescription: async () => assert.fail('an out-of-range clip was sent to the model') };
+  const model = { baseUrl: 'http://scope.test/v1', model: 'fixture', contextTokens: 150_000 };
+  const result = await answerBookQuestion({
+    model, vision: model, source: { title: 'Fixture', outline, pages, clips: [{ pageIndex: 7 }], comments: [] },
+    question: '4장의 내용을 요약해줘', turns: [], store,
+    request: async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      return streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
+    },
+    onProgress: ({ phase }) => phases.push(phase), onAnswerDelta: (text) => visible.push(text),
+  });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(phases, ['generating']);
+  assert.deepEqual(visible, ['First line.', ' Second line.']);
+  assert.equal(result.answer, 'First line. Second line.');
+  const { coverage, evidence } = JSON.parse(calls[0].messages[1].content);
+  assert.deepEqual(coverage.chapter, { number: 4, firstPdfPage: 128, lastPdfPage: 161 });
+  assert.equal(coverage.ocrPages, 2);
+  assert.match(evidence, /4\.1 설명/);
+  assert.match(evidence, /First requested page\./);
+  assert.match(evidence, /Last requested page\./);
+  assert.doesNotMatch(evidence, /Unrelated page|Next chapter/);
+});
+
+test('the Bot keeps book evidence when a question or outline cannot identify one bounded chapter', async () => {
+  const model = { baseUrl: 'http://scope.test/v1', model: 'fixture', contextTokens: 150_000 };
+  const outline = [
+    { key: '0', title: 'Chapter 4', depth: 0, page: 128 },
+    { key: '1', title: 'Chapter 5', depth: 0, page: 162 },
+  ];
+  for (const [question, entries] of [
+    ['4장과 5장을 비교해줘', outline],
+    ['Summarize Chapter 4', outline.slice(0, 1)],
+    ['Summarize Chapter 4', [...outline, { key: '2', title: 'Chapter 4', depth: 0, page: 170 }]],
+  ]) {
+    await answerBookQuestion({
+      model, source: { title: 'Fixture', outline: entries, pages: [{ page: 1, text: 'Outside chapter' }], clips: [], comments: [] },
+      store: {}, question, turns: [], request: async (_url, init) => {
+        const { coverage, evidence } = JSON.parse(JSON.parse(init.body).messages[1].content);
+        assert.equal(coverage.chapter, undefined);
+        assert.match(evidence, /Outside chapter/);
+        return streamReply('TITLE: Fixture\nAnswer');
+      },
+    });
+  }
+});
+
+test('Qwen counts tokens for a one-call answer even when the serialized prompt exceeds the old byte limit', async () => {
+  const pages = Array.from({ length: 100 }, (_, index) => ({ page: index + 1, text: '문서 내용을 읽고 정리합니다. '.repeat(100) }));
+  const model = { baseUrl: 'http://scope.test/v1', model: 'qwen36-35b', contextTokens: 150_000 };
+  const calls = [];
+  const phases = [];
+  await answerBookQuestion({
+    model, source: { title: 'Fixture', outline: null, pages, clips: [], comments: [] },
+    store: {}, question: '책 전체를 요약해줘', turns: [], request: async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      return streamReply('TITLE: Book\nAnswer');
+    },
+    onProgress: ({ phase }) => phases.push(phase),
+  });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(phases, ['generating']);
+  assert.ok(Buffer.byteLength(JSON.stringify(calls[0].messages)) > 245_784);
+  const count = await bookBotPromptTokenCounter(model.model);
+  assert.ok(count(calls[0].messages) < model.contextTokens - calls[0].max_tokens);
+  const { coverage, evidence } = JSON.parse(calls[0].messages[1].content);
+  assert.equal(coverage.ocrPages, 100);
+  assert.match(evidence, /PDF p\. 100\n/);
+});
+
+test('Qwen starts evidence reduction only for an oversized prompt and keeps each call within the window', async () => {
+  const pages = Array.from({ length: 20 }, (_, index) => ({ page: index + 1, text: '문서 내용을 읽고 정리합니다. '.repeat(100) }));
+  const model = { baseUrl: 'http://scope.test/v1', model: 'toolspace-35b-a3b', contextTokens: 16_384 };
+  const phases = [];
+  const calls = [];
+  await answerBookQuestion({
+    model, source: { title: 'Fixture', outline: null, pages, clips: [], comments: [] },
+    store: {}, question: '책 전체를 요약해줘', turns: [], request: async (_url, init) => {
+      const request = JSON.parse(init.body);
+      calls.push(request);
+      return streamReply(request.max_tokens === 2048 ? 'Short evidence note' : 'TITLE: Summary\nAnswer');
+    },
+    onProgress: ({ phase, completed, total }) => phases.push({ phase, completed, total }),
+  });
+  assert.notEqual(phases.find(({ phase }) => phase === 'evidence'), undefined);
+  assert.equal(calls.at(-1).max_tokens, 4096);
+  const count = await bookBotPromptTokenCounter(model.model);
+  assert.ok(calls.every((call) => count(call.messages) + call.max_tokens <= model.contextTokens));
 });
 
 test('chat and tags overtake waiting scan pages without interrupting occupied model slots', async (t) => {

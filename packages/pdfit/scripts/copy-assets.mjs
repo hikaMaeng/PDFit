@@ -11,6 +11,7 @@ const assets = [
   { from: 'src/front/i18n/catalog', to: 'dist/front/i18n/catalog' },
   { from: 'src/front/components/clips/assets', to: 'dist/front/components/clips/assets' },
   { from: 'src/front/components/book-comments/assets', to: 'dist/front/components/book-comments/assets' },
+  { from: 'src/server/book-bot/assets', to: 'dist/server/book-bot/assets' },
 ];
 
 for (const asset of assets) {
