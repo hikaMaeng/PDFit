@@ -35,7 +35,8 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
   viewer state into `useState`.
 * Consumer: the integrated app `client/viewer` entry. Invariants: the viewer keeps
   `/viewer/:folder/:filename`, existing viewer-state payloads, semantic toolbar
-  roles, and the legacy fallback path.
+  roles, and a WebGPU requirement for document rendering. The **Deskew** toolbar
+  button exposes its current state through `aria-pressed`.
 * Consumer: the PDF.js and GPU local viewer toolbars. [Document scan](api.md#document-scan) uses one server job per book and shares the runtime's OCR capacity. Browser locators use the named `Scan status` button and dialog, `Scan start page` spinbutton, scan progress bar, and in-flight summary button. The summary opens the named `Pages in progress` dialog, whose list items show only in-flight page numbers. The `Scan status` dialog lists all pages with their saved-text state and exposes a single named `Close` button in the title bar.
 * Both engines expose **Clips** in the **PDF annotation tools** complementary
   landmark. The control's `aria-pressed` reports capture mode and `aria-expanded`

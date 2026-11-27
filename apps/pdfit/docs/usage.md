@@ -83,7 +83,9 @@ Cover view shows a card grid. Open the card's information overlay for the last-o
 
 ## Viewer toolbar
 
-Open a document with `engine=gpu` in the viewer URL to use PDFium's progressive preview cache and automatic scan deskew. The viewer corrects mild tilt on each page when the text lines give a reliable estimate. The default viewer uses PDF.js with HTTP range loading.
+The viewer uses PDFium and WebGPU. Open it over HTTPS or from `http://localhost` or `http://127.0.0.1` on the server PC. A plain HTTP LAN address can serve the library but cannot open the WebGPU viewer.
+
+Select **Deskew** in the toolbar to correct mild tilt in the open scan. New documents open with Deskew off. The PDF stays open at the current page when you toggle the button.
 
 The toolbar below the document title uses small English captions under its icons in both the PDF.js and GPU viewers. On narrow screens, groups of controls wrap onto additional rows. Use **OCR** to open the text dialog on the current page of a local PDF, or **Download** to save the document. Tooltips and accessible button names follow the interface language.
 

@@ -9,6 +9,8 @@ Run:
 * `npm run verify:pdfit:acceptance`
 * `npm run test:pdfgpu`
 
+Current viewer checks use Chrome with WebGPU. Browser scripts that check PDF.js or the Canvas 2D fallback apply to their original release builds.
+
 `apps/pdfit/tests/free-cover-view-deployed-browser.mjs` is a read-only headless check of the cover view against a deployed standalone server (`PDFIT_BASE_URL`, default `http://127.0.0.1:15203`). It reads `/api/tasks/status`, switches to the grid, and asserts that at least `PDFIT_MIN_READY_COVERS` covers are loaded 360 px wide server thumbnails with non-blank pixels and a `v=<mtime>-<size>` URL, that the page contains no browser-side PDF canvas, that no PDF file was downloaded, and that the view choice persists. `PDFIT_WAIT_TASKS_IDLE_SECONDS` waits for the task queue to drain first. Set `PDFIT_BROWSER_CHANNEL=chrome` to use an installed Chrome, and `PDFIT_EVIDENCE_DIR` to save a screenshot and JSON.
 
 [Cover card tag drag test](../tests/plans/cover-tag-drag-20261123.md) uses native mouse drags in the deployed Free UI with isolated tag API responses.
@@ -21,7 +23,7 @@ Run:
 
 [Viewer image adjustments](../tests/plans/viewer-image-adjustments-20261120.md) checks the **Image** button and its localized dialog, presets, switch, and sliders. It compares rendered RGB in PDF.js, WebGPU on a real adapter, and PDFGPU Canvas 2D with the adapter disabled.
 
-[Viewer deskew](../tests/plans/viewer-deskew-20261127.md) measures opposite scan angles in PDF.js, WebGPU and Canvas 2D. It checks detail tiles after zoom, source coordinates for drawn annotations and clips, and the clip image and overlay rotation.
+[Viewer deskew](../tests/plans/viewer-deskew-20261127.md) measures scan angles on WebGPU with the toolbar toggle off, on, and off again. It checks the worker requests, document reuse, zoom, annotation and clip coordinates, and the error shown when WebGPU is unavailable.
 
 [Viewer progressive cache](../tests/plans/viewer-progressive-cache-20261120.md) verifies the GPU viewer's preview, visible detail, and directional prefetch against a deployed Free server. It checks rendered pixels and uses worker traces to verify scheduling and cache reuse.
 

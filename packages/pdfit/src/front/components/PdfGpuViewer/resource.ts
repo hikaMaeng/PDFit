@@ -1,6 +1,8 @@
 import type { PdfitMessageKey } from '../../i18n/messages.js';
 
 export const RSC = {
+  webgpuUnavailable: 'viewer.webgpu.unavailable.alert',
+  webgpuInsecure: 'viewer.webgpu.insecure.alert',
   tools: 'annotationTools',
   movePalette: 'movePalette',
   collapsePalette: 'collapseAnnotationPalette',

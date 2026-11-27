@@ -48,7 +48,7 @@ Contracts:
 Viewer render path:
 
 `client/viewer/common/App.tsx` -> `front/pages/PdfViewerPage.tsx` -> `front/components/PdfGpuViewer/index.tsx` -> `@pdfgpu/core`.
-The legacy `front/components/PdfViewer` remains the explicit fallback when PDFium WASM cannot initialize.
+The viewer route requires WebGPU. The PDFGPU adapter displays an error if it cannot start the renderer.
 
 Viewer reuse path:
 

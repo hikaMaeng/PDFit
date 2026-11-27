@@ -879,47 +879,16 @@ export const F04 = {
 export const F05 = {
   id: 'F05',
   group: 'F',
-  title: 'PDF.js one-shot clip capture and manual cancellation',
+  title: 'Viewer reports when WebGPU is unavailable',
   seed: seed({
-    folders: [{ name: 'viewer-bookmark-legacy', files: [{ name: 'bookmark-legacy.pdf', pages: 2 }] }],
+    folders: [{ name: 'viewer-webgpu-required', files: [{ name: 'webgpu-required.pdf', pages: 2 }] }],
   }),
   run: async ({ page }) => {
-    await page.goto('/viewer/viewer-bookmark-legacy/bookmark-legacy.pdf?engine=legacy', { waitUntil: 'domcontentloaded' });
-    await waitText(page, 'bookmark-legacy.pdf');
-    const canvas = page.locator('[data-pdf-page] canvas').first();
-    await canvas.waitFor({ state: 'visible' });
-    const clip = page.getByRole('button', { name: /^(Clips|클립)$/ });
-    const panel = page.getByRole('complementary', { name: /^(Book bookmarks|클립)$/ });
-    assert.equal(await clip.getAttribute('aria-pressed'), 'false');
-    await clip.click();
-    await panel.waitFor();
-    await clip.click();
-    await panel.waitFor({ state: 'detached' });
-    assert.equal(await clip.getAttribute('aria-pressed'), 'false');
-    await clip.click();
-    await panel.waitFor();
-
-    const canvasBox = await canvas.boundingBox();
-    const surfaceBox = await page.getByTestId('legacy-bookmark-capture-surface').boundingBox();
-    assert.notEqual(canvasBox, null);
-    assert.notEqual(surfaceBox, null);
-    const start = { x: canvasBox.x + 30, y: Math.max(canvasBox.y, surfaceBox.y) + 30 };
-    const end = { x: start.x + 20, y: start.y + 20 };
-    const createdResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/bookmarks/'));
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(end.x, end.y, { steps: 4 });
-    await page.getByTestId('legacy-bookmark-drag-preview').waitFor({ state: 'visible' });
-    await page.mouse.up();
-    await page.getByRole('button', { name: /^(Clips|클립)$/, pressed: false }).waitFor();
-    assert.equal((await createdResponse).status(), 201);
-    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'visible' });
-
-    await panel.getByTestId('legacy-bookmark-card').waitFor();
-    await panel.getByRole('button', { name: /^(Close|닫기)$/ }).click();
-    await panel.waitFor({ state: 'detached' });
-    await page.getByTestId('legacy-bookmark-delete').click();
-    await page.getByTestId('legacy-bookmark-overlay').waitFor({ state: 'detached' });
+    await page.addInitScript(() => Object.defineProperty(navigator, 'gpu', { value: undefined }));
+    await page.goto('/viewer/viewer-webgpu-required/webgpu-required.pdf?engine=legacy', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('alert').filter({ hasText: /PDF 뷰어에는 WebGPU가 필요합니다|PDF viewer requires WebGPU/ }).waitFor();
+    assert.equal(await page.getByTestId('pdf-scroll-area').count(), 0);
+    assert.equal(await page.getByTestId('pdfgpu-scroll-area').isVisible(), false);
   },
 };
 

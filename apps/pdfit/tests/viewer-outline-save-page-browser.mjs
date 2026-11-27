@@ -14,8 +14,7 @@ await mkdir(output, { recursive: true });
 assert.equal((await fetch(`${origin}/health`)).status, 200);
 const browser = await chromium.launch({
   headless: true,
-  channel: process.env.PDFIT_TEST_CHANNEL,
-  args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome',
 });
 const context = await browser.newContext({ locale: 'ko-KR', viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
@@ -34,15 +33,15 @@ let failure;
 page.on('pageerror', (error) => errors.push(error.message));
 await context.tracing.start({ screenshots: true, snapshots: true });
 
-async function open(file, engine, viewMode) {
+async function open(file, viewMode) {
   const seed = await fetch(stateUrl(file), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...initialState, viewMode }),
   });
   assert.equal(seed.status, 200);
-  await page.goto(`${origin}/viewer/${folder}/${file}?engine=${engine}`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId(engine === 'gpu' ? 'pdfgpu-scroll-area' : 'pdf-scroll-area').waitFor({ timeout: 45000 });
+  await page.goto(`${origin}/viewer/${folder}/${file}`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('pdfgpu-scroll-area').waitFor({ timeout: 45000 });
   await pageInput.waitFor();
   await outlineTrigger.click();
   const regenerate = dialog.getByRole('button', { name: '재생성', exact: true });
@@ -148,7 +147,7 @@ async function setPageAndVerify(file, title, previous, current, reject = false) 
 }
 
 try {
-  await open('original.pdf', 'legacy', 'single');
+  await open('original.pdf', 'single');
   const storedGeometry = await verifyPopup();
   await navigate('Chapter 2', 3);
   assert.equal(await entry('Chapter 2').getAttribute('aria-current'), 'location');
@@ -182,17 +181,17 @@ try {
   }
   steps.push({ file: 'original.pdf', popup: 'stored destinations restored in a fresh browser context' });
 
-  await open('spread.pdf', 'legacy', 'double');
+  await open('spread.pdf', 'double');
   assert.notEqual((await dialog.boundingBox()).width, storedGeometry.width);
   await navigate('Chapter 2', 3);
   await navigate('Section 1.1', 2, 1);
   await setPageAndVerify('spread.pdf', 'Chapter 2', 3, 1);
 
-  await open('scroll.pdf', 'legacy', 'scroll');
+  await open('scroll.pdf', 'scroll');
   await navigate('Chapter 2', 3);
-  const scrollArea = page.getByTestId('pdf-scroll-area');
+  const scrollArea = page.getByTestId('pdfgpu-scroll-area');
   await page.waitForFunction(() => {
-    const area = document.querySelector('[data-testid="pdf-scroll-area"]');
+    const area = document.querySelector('[data-testid="pdfgpu-scroll-area"]');
     return area && area.scrollTop > 0 && area.scrollHeight - area.clientHeight - area.scrollTop <= 1;
   });
   const scrollTop = await scrollArea.evaluate((area) => area.scrollTop);
@@ -205,7 +204,7 @@ try {
     { file: 'spread.pdf', viewport: { width: 900, height: 500 }, axis: 'height', dx: 30, dy: 0 },
   ]) {
     await page.setViewportSize(viewport);
-    await open(file, 'legacy', 'single');
+    await open(file, 'single');
     const before = await dialog.boundingBox();
     assert.ok(before[axis] < (axis === 'width' ? 560 : 660));
     await drag(dialog.getByTitle('목차 창 이동'), dx, dy);
@@ -224,7 +223,7 @@ try {
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await open('gpu.pdf', 'gpu', 'single');
+  await open('gpu.pdf', 'single');
   await navigate('Chapter 2', 3);
   await setPageAndVerify('gpu.pdf', 'Chapter 1', 1, 3);
   await page.getByTestId('viewer-load-progress-panel').waitFor({ state: 'hidden' });

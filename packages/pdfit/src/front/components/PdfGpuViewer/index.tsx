@@ -25,7 +25,7 @@ import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
 import { ViewerToolbar, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../ViewerToolbar/index.js';
-import { usePageColorFilter } from '../PageColorFilter.js';
+import { RSC } from './resource.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
 import type { BookstoreOutlineLookup } from '../../viewer/bookstoreOutline.js';
@@ -63,7 +63,6 @@ type Props = {
   initialScrollTop?: number;
   onStateChange?: ViewerStateReporter;
   onPageChange?: (page: number) => void;
-  onUnavailable?: () => void;
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
   floatingPanel?: (onPage: (page: number) => void, pageCount: number) => ReactNode;
@@ -119,7 +118,6 @@ export default function PdfGpuViewer({
   initialScrollTop,
   onStateChange,
   onPageChange,
-  onUnavailable,
   uiHidden = false,
   documentActions,
   floatingPanel,
@@ -131,7 +129,7 @@ export default function PdfGpuViewer({
   outlineStorage,
   outlineLookup,
 }: Props) {
-  const { ui } = usePdfitI18n();
+  const { t, ui } = usePdfitI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<PdfGpuViewerController | null>(null);
   const [controller, setController] = useState<PdfGpuViewerController | null>(null);
@@ -149,7 +147,7 @@ export default function PdfGpuViewer({
     if (controller?.getState().scrollMode === 'page') forwardPageModeWheel(event, viewportRef.current, true);
     else if (annotation.tool === 'select') pan.wheel(event);
   });
-  const [initError, setInitError] = useState<string | null>(null);
+  const [initError, setInitError] = useState(false);
   const [pageInput, setPageInput] = useState('1');
   const initialViewAppliedRef = useRef<{
     controller: PdfGpuViewerController;
@@ -162,7 +160,6 @@ export default function PdfGpuViewer({
   }, [controller]);
   const getSnapshot = useCallback(() => controller?.getState() ?? EMPTY_STATE, [controller]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const pageColors = usePageColorFilter(colorAdjustments, state.backend === 'unsupported');
   const inverted = colorAdjustments.invert;
   useLayoutEffect(() => { controller?.setColorAdjustments(colorAdjustments); }, [controller, colorAdjustments]);
   const [zoomInput, setZoomInput] = useState(String(Math.round(state.zoom * 100)));
@@ -231,6 +228,10 @@ export default function PdfGpuViewer({
     const initialize = async () => {
       const viewport = viewportRef.current;
       if (!viewport) return;
+      if (!('gpu' in navigator) || !navigator.gpu) {
+        setInitError(true);
+        return;
+      }
 
       try {
         // Use the four raster slots described in docs/internals.md#webgpu-viewer-contract.
@@ -243,7 +244,6 @@ export default function PdfGpuViewer({
           container: viewport,
           provider,
           providerKind: 'in-memory',
-          deskew: true,
           initialZoom: initialScale ?? DEFAULT_VIEWER_ZOOM,
           minZoom: 0.25,
           maxZoom: 5,
@@ -262,20 +262,28 @@ export default function PdfGpuViewer({
           nextController.dispose();
           return;
         }
+        if (nextController.getState().backend !== 'webgpu') {
+          nextController.dispose();
+          nextController = null;
+          setInitError(true);
+          return;
+        }
 
         controllerRef.current = nextController;
+        setInitError(false);
         setController(nextController);
         await nextController.load(url);
         if (cancelled) return;
         if (initialFitMode === 'height' && initialViewMode === 'double') nextController.fitPage();
         else if (initialFitMode && initialFitMode !== 'none') nextController.setFitMode(initialFitMode);
-        setInitError(null);
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : 'WebGPU PDF viewer initialization failed';
-        console.error('[pdfit] PDFGPU viewer unavailable; using PDF.js fallback', { message, documentUrl: url });
-        setInitError(message);
-        onUnavailable?.();
+        console.error('[pdfit] PDFGPU viewer unavailable', { message, documentUrl: url });
+        nextController?.dispose();
+        nextController = null;
+        setController(null);
+        setInitError(true);
       }
     };
 
@@ -286,7 +294,7 @@ export default function PdfGpuViewer({
       controllerRef.current = null;
       setController(null);
     };
-  }, [initialFitMode, initialScale, initialViewMode, onUnavailable, url]);
+  }, [initialFitMode, initialScale, initialViewMode, url]);
 
   useEffect(() => {
     if (!state.activePage) return;
@@ -403,21 +411,17 @@ export default function PdfGpuViewer({
     requestAnimationFrame(() => controller.scrollToPage(page - 1));
   }, [controller]);
 
-  if (initError) {
-    return <>
-      {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
-      <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
-      {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel(goToPage, state.pageCount)}</Box>}
-    </>;
-  }
-
   const isSpread = state.viewMode === 'spread';
   const pageStep = isSpread ? 2 : 1;
   const lastPage = isSpread ? lastSpreadLead(state.pageCount, state.spreadPairing) : state.pageCount;
+  const gpuUnavailable = initError || (controller !== null && state.backend !== 'webgpu');
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {!uiHidden && (
+      {gpuUnavailable && !uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
+      {gpuUnavailable && <Alert severity="error">{t(isSecureContext ? RSC.webgpuUnavailable : RSC.webgpuInsecure)}</Alert>}
+      {!uiHidden && !gpuUnavailable && (
         <ViewerToolbar
+          deskew={{ enabled: state.deskew === true, onToggle: () => controller?.setDeskew(!state.deskew) }}
           pageLayout={isSpread ? 'double' : 'single'}
           coverAloneSelected={isSpread ? state.spreadPairing === 'alone' : undefined}
           continuousScroll={state.scrollMode === 'continuous'}
@@ -454,14 +458,13 @@ export default function PdfGpuViewer({
         Backend: {state.backend} · Quality: {state.renderQuality} · Pages: {state.pageCount ? `${currentPage} / ${state.pageCount}` : '0 / 0'} · {displayLoadProgress}%
       </Box>
       {state.error ? <Alert severity="error">{state.error}</Alert> : null}
-      {(state.loading || state.loadPhase === 'rendering') ? (
+      {!gpuUnavailable && (state.loading || state.loadPhase === 'rendering') ? (
         <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
-      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', visibility: gpuUnavailable ? 'hidden' : 'visible' }}>
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', boxSizing: 'border-box', py: 3, bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a' }}>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
-            {pageColors.definition}
-            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative', '& > canvas': { filter: pageColors.filter } }} />
+            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative' }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>

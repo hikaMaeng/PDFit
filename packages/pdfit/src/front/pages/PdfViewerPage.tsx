@@ -8,7 +8,6 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
 import { foldersApi } from '../api/folders';
 import { useViewerState } from '../hooks/useViewerState';
-import PdfViewer from '../components/PdfViewer';
 import PdfGpuViewer from '../components/PdfGpuViewer';
 import type { ViewerStatePayload } from '../api/viewerState';
 import { ViewerSessionModel } from '../viewer/sessionModel';
@@ -31,7 +30,6 @@ import { usePdfitFrontConfig } from '../context.js';
 import { tagsApi } from '../api/tags.js';
 import TagChip from '../components/TagChip.js';
 import { recordDocumentOpened } from '../model/documentOpenHistory.js';
-import { folderLibraryModel } from '../model/folderLibraryModel.js';
 import { subscribeTagDetailsChanges } from '../model/tagDetailsEvents.js';
 import { outlinesApi } from '../api/outlines.js';
 import type { PdfOutlineStorage } from '../viewer/storedOutline.js';
@@ -153,10 +151,6 @@ export default function PdfViewerPage() {
   // restoring the saved scroll position afterwards would move away from it.
   const initialScrollTop = initialPage == null ? savedState?.scrollTop : undefined;
 
-  // Remote PDFs are opened with PDF.js by default so HTTP byte ranges can show
-  // the first page without downloading the entire document. GPU remains an
-  // explicit opt-in for diagnostics and high-performance local comparisons.
-  const [viewerEngine, setViewerEngine] = useState<'gpu' | 'legacy'>(searchParams.get('engine') === 'gpu' ? 'gpu' : 'legacy');
   const [exportOpen, setExportOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [sampleLibraryState, setSampleLibraryState] = useState<'checking' | 'available' | 'adding' | 'added' | 'error'>(sample ? 'checking' : 'available');
@@ -276,19 +270,6 @@ export default function PdfViewerPage() {
     remove: () => outlinesApi.remove(folderName, fileName, driveFileId),
   }), [driveFileId, fileName, folderName, pendingUpload, sample]);
   const outlineLookup = useCallback((isbn?: string) => outlinesApi.lookupYes24(folderName, fileName, isbn), [folderName, fileName]);
-
-  const handleGpuUnavailable = useCallback(() => {
-    setViewerEngine('legacy');
-  }, []);
-
-  const handleDocumentUnavailable = useCallback(() => {
-    if (sample) return;
-    void foldersApi.refresh().then(() => {
-      folderLibraryModel.invalidateFiles();
-      window.dispatchEvent(new Event('folders-changed'));
-      window.dispatchEvent(new Event('tags-changed'));
-    }).catch((error) => console.warn('[pdfit] Library refresh after missing document failed.', error));
-  }, [sample]);
 
   useEffect(() => {
     let active = true;
@@ -458,7 +439,7 @@ export default function PdfViewerPage() {
         <Box sx={{ flex: 1, display: 'grid', placeItems: 'center', p: 3 }}>
           <Alert severity="info">{t('pdfStillUploading')}</Alert>
         </Box>
-      ) : stateLoaded ? viewerEngine === 'gpu' ? (
+      ) : stateLoaded ? (
         <PdfGpuViewer
           url={pdfUrl}
           initialPage={initialPage ?? savedState?.page ?? null}
@@ -469,35 +450,11 @@ export default function PdfViewerPage() {
           onColorAdjustmentsChange={sessionModel.setColorAdjustments}
           initialScrollTop={initialScrollTop}
           onStateChange={handleStateChange}
-          onUnavailable={handleGpuUnavailable}
           uiHidden={false}
           bookmarks={bookmarks}
           onBookmarkCaptured={handleBookmarkCaptured}
           onBookmarkUpdated={handleBookmarkUpdated}
           onBookmarkDeleted={handleBookmarkDeleted}
-          outlineStorage={outlineStorage}
-          outlineLookup={sample ? undefined : outlineLookup}
-          documentActions={documentActions}
-          onPageChange={onCommentPageChange}
-          floatingPanel={floatingPanel}
-          scanBook={scanBook}
-        />
-      ) : (
-        <PdfViewer
-          url={pdfUrl}
-          initialPage={initialPage ?? savedState?.page ?? null}
-          initialScale={initialViewerScale}
-          initialFitMode={initialViewerFitMode}
-          initialViewMode={savedState?.viewMode}
-          colorAdjustments={colorAdjustments}
-          onColorAdjustmentsChange={sessionModel.setColorAdjustments}
-          initialScrollTop={initialScrollTop}
-          onStateChange={handleStateChange}
-          uiHidden={false}
-          bookmarks={bookmarks}
-          onBookmarkCaptured={handleBookmarkCaptured}
-          onBookmarkDeleted={handleBookmarkDeleted}
-          onDocumentUnavailable={handleDocumentUnavailable}
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}

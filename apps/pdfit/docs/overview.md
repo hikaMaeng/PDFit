@@ -2,7 +2,7 @@
 
 `apps/pdfit` is the only deployable PDFit app. It combines the former Free library/viewer workflow with the former Pro Settings (AI servers) workflow. The embedded PostgreSQL/pgvector database needs no settings screen.
 
-The service entry serves the library UI and `/api/*`; the viewer entry serves `/viewer` and uses the shared PDFium/WebGPU implementation with its fallback path.
+The service entry serves the library UI and `/api/*`. The viewer entry at `/viewer` uses the shared PDFium/WebGPU implementation and requires a usable WebGPU device.
 
 The service shell keeps the library navigation (folders and tags), with Settings available as a gear icon in the upper-right header (a single AI servers page without a tab strip) and the language/theme dialog behind the globe icon at the upper left. Its visual contract follows the LinkCpp console surface: a fixed dark navigation rail, blue active-state accent, thin dividers, and a layered `#18181b` / `#202124` work area.
 

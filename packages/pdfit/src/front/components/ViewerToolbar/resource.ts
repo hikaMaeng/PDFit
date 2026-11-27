@@ -10,6 +10,7 @@ export const toolbarLabels = {
   zoomOut: 'Zoom −',
   zoomIn: 'Zoom +',
   image: 'Image',
+  deskew: 'Deskew',
   ocr: 'OCR',
   download: 'Download',
   comments: 'Comments',
@@ -17,6 +18,10 @@ export const toolbarLabels = {
   scan: 'Scan',
   previous: 'Prev',
   next: 'Next',
+} as const;
+
+export const deskewKeys = {
+  toggle: 'viewer.deskew.toggle.button',
 } as const;
 
 export const scanKeys = {

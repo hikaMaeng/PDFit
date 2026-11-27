@@ -11,13 +11,14 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import TuneIcon from '@mui/icons-material/Tune';
+import StraightenIcon from '@mui/icons-material/Straighten';
 import TocIcon from '@mui/icons-material/Toc';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { DEFAULT_COLOR_ADJUSTMENTS, sameColorAdjustments, type PdfGpuColorAdjustments, type PdfGpuColorAdjustmentState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { toolbarLabels as labels } from './resource.js';
+import { deskewKeys, toolbarLabels as labels } from './resource.js';
 import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
 import { ScanControls } from './ScanControls.js';
 import type { OcrScanBook } from '../../api/ocr.js';
@@ -25,6 +26,7 @@ import { COMMENT } from '../book-comments/resource.js';
 
 type PageLayout = 'single' | 'double';
 export type RenderViewerDocumentActions = (page?: number, pageCount?: number) => ReactNode;
+type ViewerDeskewControl = { enabled: boolean; onToggle: () => void };
 
 type Props = {
   pageLayout: PageLayout;
@@ -34,6 +36,7 @@ type Props = {
   zoomOutDisabled?: boolean;
   zoomInDisabled?: boolean;
   colorAdjustments: PdfGpuColorAdjustmentState;
+  deskew?: ViewerDeskewControl;
   documentActions?: ReactNode;
   scanBook?: OcrScanBook;
   outlineOpen: boolean;
@@ -153,6 +156,10 @@ export function ViewerToolbar(props: Props) {
     </Box>
     <Box sx={dividedGroupStyle}>
       <ImageAdjustmentControl colors={props.colorAdjustments} onChange={props.onColorAdjustmentsChange} />
+      {props.deskew && <ToolbarButton icon={<StraightenIcon />} caption={labels.deskew} label={t(deskewKeys.toggle)}
+        aria-pressed={props.deskew.enabled} disabled={props.pageCount === 0}
+        color={props.deskew.enabled ? 'primary' : 'default'} onClick={props.deskew.onToggle}
+        sx={{ ...buttonStyle, '&[aria-pressed="true"]': { bgcolor: 'action.selected' } }} />}
       {props.documentActions}
     </Box>
     <Box sx={{ ...groupStyle, flexShrink: 1, minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end', marginInlineStart: 'auto' }}>

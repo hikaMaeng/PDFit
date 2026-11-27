@@ -165,8 +165,7 @@ and captures top/middle browser screenshots under `test/YYYYMMDD/<run>/`.
 * `data-testid="pdfgpu-text-layer"` on retained page shells
 
 The performance scenario must load a real PDF, assert page shells and canvas
-output, exercise zoom/fit/view-mode controls, and record whether the backend is
-`webgpu` or the supported 2D fallback.
+output, exercise zoom, fit, and view-mode controls, and verify the `webgpu` backend.
 
 Hosted IndexedDB changes require a real browser engine. The service browser fixture uses
 mock authentication and a mock Spreadsheet snapshot to verify first hydration, reload

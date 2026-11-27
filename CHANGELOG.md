@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.24] - 2026-11-27
+
+- Toggle Deskew in the viewer toolbar to correct scanned pages in the open document. New documents open with Deskew off.
+- Use WebGPU for PDF viewing and show a browser or connection error when it is unavailable.
+
 ## [0.4.23] - 2026-11-27
 
 - Restore the GPU viewer's reading position as soon as the page layout is available, so finishing the load cannot shift an in-progress clip.

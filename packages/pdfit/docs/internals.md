@@ -37,8 +37,9 @@ PostgreSQL.
 
 `@pdfgpu/core` is the performance path: PDFium produces a low-resolution preview
 and visible detail tiles, its byte-budget cache bounds raster memory, and its
-renderer composites the visible frame with WebGPU when available or 2D canvas
-otherwise. `front/components/PdfGpuViewer/index.tsx` is the PDFit React adapter;
+renderer composites the visible frame with WebGPU. The PDFit adapter displays
+an error when the browser cannot provide a WebGPU device.
+`front/components/PdfGpuViewer/index.tsx` is the PDFit React adapter;
 the controller remains the mutable source of truth outside React.
 
 The [PDFit adapter](../src/front/components/PdfGpuViewer/index.tsx) requests four
@@ -49,12 +50,11 @@ prefetch resumes in both directions from the current page and skips cached
 pages. The 64 MiB preview budget favors nearby pages and the separate 128 MiB
 detail budget protects visible tiles.
 
-The GPU adapter enables page deskew on the existing preview raster. PDFGPU reuses the detected angle for detail tiles and capture. The [annotation projection](../src/front/annotation/coordinates.ts) uses `getPageTransform` for drawing and pointer input. The [bookmark overlay](../src/front/components/PdfGpuViewer/BookmarkOverlayLayer.tsx) uses the rotation returned by `projectOverlays`. Both features store coordinates in the source PDF's page space.
+The toolbar calls `setDeskew` on the active controller. While Deskew is on, PDFGPU asks its preview workers to measure angles for pages that still need a measurement. The controller uses the same angle for detail tiles, capture, [annotation projection](../src/front/annotation/coordinates.ts), and the [bookmark overlay](../src/front/components/PdfGpuViewer/BookmarkOverlayLayer.tsx). Annotation and bookmark coordinates stay in source PDF points.
 
 PDFit does not own a second pdfgpu implementation. Core interaction transitions,
 DPI normalization, layout, queueing, and rendering are tested and versioned in
-the independent repository. PDFit only retains app-specific session state and
-the legacy fallback adapter.
+the independent repository. PDFit retains app-specific session state and viewer controls.
 
 During initial loading the core snapshot exposes `loadPhase`, `loadProgress`,
 `loadProgressDeterminate`, `loadedPages`, and `loadPageCount`. The percentage covers document download, document opening, plus
@@ -63,16 +63,13 @@ are not falsely reported as pre-rendered.
 
 The controller snapshot is deliberately immutable-by-reference per emission so
 `useSyncExternalStore` can detect each update without copying domain state into
-React. The existing PDF.js component is retained only as the initialization
-fallback for unsupported or failed PDFium environments.
+React.
 
 ## Viewer zoom contract
 
-The zoom value stored in `viewer_state.scale` and shown in both viewer toolbars is a
-physical PDF zoom ratio, not PDF.js's native 72-DPI viewport scale. At 100%, one PDF
-inch (72 points) occupies 96 CSS pixels, matching Acrobat's system-resolution display
-convention and the PDFGPU/PDFium renderer. The PDF.js fallback therefore multiplies
-the displayed zoom by `96 / 72` only at the viewport boundary. Fit-width and fit-height
+The zoom value stored in `viewer_state.scale` and shown in the viewer toolbar is a
+physical PDF zoom ratio. At 100%, one PDF inch (72 points) occupies 96 CSS pixels.
+Fit-width and fit-height
 convert available CSS pixels back into this user-facing zoom ratio, while bookmark and
 annotation data remain in unscaled PDF-point coordinates.
 Documents without persisted viewer state start at 100%. Existing per-document
@@ -140,8 +137,6 @@ capture waits for detail readiness and retries once instead of dropping the
 gesture before the metadata request. The adapter passes PDF-point absolute rectangles to
 `PdfGpuViewerController.projectOverlays()`. PDFGPU normalizes them using each
 manifest page's point size and returns projections for visible pages only.
-If PDFGPU initialization fails, PDF.js uses the same palette, capture mode, list
-header, and API callbacks. `?engine=legacy` selects PDF.js explicitly for browser verification.
 The React overlay is a sibling of the PDFGPU-owned viewport because the core
 controller owns and replaces the viewport's child DOM.
 

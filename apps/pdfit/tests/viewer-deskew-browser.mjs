@@ -104,14 +104,32 @@ async function drag(page, start, end) {
   await page.mouse.up();
 }
 
-async function checkViewer(browser, mode) {
-  const legacy = mode === 'pdfjs';
+async function waitForGuide(shell, angle, name) {
+  const deadline = Date.now() + 10000;
+  let guide;
+  do {
+    guide = await findGuide(await shell.screenshot());
+    if (Math.abs(guide.angle - angle) < 0.2) {
+      return findGuide(await shell.screenshot({ path: resolve(output, name) }));
+    }
+  } while (Date.now() < deadline);
+  assert.fail(`Expected angle ${angle}°, measured ${guide.angle}°`);
+}
+
+async function checkViewer(browser) {
+  const mode = 'webgpu';
   const context = await browser.newContext({ locale: 'ko-KR', colorScheme: 'light', viewport: { width: 1440, height: 1100 } });
   try {
-    await context.addInitScript((noGpu) => {
+    await context.addInitScript(() => {
       localStorage.setItem('pdfit.language', 'ko');
-      if (noGpu) Object.defineProperty(navigator, 'gpu', { value: undefined });
-    }, mode === 'canvas2d');
+      window.skewRequests = 0;
+      const send = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (...args) {
+        if (args[0].type === 'preview' && args[0].detectSkew === true) window.skewRequests += 1;
+        return send.apply(this, args);
+      };
+    });
+    let documentReads = 0;
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -119,6 +137,7 @@ async function checkViewer(browser, mode) {
       const request = route.request();
       const { pathname } = new URL(request.url());
       if (pathname.includes('/files/') || pathname.includes('/by-id/')) {
+        if (request.method() === 'GET') documentReads += 1;
         return route.fulfill({ contentType: 'application/pdf', headers: { 'content-length': String(artifact.length) }, body: request.method() === 'HEAD' ? undefined : artifact });
       }
       if (request.method() === 'POST' && pathname === '/api/annotations') return route.fulfill({ status: 201, json: request.postDataJSON() });
@@ -129,31 +148,60 @@ async function checkViewer(browser, mode) {
       return route.fulfill({ json: pathname.startsWith('/api/viewer-state/') ? viewerState : /\/api\/(bookmarks|annotations|tags)/.test(pathname) ? [] : {} });
     });
 
-    const backend = mode === 'canvas2d' ? 'unsupported' : 'webgpu';
     const status = page.getByRole('status', { name: 'viewer status' });
-    const result = { mode, angles: [], errors };
+    const deskew = page.getByRole('button', { name: '기울임 보정', exact: true });
+    const pageNumberInput = page.getByRole('textbox', { name: '페이지 번호' });
+    const nextPage = page.getByRole('button', { name: '다음 페이지', exact: true });
+    const canvas = page.getByTestId('pdfgpu-scroll-area').locator('canvas').first();
+    const waitForGpuDetail = (pageNumber) => status.filter({
+      hasText: `Backend: webgpu · Quality: detail · Pages: ${pageNumber} / ${angles.length}`,
+    }).waitFor({ state: 'attached' });
+    const result = { mode, angles: [], uncorrectedAngles: [], disabledAngles: [], errors };
     for (const [index, sourceAngle] of angles.entries()) {
       const pageNumber = index + 1;
-      await page.goto(`${viewerUrl}&engine=${legacy ? 'legacy' : 'gpu'}&page=${pageNumber}`);
-      const shellSelector = `[data-${legacy ? 'legacy' : 'pdfgpu'}-page-shell="true"][data-page-index="${index}"]`;
+      await page.goto(`${viewerUrl}&page=1`);
+      await deskew.and(page.locator('[aria-pressed="false"]')).waitFor();
+      for (let step = 0; step < index; step += 1) {
+        await nextPage.click();
+        await pageNumberInput.and(page.locator(`[value="${step + 2}"]`)).waitFor();
+      }
+      await waitForGpuDetail(pageNumber);
+      const shellSelector = `[data-pdfgpu-page-shell="true"][data-page-index="${index}"]`;
       const shell = page.locator(shellSelector);
-      if (legacy) await shell.locator('canvas[data-render-state="done"]').waitFor();
-      else await status.filter({ hasText: `Backend: ${backend} · Quality: detail · Pages: ${pageNumber} / ${angles.length}` }).waitFor({ state: 'attached' });
-      const capture = await shell.screenshot({ path: resolve(output, `${mode}-page-${pageNumber}.png`) });
-      const guide = await findGuide(capture);
-      const expected = legacy ? sourceAngle : 0;
-      assert.ok(Math.abs(guide.angle - expected) < 0.2, `${mode} page ${pageNumber}: expected ${expected}°, measured ${guide.angle}°`);
-      result.angles.push(guide.angle);
-      if (legacy || index !== 0) continue;
+      const originalGuide = await waitForGuide(shell, sourceAngle, `webgpu-off-page-${pageNumber}.png`);
+      result.uncorrectedAngles.push(originalGuide.angle);
+      assert.equal(await page.evaluate(() => window.skewRequests), 0, 'no worker skew request with the toggle off');
 
-      if (mode === 'webgpu') {
-        result.adapter = await page.evaluate(async () => {
-          const adapter = await navigator.gpu.requestAdapter();
-          return adapter && { vendor: adapter.info.vendor, architecture: adapter.info.architecture };
-        });
-        assert.ok(result.adapter);
+      const documentReadsBeforeToggle = documentReads;
+      assert.ok(documentReadsBeforeToggle >= 1);
+      const originalCanvas = await canvas.elementHandle();
+      await deskew.click();
+      await deskew.and(page.locator('[aria-pressed="true"]')).waitFor();
+      await page.waitForFunction(() => window.skewRequests > 0);
+      const guide = await waitForGuide(shell, 0, `webgpu-on-page-${pageNumber}.png`);
+      assert.equal(await pageNumberInput.inputValue(), String(pageNumber));
+      assert.ok(await canvas.evaluate((element, original) => element === original, originalCanvas));
+      assert.equal(documentReads, documentReadsBeforeToggle, 'enabling deskew reuses the open PDF');
+      result.angles.push(guide.angle);
+
+      if (index !== 0) {
+        await deskew.click();
+        await deskew.and(page.locator('[aria-pressed="false"]')).waitFor();
+        assert.equal(await pageNumberInput.inputValue(), String(pageNumber));
+        const restored = await waitForGuide(shell, sourceAngle, `webgpu-disabled-again-${pageNumber}.png`);
+        assert.ok(await canvas.evaluate((element, original) => element === original, originalCanvas));
+        assert.equal(documentReads, documentReadsBeforeToggle, 'disabling deskew reuses the open PDF');
+        result.disabledAngles.push(restored.angle);
+        await originalCanvas.dispose();
+        continue;
       }
 
+      result.adapter = await page.evaluate(async () => {
+        const adapter = await navigator.gpu.requestAdapter();
+        return adapter && { vendor: adapter.info.vendor, architecture: adapter.info.architecture };
+      });
+      assert.ok(result.adapter);
+      await originalCanvas.dispose();
       const zoom = page.getByRole('button', { name: '확대', exact: true });
       const originalSize = await shell.boundingBox();
       await zoom.click();
@@ -213,15 +261,47 @@ async function checkViewer(browser, mode) {
   }
 }
 
+async function checkUnavailable(browser, missingApi) {
+  const context = await browser.newContext({ locale: 'ko-KR' });
+  try {
+    await context.addInitScript((noGpu) => {
+      localStorage.setItem('pdfit.language', 'ko');
+      if (noGpu) Object.defineProperty(navigator, 'gpu', { value: undefined });
+      else navigator.gpu.requestAdapter = async () => null;
+    }, missingApi);
+    const page = await context.newPage();
+    const errors = [];
+    let pdfRequests = 0;
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.route(`${origin}/api/**`, (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (/\/(?:files|by-id)\//.test(path)) pdfRequests += 1;
+      return route.fulfill({ json: /\/api\/(bookmarks|annotations|tags)/.test(path) ? [] : {} });
+    });
+    await page.goto(`${viewerUrl}&engine=legacy`);
+    await page.getByRole('alert').filter({ hasText: 'PDF 뷰어에는 WebGPU가 필요합니다.' }).waitFor();
+    assert.equal(await page.getByTestId('pdf-scroll-area').count(), 0);
+    assert.equal(await page.getByTestId('pdfgpu-scroll-area').isVisible(), false);
+    assert.equal(pdfRequests, 0);
+    assert.deepEqual(errors, []);
+    const mode = missingApi ? 'no-webgpu-api' : 'no-webgpu-adapter';
+    await page.screenshot({ path: resolve(output, `${mode}.png`) });
+    return { mode, pdfRequests, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await mkdir(output, { recursive: true });
 const health = await fetch(`${origin}/health`);
 assert.equal(health.status, 200);
-const browser = await chromium.launch({ channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome', args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({ channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome' });
 const results = [];
 try {
-  for (const mode of ['pdfjs', 'webgpu', 'canvas2d']) {
-    results.push(await checkViewer(browser, mode));
-    process.stdout.write(`PASS ${mode}\n`);
+  for (const scenario of [checkViewer, (browser) => checkUnavailable(browser, true), (browser) => checkUnavailable(browser, false)]) {
+    const result = await scenario(browser);
+    results.push(result);
+    process.stdout.write(`PASS ${result.mode}\n`);
   }
 } finally {
   await writeFile(resolve(output, 'result.json'), JSON.stringify({ origin, health: health.status, browser: browser.version(), results }, null, 2));
