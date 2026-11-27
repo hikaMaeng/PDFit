@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-11-27
+
+- Add reference pages to book comments and filter the viewer's comments by the current PDF page.
+- Link the page OCR window to viewer navigation, align viewer popup close buttons, and compact the scan status dialog.
+
 ## [0.4.19] - 2026-11-27
 
 - Move and resize Bot, Comments, page OCR, and Contents while reading. PDFit remembers each popup's size and position for each book.
