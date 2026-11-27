@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.26] - 2026-11-27
+
+- Select and copy text directly on the page. The viewer uses embedded PDF text or reads scanned Korean and English pages in the browser.
+- Preserve Korean word spacing and join wrapped lines when copying scanned prose.
+- Let Book Bot choose which pages to load before answering and use the model's token budget before reducing the book evidence.
+
 ## [0.4.25] - 2026-11-27
 
 - Open **Background** in the WebGPU viewer toolbar to choose from 20 colors for the space around and between pages. Dark gray is the default. PDFit remembers the selected color in the browser.
