@@ -5,6 +5,7 @@ import { bookBotMessages } from './bookBotMessages.js';
 import { translateEnglishUi } from './uiText.js';
 import { RSC as SidebarRsc } from '../layout/resource.js';
 import { RSC as PageRsc } from '../pages/resource.js';
+import { RSC as PopupRsc } from '../components/viewer-popup/resource.js';
 
 const LANGUAGE_INDEX: Record<PdfitLanguage, number> = { en: 0, ko: 1, zh: 2, es: 3, hi: 4, ar: 5, fr: 6, pt: 7, ru: 8, ms: 9, bn: 10, ja: 11 };
 const recentBooksLabel = ['Recently added', '신규등록', '最近添加', 'Añadidos recientemente', 'हाल में जोड़ी गईं', 'المضافة حديثًا', 'Ajouts récents', 'Adicionados recentemente', 'Недавно добавленные', 'Baru ditambah', 'সম্প্রতি যোগ করা হয়েছে', '最近追加した本'];
@@ -15,6 +16,7 @@ const rows = {
   [PageRsc.LIBRARY_RECENT_EMPTY_MESSAGE]: ['No books have been added yet.', '등록된 책이 없습니다.', '尚未添加任何书籍。', 'Aún no se han añadido libros.', 'अभी तक कोई किताब नहीं जोड़ी गई है।', 'لم تُضف أي كتب بعد.', 'Aucun livre ajouté pour le moment.', 'Ainda não foram adicionados livros.', 'Книги пока не добавлены.', 'Belum ada buku ditambah.', 'এখনও কোনো বই যোগ করা হয়নি।', 'まだ本が追加されていません。'],
   ...homeMessages,
   ...bookBotMessages,
+  [PopupRsc.VIEWER_POPUP_RESIZE_BUTTON]: ['Resize popup', '팝업 크기 조절', '调整弹窗大小', 'Cambiar tamaño de la ventana', 'पॉपअप का आकार बदलें', 'تغيير حجم النافذة المنبثقة', 'Redimensionner la fenêtre', 'Redimensionar janela', 'Изменить размер окна', 'Ubah saiz tetingkap', 'পপআপের আকার বদলান', 'ポップアップのサイズ変更'],
   bookComments: ['Comments', '코멘트', '评论', 'Comentarios', 'टिप्पणियाँ', 'التعليقات', 'Commentaires', 'Comentários', 'Комментарии', 'Ulasan', 'মন্তব্য', 'コメント'],
   bookCommentCount: ['Comments: {count}', '코멘트 {count}개', '评论：{count}', 'Comentarios: {count}', 'टिप्पणियाँ: {count}', 'التعليقات: {count}', 'Commentaires : {count}', 'Comentários: {count}', 'Комментарии: {count}', 'Ulasan: {count}', 'মন্তব্য: {count}', 'コメント：{count}件'],
   bookCommentsMove: ['Move comments window', '코멘트 창 이동', '移动评论窗口', 'Mover ventana de comentarios', 'टिप्पणी विंडो खिसकाएँ', 'تحريك نافذة التعليقات', 'Déplacer la fenêtre des commentaires', 'Mover janela de comentários', 'Переместить окно комментариев', 'Alihkan tetingkap ulasan', 'মন্তব্যের উইন্ডো সরান', 'コメントウィンドウを移動'],
