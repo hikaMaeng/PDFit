@@ -453,7 +453,7 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
     const key = bookIdentity(book);
     if (!locks.begin('ai', key)) return;
     try {
-      const result = await tagsApi.autoTag(book.folder, book.filename, book.driveFileId);
+      const result = await tagsApi.autoTag(book.folder, book.filename, book.driveFileId, (phase) => locks.setAutoTagPhase(key, phase));
       // 서버가 적용한 태그만 반영한다. 목록을 통째로 다시 불러오면 같은 화면에서
       // 동시에 돌고 있는 다른 책의 낙관적 갱신까지 덮어쓴다.
       setBookTags((prev) => {
@@ -536,6 +536,7 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
                 onDelete={(folder, filename) => setConfirmDelete({ folder, filename, driveFileId: book.driveFileId })}
                 onAutoTag={canUseAiAutoTag ? () => void handleBookAutoTag(book) : undefined}
                 autoTagging={autoTagging}
+                autoTagPhase={locks.autoTagPhase(identity)}
                 autoTagDisabled={locks.isBookBusy(identity) || (locks.autoTagSlotsFull && !autoTagging)}
                 onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, book.driveFileId)}
                 onManageTags={(folder, filename) => openTagDialog(folder, filename, book.driveFileId)}

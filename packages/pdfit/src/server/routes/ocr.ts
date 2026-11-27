@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { OcrService } from '../ocr/ocrService.js';
+import { createAiProgressResponse } from '../services/aiProgressResponse.js';
 
 function scanBook(input: Record<string, unknown>) {
   const { folder, filename } = input;
@@ -67,11 +68,12 @@ export function createOcrRouter(ocr: OcrService): Router {
       res.status(400).json({ error: 'folder, filename and a 0-based integer pageIndex are required.' });
       return;
     }
+    const progress = createAiProgressResponse(req, res);
     try {
       const result = cacheOnly
         ? await ocr.getCachedPage(folder, filename, pageIndex)
-        : await ocr.recognizePage(folder, filename, pageIndex);
-      if (result) res.json(result);
+        : await ocr.recognizePage(folder, filename, pageIndex, progress.report);
+      if (result) progress.send(200, result);
       else res.status(204).end();
     } catch (error) {
       const status = (error as { status?: number }).status;
@@ -80,7 +82,7 @@ export function createOcrRouter(ocr: OcrService): Router {
       // Without this line a failed read leaves only `ERROR POST /page 502` in the log,
       // which does not say whether the runtime or a gateway in front of it answered.
       if (code === 502) console.log(`[ocr] page ${pageIndex} of ${folder}/${filename} ${cacheOnly ? 'lookup' : 'scan'} failed: ${message}`);
-      res.status(code).json({ error: message });
+      progress.send(code, { error: message });
     }
   };
   router.get('/page', handlePage(true));

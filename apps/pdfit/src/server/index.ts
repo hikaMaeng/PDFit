@@ -6,7 +6,7 @@ import { createPdfitServer, createTagSuggestionProviderFromEnvironment, readPdfi
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
 import { createSettingsRouter } from './routes/settings.js';
 import { fetchAiModel } from './services/aiModelFetch.js';
-import { PostgresSettingsStore } from './services/settingsStore.js';
+import { aiServerConcurrency, PostgresSettingsStore } from './services/settingsStore.js';
 
 function readPort(value: string | undefined): number {
   const port = Number(value ?? '15201');
@@ -60,9 +60,11 @@ if (migrated) console.log('[pdfit] migrated SQLite metadata into PostgreSQL.');
 const settingsStore = new PostgresSettingsStore(pool);
 await settingsStore.ensureSchema();
 const resolveChatModel = async () => {
-  const server = (await settingsStore.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+  const servers = await settingsStore.listAiServers();
+  const server = servers.find((candidate) => Boolean(candidate.models.llm));
   return server?.models.llm ? {
-    baseUrl: server.url, model: server.models.llm, headers: server.headers, contextTokens: server.botContextTokens,
+    baseUrl: server.url, model: server.models.llm, headers: server.headers,
+    ocrConcurrency: aiServerConcurrency(servers, server.url), contextTokens: server.botContextTokens,
   } : null;
 };
 // Both OCR and Bot clip descriptions can use a multimodal LLM when no vision model is set.
@@ -71,7 +73,7 @@ const resolveVisionModel = async () => {
   const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
   const model = server?.models.vision || server?.models.llm;
   return server && model ? {
-    baseUrl: server.url, model, headers: server.headers, ocrConcurrency: server.ocrConcurrency,
+    baseUrl: server.url, model, headers: server.headers, ocrConcurrency: aiServerConcurrency(servers, server.url),
   } : null;
 };
 // Tag classification uses the first Settings AI server that has an LLM model, read on every
@@ -79,6 +81,7 @@ const resolveVisionModel = async () => {
 // still wins when set. Local reasoning models can need minutes per reply.
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {
   requestAi: fetchAiModel,
+  resolveEnvironmentConcurrency: async (baseUrl) => aiServerConcurrency(await settingsStore.listAiServers(), baseUrl),
   resolveAiServer: async () => {
     const model = await resolveChatModel();
     return model ? { ...model, reasoningEffort: 'low' } : null;

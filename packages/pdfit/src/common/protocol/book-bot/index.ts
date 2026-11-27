@@ -8,11 +8,12 @@ export const BOOK_BOT_QUESTION_LIMIT = 4000;
 export const BOOK_BOT_ID = BOOK_COMMENT_ID;
 export const BOOK_BOT_STREAM_TYPE = 'text/event-stream';
 export const BOOK_BOT_PROGRESS_HEADER = 'X-PDFit-Bot-Progress';
+export const BOOK_BOT_PROGRESS_VERSION = '2';
 export const BOOK_BOT_MIN_CONTEXT_TOKENS = 16_384;
 export const BOOK_BOT_MAX_CONTEXT_TOKENS = 2_097_152;
 
 export type BookBotProgress =
-  | { phase: 'preparing' | 'generating' | 'thinking' | 'saving' }
+  | { phase: 'preparing' | 'queued' | 'generating' | 'thinking' | 'saving' }
   | { phase: 'clips' | 'history' | 'evidence'; completed: number; total: number };
 
 export type BookBotBook = CommentBook;
@@ -115,7 +116,7 @@ export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | nu
   }
   if (value.type === 'progress' && 'phase' in value) {
     const { phase } = value;
-    if (phase === 'preparing' || phase === 'generating' || phase === 'thinking' || phase === 'saving') {
+    if (phase === 'preparing' || phase === 'queued' || phase === 'generating' || phase === 'thinking' || phase === 'saving') {
       return { type: 'progress', phase };
     }
     if ((phase === 'clips' || phase === 'history' || phase === 'evidence') &&

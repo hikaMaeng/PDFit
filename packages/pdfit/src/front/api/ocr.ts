@@ -1,4 +1,6 @@
 import type { OcrScanJob } from '../../common/protocol/ocr/scan.js';
+import { AI_MODEL_PROGRESS_MEDIA_TYPE, type AiModelProgress } from '../../common/protocol/ai-model/index.js';
+import { readAiProgressResponse } from './aiProgress.js';
 
 /** Page OCR (local runtime): the PDF text layer, else the Settings vision model. */
 export interface PageOcrResult {
@@ -42,7 +44,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** One attempt. Rejects with OcrUnreachableError when the server itself did not answer. */
-async function requestPageOcr(url: string, init: RequestInit): Promise<Response> {
+async function requestPageOcr(url: string, init: RequestInit, onProgress?: (phase: AiModelProgress) => void): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, init);
@@ -51,6 +53,7 @@ async function requestPageOcr(url: string, init: RequestInit): Promise<Response>
     if (init.signal?.aborted) throw error;
     throw new OcrUnreachableError(null);
   }
+  response = await readAiProgressResponse(response, onProgress);
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;
     if (init.method === 'PUT' && response.status === 409) throw new OcrSaveConflictError(payload?.error);
@@ -81,15 +84,15 @@ export async function savePageText(folder: string, filename: string, pageIndex: 
  * Text of one page. A request that never reached the server is retried with a backoff,
  * so a page read across a restart recovers on its own instead of failing the dialog.
  */
-export async function recognizePageText(folder: string, filename: string, pageIndex: number, signal?: AbortSignal): Promise<PageOcrResult> {
+export async function recognizePageText(folder: string, filename: string, pageIndex: number, signal?: AbortSignal, onProgress?: (phase: AiModelProgress) => void): Promise<PageOcrResult> {
   for (let index = 0; ; index += 1) {
     try {
       const response = await requestPageOcr('/api/ocr/page', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: AI_MODEL_PROGRESS_MEDIA_TYPE },
         body: JSON.stringify({ folder, filename, pageIndex }),
         signal,
-      });
+      }, onProgress);
       return await response.json() as PageOcrResult;
     } catch (error) {
       if (!(error instanceof OcrUnreachableError) || index >= RETRY_DELAYS_MS.length) throw error;

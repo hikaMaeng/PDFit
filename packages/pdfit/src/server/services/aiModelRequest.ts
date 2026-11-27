@@ -1,7 +1,27 @@
 import { readServerSentData } from '../../common/protocol/server-sent-data.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 export const AI_MODEL_REQUEST_TIMEOUT_MS = 20 * 60_000;
+export const AI_MODEL_PRIORITY = { background: 0, interactive: 1, foreground: 2 } as const;
 const MAX_COMPLETION_LENGTH = 256 * 1024;
+
+type QueueStats = { active: number; pending: number; limit: number };
+type QueueEntry = { priority: number; start(stats: QueueStats): Promise<void> };
+type ModelQueue = { limit: number; active: number; pending: QueueEntry[] };
+const modelQueues = new Map<string, ModelQueue>();
+
+function pumpModelQueue(key: string, queue: ModelQueue) {
+  while (queue.active < queue.limit) {
+    const entry = queue.pending.shift();
+    if (!entry) break;
+    queue.active += 1;
+    void entry.start({ active: queue.active, pending: queue.pending.length, limit: queue.limit }).finally(() => {
+      queue.active -= 1;
+      pumpModelQueue(key, queue);
+    });
+  }
+  if (queue.active === 0 && queue.pending.length === 0 && modelQueues.get(key) === queue) modelQueues.delete(key);
+}
 
 export function chatCompletionsUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
@@ -9,9 +29,21 @@ export function chatCompletionsUrl(baseUrl: string): string {
   return url.toString();
 }
 
+export function aiModelQueueKey(endpoint: string): string {
+  const url = new URL(endpoint);
+  return url.origin + url.pathname;
+}
+
 type ModelOptions = {
   headers?: Record<string, string>;
-  signal: AbortSignal;
+  signal?: AbortSignal;
+  queueSignal?: AbortSignal;
+  concurrency?: number;
+  priority?: number;
+  timeoutMs?: number | (() => number);
+  onQueued?: (stats: QueueStats) => void;
+  onStarted?: (stats: QueueStats) => void;
+  onProgress?: (phase: AiModelProgress) => void;
   request?: typeof fetch;
   onHttpStatus?: (status: number) => void;
   onDelta?: (text: string) => void;
@@ -28,10 +60,59 @@ type Completion = {
   }>;
 };
 
-// See docs/api.md#ai-model-requests.
-export async function streamAiCompletion(endpoint: string, payload: object, {
+// See docs/api.md#ai-model-requests. A worker owns the slot until the body settles.
+export async function streamAiCompletion(endpoint: string, payload: object, options: ModelOptions): Promise<string> {
+  const { concurrency, queueSignal, priority = AI_MODEL_PRIORITY.background, onQueued, onStarted } = options;
+  const waitingSignal = queueSignal ?? options.signal;
+  waitingSignal?.throwIfAborted();
+  const key = aiModelQueueKey(endpoint);
+  const queue = modelQueues.get(key) ?? { limit: 1, active: 0, pending: [] };
+  if (concurrency !== undefined && Number.isSafeInteger(concurrency) && concurrency > 0) queue.limit = concurrency;
+  modelQueues.set(key, queue);
+  return new Promise((resolve, reject) => {
+    const entry: QueueEntry = {
+      priority,
+      async start(stats) {
+        waitingSignal?.removeEventListener('abort', abortWaiting);
+        try {
+          const timeoutMs = typeof options.timeoutMs === 'function' ? options.timeoutMs() : options.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS;
+          const deadline = AbortSignal.timeout(timeoutMs);
+          const signal = options.signal ? AbortSignal.any([deadline, options.signal]) : deadline;
+          onStarted?.(stats);
+          options.onProgress?.('running');
+          signal.throwIfAborted();
+          resolve(await readAiCompletion(endpoint, payload, { ...options, signal }));
+        } catch (error) { reject(error); }
+      },
+    };
+    function abortWaiting() {
+      const index = queue.pending.indexOf(entry);
+      if (index < 0) return;
+      queue.pending.splice(index, 1);
+      reject(waitingSignal?.reason);
+      pumpModelQueue(key, queue);
+    }
+    const firstLower = queue.pending.findIndex((pending) => pending.priority < priority);
+    const position = firstLower < 0 ? queue.pending.length : firstLower;
+    queue.pending.splice(position, 0, entry);
+    waitingSignal?.addEventListener('abort', abortWaiting, { once: true });
+    try {
+      onQueued?.({ active: queue.active, pending: queue.pending.length, limit: queue.limit });
+      if (queue.active + position >= queue.limit) options.onProgress?.('queued');
+    }
+    catch (error) {
+      waitingSignal?.removeEventListener('abort', abortWaiting);
+      const index = queue.pending.indexOf(entry);
+      if (index >= 0) queue.pending.splice(index, 1);
+      reject(error);
+    }
+    pumpModelQueue(key, queue);
+  });
+}
+
+async function readAiCompletion(endpoint: string, payload: object, {
   headers: configuredHeaders, signal, request = fetch, onDelta, onHttpStatus, onReasoning,
-}: ModelOptions): Promise<string> {
+}: ModelOptions & { signal: AbortSignal }): Promise<string> {
   let content = '';
   let finishReason: string | null = null;
   const keep = (text: unknown) => {

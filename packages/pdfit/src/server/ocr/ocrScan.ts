@@ -20,7 +20,7 @@ interface ScanOptions {
   assertCurrent(document: OcrDocument): Promise<void>;
   prepare(document: OcrDocument): Promise<number>;
   listIndexedPages(document: OcrDocument, pageIndex?: number): Promise<number[]>;
-  recognizePage(document: OcrDocument, pageIndex: number, trace: OcrScanTrace): Promise<void>;
+  recognizePage(document: OcrDocument, pageIndex: number, trace: OcrScanTrace, queueSignal: AbortSignal): Promise<void>;
   concurrency(): Promise<number>;
   log(message: string): void;
 }
@@ -29,11 +29,12 @@ interface ScanState {
   key: string;
   folder: string;
   filename: string;
-  job: OcrScanJob;
+  job: OcrScanJob & { modelPages: NonNullable<OcrScanJob['modelPages']> };
   document: OcrDocument | null;
   preparing: boolean;
   nextPage: number;
   startedAt: number;
+  queuedPages: AbortController;
 }
 
 export type OcrScanService = ReturnType<typeof createOcrScan>;
@@ -41,7 +42,7 @@ export type OcrScanTrace = (phase: string, details?: Record<string, unknown>) =>
 
 const RECENT_JOB_LIMIT = 100;
 const bookKey = (folder: string, filename: string) => JSON.stringify([folder, filename]);
-const snapshot = (job: OcrScanJob) => ({ ...job, activePages: [...job.activePages] });
+const snapshot = (job: OcrScanJob) => ({ ...job, activePages: [...job.activePages], modelPages: { ...job.modelPages } });
 
 function errorFields(error: unknown) {
   if (!(error instanceof Error)) return { errorName: 'NonError' };
@@ -92,6 +93,7 @@ export function createOcrScan(options: ScanOptions) {
       job.status = 'stopping';
       job.failure = reason;
       job.failedPage = page;
+      state.queuedPages.abort();
     }
     log('work.failed', state, { page, phase, phaseMs, reason, stopsDispatch, activePages: job.activePages, ...errorFields(error) });
   }
@@ -103,6 +105,9 @@ export function createOcrScan(options: ScanOptions) {
     let phaseStarted = started;
     let outcome = 'skipped-after-stop';
     const trace: OcrScanTrace = (next, details) => {
+      if (next === 'vision-queued') job.modelPages[page] = 'queued';
+      else if (next === 'vision-request') job.modelPages[page] = 'running';
+      else if (next === 'persist-queued') delete job.modelPages[page];
       const now = performance.now();
       log('page.phase', state, { page, phase: next, previousPhase: phase, previousPhaseMs: Math.round(now - phaseStarted), ...details });
       phase = next;
@@ -113,13 +118,15 @@ export function createOcrScan(options: ScanOptions) {
       trace('index-lookup');
       const indexed = await options.listIndexedPages(document, page - 1);
       if (job.status !== 'running') return;
-      if (!indexed.length) await options.recognizePage(document, page - 1, trace);
+      if (!indexed.length) await options.recognizePage(document, page - 1, trace, state.queuedPages.signal);
       job.processedPages += 1;
       outcome = indexed.length ? 'already-indexed' : 'processed';
     } catch (error) {
+      if (error === state.queuedPages.signal.reason && state.queuedPages.signal.aborted) return;
       outcome = 'failed';
       stopOnError(state, page, phase, Math.round(performance.now() - phaseStarted), error);
     } finally {
+      delete job.modelPages[page];
       job.activePages.splice(job.activePages.indexOf(page), 1);
       active -= 1;
       log('page.finished', state, { page, outcome, phase, phaseMs: Math.round(performance.now() - phaseStarted), pageMs: Math.round(performance.now() - started), active });
@@ -134,9 +141,13 @@ export function createOcrScan(options: ScanOptions) {
     try {
       const concurrency = await options.concurrency().catch(() => 1);
       while (active < concurrency) {
-        const next = ready.values().next();
-        if (next.done) break;
-        const state = next.value;
+        // Give a newly ready book a slot as soon as an admitted page finishes.
+        // The Set preserves round-robin order when books have the same number in flight.
+        let state: ScanState | undefined;
+        for (const candidate of ready) {
+          if (!state || candidate.job.activePages.length < state.job.activePages.length) state = candidate;
+        }
+        if (!state) break;
         const { job } = state;
         ready.delete(state);
         const page = state.nextPage++;
@@ -188,10 +199,10 @@ export function createOcrScan(options: ScanOptions) {
       const key = bookKey(folder, filename);
       const existing = running.get(key);
       if (existing) return snapshot(existing.job);
-      const job: OcrScanJob = {
-        id: randomUUID(), status: 'running', startPage, pageCount: null, activePages: [], processedPages: 0,
+      const job: ScanState['job'] = {
+        id: randomUUID(), status: 'running', startPage, pageCount: null, activePages: [], modelPages: {}, processedPages: 0,
       };
-      const state = { key, folder, filename, job, document: null, preparing: true, nextPage: startPage, startedAt: performance.now() };
+      const state = { key, folder, filename, job, document: null, preparing: true, nextPage: startPage, startedAt: performance.now(), queuedPages: new AbortController() };
       recent.delete(key);
       running.set(key, state);
       log('job.started', state, { folder, filename, startPage, phase: 'resolve-document' });
@@ -203,6 +214,7 @@ export function createOcrScan(options: ScanOptions) {
       if (state?.job.id === id && state.job.status === 'running') {
         state.job.status = 'cancelling';
         ready.delete(state);
+        state.queuedPages.abort();
         log('job.cancelling', state, { activePages: state.job.activePages });
         finishIfIdle(state);
       }

@@ -96,6 +96,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     const dialogBookKey = tagDialog ? (tagDialog.driveFileId ?? tagDialog.file) : null;
     const dialogBusy = dialogBookKey !== null && locks.isBookBusy(dialogBookKey);
     const dialogAutoTagging = dialogBookKey !== null && locks.isAutoTagging(dialogBookKey);
+    const dialogAutoTagPhase = dialogBookKey === null ? undefined : locks.autoTagPhase(dialogBookKey);
     const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
     const [confirmClearFolderTags, setConfirmClearFolderTags] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -422,7 +423,7 @@ function FolderPage({ folderName: requestedFolderName }: {
             return;
         setTagNotice({ message: t('aiTaggingInProgress'), severity: 'info' });
         try {
-            const result = await tagsApi.autoTag(folderName, file, driveFileId);
+            const result = await tagsApi.autoTag(folderName, file, driveFileId, (phase) => locks.setAutoTagPhase(bookKey, phase));
             if (result.addedTags.length === 0) {
                 setTagNotice({ message: t('aiTagsAlreadyApplied'), severity: 'info' });
                 return;
@@ -596,6 +597,7 @@ function FolderPage({ folderName: requestedFolderName }: {
                     onManageTags={(folder, filename) => openTagDialog(folder, filename, file.driveFileId)}
                     onAutoTag={canUseAiAutoTag ? (_folder, filename) => void handleAutoTag(filename, file.driveFileId) : undefined}
                     autoTagging={autoTagging}
+                    autoTagPhase={locks.autoTagPhase(actionKey)}
                     autoTagDisabled={!canUseAiAutoTag || folderMutation !== null || locks.isBookBusy(actionKey) || (locks.autoTagSlotsFull && !autoTagging)}
                     onEditMetadata={bookMetadataEnabled && !isPendingUploadDriveFileId(file.driveFileId) ? () => void openDocumentMetadata(file) : undefined}
                     onCoverVisible={bookMetadataEnabled ? (driveFileId) => queueAutomaticCoverLookup(driveFileId, () => setCoverVersions((current) => ({ ...current, [driveFileId]: Date.now() }))) : undefined}
@@ -691,7 +693,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     <DialogActions sx={{ justifyContent: canUseAiAutoTag ? 'space-between' : 'flex-end' }}>
     {canUseAiAutoTag && <Box sx={{ minWidth: 0 }}>
     <Button startIcon={dialogAutoTagging ? <CircularProgress size={16}/> : <AutoAwesomeIcon />} disabled={!canUseAiAutoTag || tagLoading || dialogBusy || folderMutation !== null} title={!canUseAiAutoTag ? t('aiAutoTagPaidOnly') : t('aiAutoTag')} onClick={() => void handleAutoTag()} sx={{ color: aiAccentColor, '&:hover': { bgcolor: `${aiAccentColor}1f` } }}>
-    {dialogAutoTagging ? t('aiTagging') : t('aiAutoTag')}
+    {dialogAutoTagPhase ? t(dialogAutoTagPhase === 'queued' ? 'aiModelQueued' : 'aiModelRunning') : t(dialogAutoTagging ? 'aiTagging' : 'aiAutoTag')}
     </Button>
     </Box>}
     <Button disabled={dialogBusy} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>

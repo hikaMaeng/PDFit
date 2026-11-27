@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { aiModelQueueKey, chatCompletionsUrl } from '@pdfit/pdfit/server';
 
 export type AiServerType = 'lm-studio' | 'openai-compat';
 
@@ -29,6 +30,19 @@ export interface AiServerInput {
   models?: AiServerModels;
   ocrConcurrency?: number;
   botContextTokens?: number | null;
+}
+
+// Multiple Settings entries can point to the same upstream with different model roles.
+export function aiServerConcurrency(servers: readonly AiServer[], baseUrl: string): number | undefined {
+  if (!URL.canParse(baseUrl)) return undefined;
+  const endpoint = aiModelQueueKey(chatCompletionsUrl(baseUrl));
+  let limit: number | undefined;
+  for (const { url, ocrConcurrency } of servers) {
+    if (URL.canParse(url) && aiModelQueueKey(chatCompletionsUrl(url)) === endpoint) {
+      limit = Math.min(limit ?? ocrConcurrency, ocrConcurrency);
+    }
+  }
+  return limit;
 }
 
 export interface SettingsStore {

@@ -26,6 +26,8 @@ export const scanKeys = {
   start: 'scanStart',
   preparing: 'scanPreparing',
   queued: 'scanQueued',
+  modelQueued: 'aiModelQueued',
+  modelRunning: 'aiModelRunning',
   progress: 'scanProgress',
   activePages: 'scanActivePages',
   activeCount: 'scanActiveCount',

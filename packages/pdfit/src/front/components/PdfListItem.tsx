@@ -83,7 +83,7 @@ export default function PdfListItem(props: LibraryBookProps) {
           onDelete={props.onTagDelete ? () => props.onTagDelete?.(folder, filename, tag) : undefined}
           onClick={() => navigate(`/tag/${encodeURIComponent(tag)}`)} />)}
         {(props.onAutoTag || props.onManageTags) && <Box data-testid="pdf-tag-actions" sx={{ display: 'flex', alignItems: 'center', gap: .25 }}>
-          {props.onAutoTag && <BookAutoTagButton disabled={pending || Boolean(props.autoTagDisabled)} running={props.autoTagging}
+          {props.onAutoTag && <BookAutoTagButton disabled={pending || Boolean(props.autoTagDisabled)} running={props.autoTagging} modelPhase={props.autoTagPhase}
             onClick={() => props.onAutoTag?.(folder, filename)} />}
           {props.onManageTags && <BookManageTagsButton disabled={pending} onClick={() => props.onManageTags?.(folder, filename)} />}
         </Box>}

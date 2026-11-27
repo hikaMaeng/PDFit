@@ -119,7 +119,7 @@ function SessionList({ model }: { model: Model }) {
 
 const progressLabels = {
   preparing: BOT.PREPARING, clips: BOT.CLIPS, history: BOT.HISTORY_PROGRESS, evidence: BOT.EVIDENCE,
-  generating: BOT.GENERATING, thinking: BOT.THINKING, saving: BOT.SAVING,
+  queued: BOT.QUEUED, generating: BOT.GENERATING, thinking: BOT.THINKING, saving: BOT.SAVING,
 } as const;
 const citationPlugins = [remarkPdfPageCitations];
 

@@ -1,4 +1,4 @@
-import { AI_MODEL_REQUEST_TIMEOUT_MS, chatCompletionsUrl, streamAiCompletion } from '@pdfit/pdfit/server';
+import { AI_MODEL_PRIORITY, chatCompletionsUrl, streamAiCompletion, type AiModelProgress } from '@pdfit/pdfit/server';
 import { fetchAiModel } from './aiModelFetch.js';
 import type { AiServer } from './settingsStore.js';
 
@@ -20,7 +20,7 @@ function parseTranslationResult(content: string, expectedLength: number): string
 }
 
 /** Translates display-only user labels without changing their persisted identifiers. */
-export async function translateDisplayTexts(server: AiServer, texts: string[], language: DisplayTranslationLanguage): Promise<string[]> {
+export async function translateDisplayTexts(server: AiServer, texts: string[], language: DisplayTranslationLanguage, onProgress?: (phase: AiModelProgress) => void): Promise<string[]> {
   const model = server.models.llm;
   if (!model) throw new Error('The selected AI server has no LLM model configured.');
 
@@ -37,7 +37,7 @@ export async function translateDisplayTexts(server: AiServer, texts: string[], l
   }, {
     headers: server.headers,
     request: fetchAiModel,
-    signal: AbortSignal.timeout(AI_MODEL_REQUEST_TIMEOUT_MS),
+    concurrency: server.ocrConcurrency, priority: AI_MODEL_PRIORITY.background, onProgress,
   });
   if (!content) throw new Error('AI server returned an empty translation response.');
   return parseTranslationResult(content, texts.length);

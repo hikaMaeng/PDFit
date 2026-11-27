@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 /**
  * 한 번에 돌릴 수 있는 AI 자동 태그 수. 한 권 분류에 수십 초에서 수 분이 걸리므로
@@ -17,6 +18,8 @@ export interface TagMutationLocks {
   isAutoTagging: (bookKey: string) => boolean;
   /** AI 동시 실행이 상한에 찼는지. 진행 중이 아닌 책의 AI 버튼만 잠근다. */
   autoTagSlotsFull: boolean;
+  autoTagPhase: (bookKey: string) => AiModelProgress | undefined;
+  setAutoTagPhase: (bookKey: string, phase: AiModelProgress) => void;
   /** 진행 중인 작업이 하나라도 있는지(폴더 단위 작업이 기다려야 하는 경우에만 쓴다). */
   anyBusy: boolean;
   /** 잠금을 얻으면 true. 같은 책이 이미 작업 중이거나 AI 상한에 걸리면 false. */
@@ -35,19 +38,19 @@ export interface TagMutationLocks {
  * 따로 들고 간다.
  */
 export function useTagMutationLocks(): TagMutationLocks {
-  const heldRef = useRef<Set<string>>(new Set());
-  const [held, setHeld] = useState<ReadonlySet<string>>(() => new Set());
-  const publish = useCallback(() => setHeld(new Set(heldRef.current)), []);
+  const heldRef = useRef(new Map<string, AiModelProgress | undefined>());
+  const [held, setHeld] = useState<ReadonlyMap<string, AiModelProgress | undefined>>(() => new Map());
+  const publish = useCallback(() => setHeld(new Map(heldRef.current)), []);
 
   const begin = useCallback((scope: TagMutationScope, bookKey: string) => {
     const current = heldRef.current;
     if (current.has(`ai:${bookKey}`) || current.has(`tag:${bookKey}`)) return false;
     if (scope === 'ai') {
       let running = 0;
-      for (const key of current) if (key.startsWith('ai:')) running += 1;
+      for (const key of current.keys()) if (key.startsWith('ai:')) running += 1;
       if (running >= AUTO_TAG_CONCURRENCY) return false;
     }
-    current.add(`${scope}:${bookKey}`);
+    current.set(`${scope}:${bookKey}`, undefined);
     publish();
     return true;
   }, [publish]);
@@ -59,12 +62,19 @@ export function useTagMutationLocks(): TagMutationLocks {
 
   const autoTagSlotsFull = useMemo(() => {
     let running = 0;
-    for (const key of held) if (key.startsWith('ai:')) running += 1;
+    for (const key of held.keys()) if (key.startsWith('ai:')) running += 1;
     return running >= AUTO_TAG_CONCURRENCY;
   }, [held]);
 
   const isBookBusy = useCallback((bookKey: string) => held.has(`ai:${bookKey}`) || held.has(`tag:${bookKey}`), [held]);
   const isAutoTagging = useCallback((bookKey: string) => held.has(`ai:${bookKey}`), [held]);
 
-  return { isBookBusy, isAutoTagging, autoTagSlotsFull, anyBusy: held.size > 0, begin, end };
+  const autoTagPhase = useCallback((bookKey: string) => held.get(`ai:${bookKey}`), [held]);
+  const setAutoTagPhase = useCallback((bookKey: string, phase: AiModelProgress) => {
+    const key = `ai:${bookKey}`;
+    if (!heldRef.current.has(key) || heldRef.current.get(key) === phase) return;
+    heldRef.current.set(key, phase);
+    publish();
+  }, [publish]);
+  return { isBookBusy, isAutoTagging, autoTagPhase, setAutoTagPhase, autoTagSlotsFull, anyBusy: held.size > 0, begin, end };
 }

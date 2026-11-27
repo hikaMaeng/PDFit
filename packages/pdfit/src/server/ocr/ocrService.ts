@@ -6,7 +6,9 @@ import type { PeriodicTaskDefinition, PlannedTask, TaskSubmitOutcome } from '../
 import type { BookmarkOcr, BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
 import type { PageTextRect, PageTextTaskPayload, PageTextWorkerResult } from './pdfPageTextTask.worker.js';
 import { meaningfulLength } from './pdfPageTextTask.worker.js';
-import { createVisionOcrQueue, visionOcrConcurrency, type VisionImageType, type VisionOcrServer } from './visionOcr.js';
+import { recognizeImageText, visionOcrConcurrency, type VisionImageType, type VisionOcrServer } from './visionOcr.js';
+import { AI_MODEL_PRIORITY } from '../services/aiModelRequest.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 import { thumbnailIdentityHash } from '../thumbnails/thumbnailStore.js';
 import { restorePageOcrSearchIndex, type PageOcrSearchIndex } from './pageOcrSearchIndex.js';
 import { createOcrScan, OcrScanError, type OcrDocument, type OcrScanService, type OcrScanTrace } from './ocrScan.js';
@@ -71,6 +73,7 @@ export interface OcrServiceOptions {
     imagePath(bookmark: BookmarkRecord): string;
   };
   request?: typeof fetch;
+  onBookmarkModelProgress?: () => void;
   log?: (message: string) => void;
 }
 
@@ -87,13 +90,14 @@ interface Waiter { resolve(result: PageTextWorkerResult): void; reject(error: Er
 export interface OcrService {
   definition: PeriodicTaskDefinition<PageTextOcrPayload, PageTextWorkerResult>;
   scan?: OcrScanService;
+  bookmarkModelPhase(id: string): AiModelProgress | undefined;
   /** Marks the bookmark pending and queues it. Returns false for a non-local file. */
   enqueueBookmark(bookmark: BookmarkRecord): Promise<boolean>;
   /** Read an existing result for the current file stamp without starting OCR. */
   getCachedPage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult | null>;
   savePageText(folder: string, filename: string, pageIndex: number, revision: string, text: string): Promise<PageOcrResult>;
   /** Text of one page: cache, then text layer, then the vision model on a rendering. */
-  recognizePage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult>;
+  recognizePage(folder: string, filename: string, pageIndex: number, onProgress?: (phase: AiModelProgress) => void): Promise<PageOcrResult>;
 }
 
 export function pageOcrCacheName(folder: string, filename: string, stamp: string, pageIndex: number): string {
@@ -137,20 +141,21 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
    * Their payloads are re-planned so a periodic plan cannot drop a waited-for task.
    */
   const waiting = new Map<string, { task: PlannedTask<PageTextOcrPayload>; waiters: Waiter[]; timer: NodeJS.Timeout }>();
+  const bookmarkModelPhases = new Map<string, AiModelProgress | null>();
 
-  const runVision = createVisionOcrQueue(request);
   const resolveVision = () => options.resolveVisionServer?.().catch(() => null) ?? Promise.resolve(null);
-  const vision = async (image: { bytes: Buffer; type: VisionImageType }, priority: number, trace?: OcrScanTrace): Promise<string | null> => {
+  const vision = async (image: { bytes: Buffer; type: VisionImageType }, priority: number, trace?: OcrScanTrace, queueSignal?: AbortSignal, onProgress?: (phase: AiModelProgress) => void): Promise<string | null> => {
     trace?.('vision-config');
     const server = await resolveVision();
     if (!server) return null;
-    return runVision(server, image, priority, trace);
+    return recognizeImageText(server, image, request, trace, priority, queueSignal, onProgress);
   };
 
   async function finishBookmark(payload: PageTextOcrPayload, outcome: TaskOutcome<PageTextWorkerResult>) {
     const store = options.bookmarks;
     const id = payload.bookmarkId;
-    if (!store || !id) return;
+    if (!store || !id || bookmarkModelPhases.has(id)) return;
+    bookmarkModelPhases.set(id, null);
     try {
       if (!outcome.ok) throw new Error(outcome.error.message);
       const result = outcome.result;
@@ -169,7 +174,10 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
         if (!bookmark) return;
         image = { bytes: await fs.readFile(store.imagePath(bookmark)), type: 'image/jpeg' };
       }
-      const text = await vision(image, DEFAULT_TASK_PRIORITY);
+      const text = await vision(image, AI_MODEL_PRIORITY.background, undefined, undefined, (phase) => {
+        bookmarkModelPhases.set(id, phase);
+        options.onBookmarkModelProgress?.();
+      });
       if (text === null) {
         // Without a vision server a garbled layer still beats nothing.
         if (layerText !== null) await store.setBookmarkOcr(id, { status: 'done', text: layerText, source: 'text-layer', error: null });
@@ -181,6 +189,8 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const message = error instanceof Error ? error.message : String(error);
       log(`bookmark ${id} OCR failed: ${message}`);
       await store.setBookmarkOcr(id, { status: 'failed', text: null, source: null, error: message.slice(0, 500) }).catch(() => false);
+    } finally {
+      bookmarkModelPhases.delete(id);
     }
   }
 
@@ -199,6 +209,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       // Bookmarks left pending by a restart. Failed and unavailable ones wait for a retry.
       const pending = options.bookmarks ? await options.bookmarks.listBookmarksWithOcrStatus('pending', PENDING_BOOKMARKS_PER_PLAN).catch(() => []) : [];
       for (const bookmark of pending) {
+        if (bookmarkModelPhases.has(bookmark.id)) continue;
         const payload = await bookmarkPayload(bookmark);
         if (payload) planned.push({ key: `bookmark:${bookmark.id}`, payload });
       }
@@ -283,7 +294,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     }
   }
 
-  async function readPage(document: OcrDocument, pageIndex: number, background: boolean, trace?: OcrScanTrace): Promise<PageOcrResult> {
+  async function readPage(document: OcrDocument, pageIndex: number, background: boolean, trace?: OcrScanTrace, queueSignal?: AbortSignal, onProgress?: (phase: AiModelProgress) => void): Promise<PageOcrResult> {
     const started = Date.now();
     const { folder, filename, sourcePath, stamp, cacheStamp } = document;
     const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
@@ -300,7 +311,8 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     let source: PageOcrResult['source'] = 'text-layer';
     const hasLayerText = meaningfulLength(text) > 0;
     if (!hasLayerText || result.untrusted) {
-      const recognized = result.image ? await vision({ bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' }, priority, trace) : null;
+      queueSignal?.throwIfAborted();
+      const recognized = result.image ? await vision({ bytes: Buffer.from(result.image.jpegBase64, 'base64'), type: 'image/jpeg' }, background ? AI_MODEL_PRIORITY.background : AI_MODEL_PRIORITY.interactive, trace, queueSignal, onProgress) : null;
       if (recognized !== null) { text = recognized; source = 'vision'; }
       // Without a vision server a garbled layer is still returned as the layer's text.
       else if (!hasLayerText) { text = ''; source = 'none'; }
@@ -350,8 +362,8 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       return result.pageCount;
     },
     listIndexedPages: ({ folder, filename, stamp }, pageIndex) => queryIndexedPages(folder, filename, stamp, pageIndex),
-    async recognizePage(document, pageIndex, trace) {
-      const result = await readPage(document, pageIndex, true, trace);
+    async recognizePage(document, pageIndex, trace, queueSignal) {
+      const result = await readPage(document, pageIndex, true, trace, queueSignal);
       if (result.source === 'none') throw new OcrScanError('unavailable', 'No vision model could read the page.');
       trace('persist-queued', { source: result.source, cached: result.cached });
       await persistPage(async () => {
@@ -375,8 +387,10 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   return {
     definition,
     scan,
+    bookmarkModelPhase: (id) => bookmarkModelPhases.get(id) ?? undefined,
     async enqueueBookmark(bookmark) {
       if (!options.bookmarks) return false;
+      if (bookmarkModelPhases.has(bookmark.id)) return true;
       const payload = await bookmarkPayload(bookmark);
       if (!payload) return false;
       await options.bookmarks.setBookmarkOcr(bookmark.id, { status: 'pending', text: null, source: null, error: null });
@@ -405,10 +419,10 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
         return { ...result, cached: true, durationMs: Date.now() - started };
       });
     },
-    async recognizePage(folder, filename, pageIndex) {
+    async recognizePage(folder, filename, pageIndex, onProgress) {
       const started = Date.now();
       const document = await resolveDocument(folder, filename);
-      const result = await readPage(document, pageIndex, false);
+      const result = await readPage(document, pageIndex, false, undefined, undefined, onProgress);
       return persistPage(async () => {
         await assertCurrent(document);
         const current = await preferEditedPage(document, result);

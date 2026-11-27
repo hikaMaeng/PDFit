@@ -17,6 +17,7 @@ export type LibraryBookProps = BookThumbnailProps & Partial<BookClipCount> & {
   tagIcons: Record<string, TagIconName | undefined>;
   hideFileActions?: boolean;
   autoTagging?: boolean;
+  autoTagPhase?: import('../../common/protocol/ai-model/index.js').AiModelProgress;
   autoTagDisabled?: boolean;
   onTagDelete?: (folder: string, filename: string, tag: string) => void;
   onManageTags?: (folder: string, filename: string) => void;

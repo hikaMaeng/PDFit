@@ -168,6 +168,7 @@ function TitleSearchResults({ query }: { query: string }) {
                 onManageTags={(folder, filename) => void actions.openTagDialog(folder, filename, book.driveFileId)}
                 onAutoTag={actions.canUseAiAutoTag ? () => void actions.autoTag(book) : undefined}
                 autoTagging={actions.isAutoTagging(bookActionIdentity(book))}
+                autoTagPhase={actions.autoTagPhase(bookActionIdentity(book))}
                 autoTagDisabled={actions.isAutoTagDisabled(bookActionIdentity(book))}
                 onEditMetadata={actions.bookMetadataEnabled ? () => void actions.openDocumentMetadata(book) : undefined}
                 onMove={(folder, filename) => void actions.openMoveDialog(folder, filename, book.driveFileId)}

@@ -4,9 +4,12 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
+
+const modelPhaseKeys = { queued: 'aiModelQueued', running: 'aiModelRunning' } as const;
 
 export type OcrPanelState =
-  | { status: 'pending'; slowHint?: boolean }
+  | { status: 'pending'; slowHint?: boolean; modelPhase?: AiModelProgress }
   | { status: 'done'; text: string; source: 'text-layer' | 'vision' }
   | { status: 'unavailable' }
   | { status: 'failed'; error: string };
@@ -53,8 +56,8 @@ export default function OcrTextPanel({ state, onRetry, retrying = false, testId,
       {onEdit && state.status === 'done' ? <Button size="small" startIcon={<EditOutlinedIcon fontSize="small" />} onClick={onEdit}>{t('edit')}</Button> : null}
     </Box>
     {state.status === 'pending' ? <Box role="status" sx={{ display: 'grid', gap: .5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={16} /><Typography variant="body2">{t('ocrReading')}</Typography></Box>
-      {state.slowHint ? <Typography variant="caption" color="text.secondary">{t('ocrPageSlow')}</Typography> : null}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={16} /><Typography variant="body2">{t(state.modelPhase ? modelPhaseKeys[state.modelPhase] : 'ocrReading')}</Typography></Box>
+      {state.slowHint && state.modelPhase !== 'queued' ? <Typography variant="caption" color="text.secondary">{t('ocrPageSlow')}</Typography> : null}
     </Box> : null}
     {state.status === 'done' ? (state.text
       ? <Box component={renderText ? 'div' : 'pre'} data-testid={`${testId}-text`} tabIndex={0} sx={{ m: 0, p: 1.25, maxHeight, overflow: renderText ? 'hidden' : 'auto', whiteSpace: renderText ? 'normal' : 'pre-wrap', overflowWrap: 'anywhere', font: 'inherit', fontSize: '.875rem', lineHeight: 1.6, userSelect: 'text', border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>{renderText ? renderText(state.text) : state.text}</Box>

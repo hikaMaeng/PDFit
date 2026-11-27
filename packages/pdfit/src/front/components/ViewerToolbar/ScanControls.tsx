@@ -66,9 +66,10 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
   </Dialog>;
 }
 
-function ActiveScanPagesDialog({ id, pages, notice, onClose }: {
+function ActiveScanPagesDialog({ id, pages, modelPages, notice, onClose }: {
   id: string;
   pages: readonly number[];
+  modelPages: import('../../../common/protocol/ocr/scan.js').OcrScanJob['modelPages'];
   notice: string | null;
   onClose: () => void;
 }) {
@@ -82,6 +83,15 @@ function ActiveScanPagesDialog({ id, pages, notice, onClose }: {
     <DialogTitle id={title} sx={{ px: 2, py: 1.25, fontSize: '1rem' }}>{t(scanKeys.activePages)}</DialogTitle>
     <DialogContent dividers sx={{ p: 2 }}>
       {notice && <Typography role="status" variant="body2" sx={{ mb: pages.length ? 1 : 0 }}>{notice}</Typography>}
+      {modelPages && Object.keys(modelPages).length > 0 && <Box role="status" sx={{ mb: 1 }}>
+        {(['queued', 'running'] as const).map((phase) => {
+          const matching = pages.filter((page) => modelPages[page] === phase);
+          if (!matching.length) return null;
+          return <Typography key={phase} variant="body2">
+            {t(scanKeys[phase === 'queued' ? 'modelQueued' : 'modelRunning'])} {matching.map((page) => formatNumber.format(page)).join(', ')}
+          </Typography>;
+        })}
+      </Box>}
       {pages.length > 0 && <Box component="ul" role="list" aria-labelledby={title} sx={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))', gap: 0.75, listStyle: 'none', m: 0, p: 0,
       }}>
@@ -171,7 +181,7 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
     </Box>}
     {dialogOpen && <ScanPagesDialog pageCount={pageCount} pages={model.pages} failed={model.pagesFailed} onRetry={model.refreshPages}
       notice={notice ?? (active ? progressLabel : null)} failure={job?.failure} onClose={() => setDialogOpen(false)} />}
-    {activeDialogOpen && <ActiveScanPagesDialog id={activeDialogId} pages={activePages}
+    {activeDialogOpen && <ActiveScanPagesDialog id={activeDialogId} pages={activePages} modelPages={job?.modelPages}
       notice={notice ?? (cancelling || !activePages.length ? progressLabel : null)} onClose={() => setActiveDialogOpen(false)} />}
   </Box>;
 });

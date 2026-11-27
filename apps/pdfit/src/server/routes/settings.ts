@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import type { SettingsStore } from '../services/settingsStore.js';
+import { aiServerConcurrency, type SettingsStore } from '../services/settingsStore.js';
+import { createAiProgressResponse } from '@pdfit/pdfit/server';
 import { translateDisplayTexts, type DisplayTranslationLanguage } from '../services/displayTranslation.js';
 import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 
@@ -118,15 +119,18 @@ export function createSettingsRouter(store: SettingsStore): Router {
       return;
     }
 
+    const progress = createAiProgressResponse(req, res);
     try {
-      const server = (await store.listAiServers()).find((candidate) => Boolean(candidate.models.llm));
+      const servers = await store.listAiServers();
+      const server = servers.find((candidate) => Boolean(candidate.models.llm));
       if (!server) {
         res.status(503).json({ error: 'Configure an AI server with an LLM model to translate display names.' });
         return;
       }
-      res.json({ translations: await translateDisplayTexts(server, texts as string[], language as DisplayTranslationLanguage) });
+      const modelServer = { ...server, ocrConcurrency: aiServerConcurrency(servers, server.url) ?? server.ocrConcurrency };
+      progress.send(200, { translations: await translateDisplayTexts(modelServer, texts as string[], language as DisplayTranslationLanguage, progress.report) });
     } catch (error) {
-      res.status(502).json({ error: String(error) });
+      progress.send(502, { error: String(error) });
     }
   });
 

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
 import { AUTOMATIC_TAG_MAX, AUTOMATIC_TAG_MIN, bookTitleFromFilename, normalizeSuggestedTags, selectAutomaticTags, type BookTagSuggestionProvider } from '../services/tagSuggestion.js';
+import { createAiProgressResponse } from '../services/aiProgressResponse.js';
 import { BOOKSTORE_TAG_TAXONOMY, DOCUMENT_TAG_TAXONOMY, documentTagFromTitle } from '../../shared/tagTaxonomy.js';
 import type { MetadataStore } from '../../shared/index.js';
 import { isEditableTagName, isTagIconName } from '../../shared/tagDetails.js';
@@ -258,6 +259,7 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       return;
     }
 
+    const progress = createAiProgressResponse(req, res);
     let usage: Awaited<ReturnType<AutomaticTagUsage>> | undefined;
     const successful: AutomaticTagDocument[] = [];
     try {
@@ -274,7 +276,7 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       const documentTag = documentTagFromTitle(title);
       const suggestedTags = documentTag
         ? [documentTag]
-        : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
+        : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags, onModelProgress: progress.report }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
       assertAutomaticTagQuality(suggestedTags, title, documentTag ? 1 : AUTOMATIC_TAG_MIN);
       const selectedTag = suggestedTags[0];
       const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
@@ -283,11 +285,11 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       successful.push({ filename: req.params.filename, driveFileId, assignedTag: selectedTag });
       await usage?.finish(successful);
       usage = undefined;
-      res.json({ title, suggestedTags, addedTags, removedTags });
+      progress.send(200, { title, suggestedTags, addedTags, removedTags });
     } catch (error) {
       try { await usage?.finish(successful); }
-      catch { res.status(503).json({ error: 'AI 처리 사용량을 저장하지 못했습니다. 잠시 후 다시 확인해주세요.' }); return; }
-      res.status((error as { statusCode?: number }).statusCode ?? 502).json({ error: error instanceof Error ? error.message : String(error) });
+      catch { progress.send(503, { error: 'AI 처리 사용량을 저장하지 못했습니다. 잠시 후 다시 확인해주세요.' }); return; }
+      progress.send((error as { statusCode?: number }).statusCode ?? 502, { error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -316,6 +318,7 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       parsed.push({ filename: candidate.filename, ...(candidate.driveFileId ? { driveFileId: candidate.driveFileId } : {}) });
     }
 
+    const progress = createAiProgressResponse(req, res);
     let usage: Awaited<ReturnType<AutomaticTagUsage>> | undefined;
     const successful: AutomaticTagDocument[] = [];
     try {
@@ -339,7 +342,8 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       let cursor = 0;
       const worker = async () => {
         while (cursor < parsed.length) {
-          const book = parsed[cursor++];
+          const item = cursor++;
+          const book = parsed[item];
           const title = bookTitleFromFilename(book.filename);
           try {
             if (!title) throw new Error('A book title is required.');
@@ -347,7 +351,9 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
             const documentTag = documentTagFromTitle(title);
             const suggestedTags = documentTag
               ? [documentTag]
-              : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({ title, availableTags, currentTags }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
+              : selectAutomaticTags(normalizeSuggestedTags(await suggestBookTags({
+                title, availableTags, currentTags, onModelProgress: progress.report && ((phase) => progress.report?.(phase, item)),
+              }), AUTOMATIC_TAG_MAX * 2, true), { availableTags, title });
             assertAutomaticTagQuality(suggestedTags, title, documentTag ? 1 : AUTOMATIC_TAG_MIN);
             const selectedTag = suggestedTags[0];
             const addedTags = suggestedTags.filter((tag) => !currentTags.includes(tag));
@@ -374,11 +380,11 @@ export function createTagsRouter(metadataStoreResolver: MetadataStoreResolver, s
       successful.push(...results);
       await usage?.finish(successful);
       usage = undefined;
-      res.json({ processed: results.length, failed: errors.length, addedTags: persistedRelationCount, books: results, errors });
+      progress.send(200, { processed: results.length, failed: errors.length, addedTags: persistedRelationCount, books: results, errors });
     } catch (error) {
       try { await usage?.finish(successful); }
-      catch { res.status(503).json({ error: 'AI 처리 사용량을 저장하지 못했습니다. 잠시 후 다시 확인해주세요.' }); return; }
-      res.status((error as { statusCode?: number }).statusCode ?? 502).json({ error: error instanceof Error ? error.message : String(error) });
+      catch { progress.send(503, { error: 'AI 처리 사용량을 저장하지 못했습니다. 잠시 후 다시 확인해주세요.' }); return; }
+      progress.send((error as { statusCode?: number }).statusCode ?? 502, { error: error instanceof Error ? error.message : String(error) });
     }
   });
 

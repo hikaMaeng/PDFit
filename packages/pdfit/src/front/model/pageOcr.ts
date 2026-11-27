@@ -1,15 +1,16 @@
 import { getCachedPageText, OcrSaveConflictError, recognizePageText, savePageText, type PageOcrResult } from '../api/ocr.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 type PageOcrState =
   | { status: 'checking' }
   | { status: 'unscanned' }
-  | { status: 'pending'; slowHint: boolean }
+  | { status: 'pending'; slowHint: boolean; modelPhase?: AiModelProgress }
   | { status: 'ready'; result: PageOcrResult }
   | { status: 'editing'; result: PageOcrResult; draft: string; saving: boolean; saveError?: 'failed' | 'conflict' }
   | { status: 'failed'; during: 'lookup' | 'scan'; error: unknown };
 
 type Target = { folder: string; filename: string; page: number; pageCount: number };
-type Scan = { controller: AbortController; slowHint: boolean };
+type Scan = { controller: AbortController; slowHint: boolean; modelPhase?: AiModelProgress };
 
 const SLOW_HINT_MS = 4_000;
 
@@ -68,7 +69,7 @@ class PageOcrModel {
     this.lookup = undefined;
     const scan = this.scans.get(page);
     if (scan) {
-      this.publish({ status: 'pending', slowHint: scan.slowHint });
+      this.publish({ status: 'pending', slowHint: scan.slowHint, modelPhase: scan.modelPhase });
       return;
     }
     const controller = new AbortController();
@@ -123,12 +124,12 @@ class PageOcrModel {
     if (!this.target || this.state.status === 'checking' || this.state.status === 'pending' || this.state.status === 'editing') return;
     const { folder, filename, page } = this.target;
     const controller = new AbortController();
-    const scan = { controller, slowHint: false };
+    const scan: Scan = { controller, slowHint: false };
     this.scans.set(page, scan);
     this.publish({ status: 'pending', slowHint: false });
     const slow = setTimeout(() => {
       scan.slowHint = true;
-      if (this.target?.page === page) this.publish({ status: 'pending', slowHint: true });
+      if (this.target?.page === page) this.publish({ status: 'pending', slowHint: true, modelPhase: scan.modelPhase });
     }, SLOW_HINT_MS);
     controller.signal.addEventListener('abort', () => clearTimeout(slow), { once: true });
     const finish = (state: PageOcrState) => {
@@ -138,7 +139,11 @@ class PageOcrModel {
       if (this.target?.page === page) this.publish(state);
     };
     // The server can finish and cache an explicit scan even after the reader closes the dialog.
-    void recognizePageText(folder, filename, page - 1, controller.signal).then(
+    void recognizePageText(folder, filename, page - 1, controller.signal, (modelPhase) => {
+      if (controller.signal.aborted) return;
+      scan.modelPhase = modelPhase;
+      if (this.target?.page === page) this.publish({ status: 'pending', slowHint: scan.slowHint, modelPhase });
+    }).then(
       (result) => finish({ status: 'ready', result }),
       (error: unknown) => finish({ status: 'failed', during: 'scan', error }),
     );
