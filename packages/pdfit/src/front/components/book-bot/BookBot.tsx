@@ -10,7 +10,7 @@ import Markdown from 'react-markdown';
 import { BOOK_BOT_QUESTION_LIMIT } from '../../../common/protocol/book-bot/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
-import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
+import { VIEWER_POPUP_CLOSE_INSET, ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { ToolbarButton } from '../ViewerToolbar/index.js';
 import type { getBookBotModel } from './model.js';
@@ -65,7 +65,8 @@ function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage
       border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden',
       bgcolor: 'background.paper', backgroundImage: 'none',
     }}>
-    <Stack direction="row" alignItems="center" gap={0.25} sx={{ direction: 'ltr', px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
+    <Stack direction="row" alignItems="center" gap={0.25} sx={{ direction: 'ltr', pl: 1, paddingRight: VIEWER_POPUP_CLOSE_INSET,
+      py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
       <Box ref={headingRef} {...moveHandleProps} tabIndex={0} title={t(BOT.MOVE)}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
         sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'grab', touchAction: 'none', userSelect: 'none', p: 0.5 }}>

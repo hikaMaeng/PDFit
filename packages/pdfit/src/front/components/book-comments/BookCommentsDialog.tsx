@@ -13,7 +13,7 @@ import { BookCommentMarkdown } from './BookCommentMarkdown.js';
 import { bookCommentsModel, viewerBookCommentsModel } from './model.js';
 import { COMMENT } from './resource.js';
 import { useViewerPopupGeometry, viewerPopupBookKey } from '../../hooks/useViewerPopupGeometry.js';
-import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
+import { VIEWER_POPUP_CLOSE_INSET, ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 
 type BoardProps = { book: CommentBook; onClose: () => void };
@@ -47,7 +47,8 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
   useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [mode, page?.page]);
 
   return <>
-    <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', direction: 'ltr', alignItems: dragHandle ? 'center' : 'start', gap: 1, px: { xs: 2, sm: 3 },
+    <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', direction: 'ltr', alignItems: dragHandle ? 'center' : 'start', gap: 1,
+      pl: { xs: 2, sm: 3 }, paddingRight: VIEWER_POPUP_CLOSE_INSET,
       py: dragHandle ? { xs: 1, sm: 1.5 } : { xs: 1.5, sm: 2 } }}>
       <Box {...dragHandle} tabIndex={dragHandle ? 0 : undefined} title={dragHandle ? t(COMMENT.MOVE) : undefined}
         aria-keyshortcuts={dragHandle ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined}

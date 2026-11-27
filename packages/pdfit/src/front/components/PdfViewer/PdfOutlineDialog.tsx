@@ -11,7 +11,7 @@ import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { getOutlineModel } from '../../viewer/outlineModel.js';
 import type { OutlineReader, PdfOutlineStorage } from '../../viewer/storedOutline.js';
-import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
+import { VIEWER_POPUP_CLOSE_INSET, ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { RSC } from './resource.js';
 
@@ -107,7 +107,8 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
       bgcolor: 'background.paper', backgroundImage: 'none',
     }}
   >
-    <Box dir="ltr" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
+    <Box dir="ltr" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, paddingRight: VIEWER_POPUP_CLOSE_INSET,
+      py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
       <Box ref={headingRef} {...moveHandleProps} dir="auto" tabIndex={0} title={t(RSC.VIEWER_OUTLINE_MOVE_LABEL)}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
         sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, p: 0.5, cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
