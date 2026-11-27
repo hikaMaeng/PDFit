@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import type { PdfGpuViewerController } from '@pdfgpu/core';
 import type { Annotation, AnnotationPoint, AnnotationStyle, AnnotationTool } from '../../../common/protocol/annotations/index.js';
 import { annotationFromGesture, createTextAnnotation, resizeAnnotation, translateAnnotation } from '../../annotation/model.js';
-import { layerPointToPagePoint, projectAnnotationPages, type AnnotationPageProjection } from '../../annotation/coordinates.js';
+import { annotationSvgTransform, layerPointToPagePoint, projectAnnotationPages, type AnnotationPageProjection } from '../../annotation/coordinates.js';
 import { AnnotationShape } from './AnnotationShape.js';
 import { AnnotationSelection } from './AnnotationSelection.js';
 import { AnnotationTextEditor, type AnnotationTextDraft } from './AnnotationTextEditor.js';
@@ -29,8 +29,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
   const [editGesture, setEditGesture] = useState<EditGesture | null>(null);
   const [textDraft, setTextDraft] = useState<AnnotationTextDraft | null>(null);
   const visiblePageKey = visiblePages.join(',');
-  const controllerProjections = useMemo(() => controller ? projectAnnotationPages(controller, visiblePages) : new Map(), [controller, visiblePages]);
-  const projections = pageProjections ?? controllerProjections;
+  const projections = pageProjections ?? (controller ? projectAnnotationPages(controller, visiblePages) : new Map());
   const visiblePageSet = useMemo(() => new Set(visiblePages), [visiblePages]);
 
   useEffect(() => {
@@ -120,7 +119,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     if (!visiblePageSet.has(annotation.pageIndex)) return null;
     const projection = projections.get(annotation.pageIndex);
     if (!projection) return null;
-    return <AnnotationShape key={annotation.id} annotation={annotation} projection={projection} tool={tool} onEditText={(textAnnotation) => setTextDraft({ id: textAnnotation.id, pageIndex: textAnnotation.pageIndex, point: { x: textAnnotation.geometry.x, y: textAnnotation.geometry.y }, width: textAnnotation.geometry.width, height: textAnnotation.geometry.height, fontSize: textAnnotation.geometry.fontSize, text: textAnnotation.geometry.text })} />;
+    return <g key={annotation.id} transform={annotationSvgTransform(projection)}><AnnotationShape annotation={annotation} projection={projection} tool={tool} onEditText={(textAnnotation) => setTextDraft({ id: textAnnotation.id, pageIndex: textAnnotation.pageIndex, point: { x: textAnnotation.geometry.x, y: textAnnotation.geometry.y }, width: textAnnotation.geometry.width, height: textAnnotation.geometry.height, fontSize: textAnnotation.geometry.fontSize, text: textAnnotation.geometry.text })} /></g>;
   };
 
   const renderSelection = () => {
@@ -128,7 +127,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     if (!annotation || !visiblePageSet.has(annotation.pageIndex)) return null;
     const projection = annotation ? projections.get(annotation.pageIndex) : null;
     if (!annotation || !projection) return null;
-    return <AnnotationSelection annotation={annotation} projection={projection} />;
+    return <g transform={annotationSvgTransform(projection)}><AnnotationSelection annotation={annotation} projection={projection} /></g>;
   };
 
   const commitTextDraft = () => {
@@ -147,7 +146,7 @@ export function AnnotationLayer({ controller, annotations, visiblePages, viewpor
     if (!textDraft) return null;
     const projection = projections.get(textDraft.pageIndex);
     if (!projection) return null;
-    return <AnnotationTextEditor draft={textDraft} projection={projection} style={style} onChange={setTextDraft} onCommit={commitTextDraft} onCancel={() => setTextDraft(null)} />;
+    return <g transform={annotationSvgTransform(projection)}><AnnotationTextEditor draft={textDraft} projection={projection} style={style} onChange={setTextDraft} onCommit={commitTextDraft} onCancel={() => setTextDraft(null)} /></g>;
   };
 
   const draft = gesture ? annotationFromGesture({ id: 'annotation-draft', documentId, pageIndex: gesture.pageIndex, tool, start: gesture.start, end: gesture.end, points: gesture.points, style: { ...style, opacity: Math.max(style.opacity, 0.65) }, timestamp: '' }) : null;

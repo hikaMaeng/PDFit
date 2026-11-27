@@ -49,6 +49,8 @@ prefetch resumes in both directions from the current page and skips cached
 pages. The 64 MiB preview budget favors nearby pages and the separate 128 MiB
 detail budget protects visible tiles.
 
+The GPU adapter enables page deskew on the existing preview raster. PDFGPU reuses the detected angle for detail tiles and capture. The [annotation projection](../src/front/annotation/coordinates.ts) uses `getPageTransform` for drawing and pointer input. The [bookmark overlay](../src/front/components/PdfGpuViewer/BookmarkOverlayLayer.tsx) uses the rotation returned by `projectOverlays`. Both features store coordinates in the source PDF's page space.
+
 PDFit does not own a second pdfgpu implementation. Core interaction transitions,
 DPI normalization, layout, queueing, and rendering are tested and versioned in
 the independent repository. PDFit only retains app-specific session state and

@@ -7,33 +7,40 @@ export type AnnotationPageProjection = {
   top: number;
   scaleX: number;
   scaleY: number;
+  rotation?: { a: number; b: number; c: number; d: number };
 };
 
 /**
- * Derives the PDF-point to viewer-pixel transform from PDFGPU's canonical
- * overlay projection so bookmarks and annotations cannot drift apart.
+ * Splits PDFGPU's page transform into axis scales for the annotation shapes
+ * and a screen-space transform for the SVG group that contains them.
+ * See docs/internals.md#webgpu-viewer-contract.
  */
 export function projectAnnotationPages(
   controller: PdfGpuViewerController,
   pageIndices: readonly number[],
 ): Map<number, AnnotationPageProjection> {
-  const uniquePages = [...new Set(pageIndices)];
-  const projections = controller.projectOverlays(uniquePages.map((pageIndex) => ({
-    pageIndex,
-    rect: { x: 0, y: 0, width: 1, height: 1 },
-    borderColor: 'transparent',
-  })));
-
-  return new Map(projections.map((projection) => [projection.pageIndex, {
-    pageIndex: projection.pageIndex,
-    left: projection.left,
-    top: projection.top,
-    scaleX: projection.width,
-    scaleY: projection.height,
-  }]));
+  const projections = new Map<number, AnnotationPageProjection>();
+  for (const pageIndex of new Set(pageIndices)) {
+    const transform = controller.getPageTransform(pageIndex);
+    if (!transform) continue;
+    const { a, b, c, d, e, f } = transform;
+    const scaleX = Math.hypot(a, b);
+    const scaleY = Math.hypot(c, d);
+    const rotation = b || c ? { a: a / scaleX, b: b / scaleX, c: c / scaleY, d: d / scaleY } : undefined;
+    projections.set(pageIndex, { pageIndex, left: e, top: f, scaleX, scaleY, ...(rotation && { rotation }) });
+  }
+  return projections;
 }
 
-/** Converts a PDF page point to annotation-layer pixels. */
+/** Rotates the scaled annotation geometry about its projected PDF origin. */
+export function annotationSvgTransform(projection: AnnotationPageProjection): string | undefined {
+  if (!projection.rotation) return undefined;
+  const { a, b, c, d } = projection.rotation;
+  const { left, top } = projection;
+  return `matrix(${a} ${b} ${c} ${d} ${left - a * left - c * top} ${top - b * left - d * top})`;
+}
+
+/** Converts a PDF page point to pixels inside its annotation SVG group. */
 export function pagePointToLayerPoint(
   projection: AnnotationPageProjection,
   point: AnnotationPoint,
@@ -62,8 +69,18 @@ export function layerPointToPagePoint(
   projection: AnnotationPageProjection,
   point: AnnotationPoint,
 ): AnnotationPoint {
+  const x = point.x - projection.left;
+  const y = point.y - projection.top;
+  if (projection.rotation) {
+    const { a, b, c, d } = projection.rotation;
+    const determinant = a * d - b * c;
+    return {
+      x: (d * x - c * y) / determinant / projection.scaleX,
+      y: (a * y - b * x) / determinant / projection.scaleY,
+    };
+  }
   return {
-    x: (point.x - projection.left) / projection.scaleX,
-    y: (point.y - projection.top) / projection.scaleY,
+    x: x / projection.scaleX,
+    y: y / projection.scaleY,
   };
 }

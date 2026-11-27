@@ -244,6 +244,7 @@ export default function PdfGpuViewer({
           container: viewport,
           provider,
           providerKind: 'in-memory',
+          deskew: true,
           initialZoom: initialScale ?? DEFAULT_VIEWER_ZOOM,
           minZoom: 0.25,
           maxZoom: 5,
@@ -476,10 +477,10 @@ export default function PdfGpuViewer({
         <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', boxSizing: 'border-box', py: 3, bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a' }}>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
             {pageColors.definition}
-            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative', bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a', py: 3, '& > canvas': { filter: pageColors.filter } }} />
+            <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative', '& > canvas': { filter: pageColors.filter } }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>

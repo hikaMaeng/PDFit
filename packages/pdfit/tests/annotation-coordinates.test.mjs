@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  annotationSvgTransform,
   layerPointToPagePoint,
   pagePointToLayerPoint,
   pageRectToLayerRect,
@@ -9,16 +10,10 @@ import {
 import { annotationBounds, annotationFromGesture, createTextAnnotation, resizeAnnotation, simplifyInkPoints, translateAnnotation } from '../dist/front/annotation/model.js';
 import { reduceAnnotationHistory } from '../dist/front/annotation/history.js';
 
-test('annotation projection uses PDFGPU overlay coordinates as the canonical transform', () => {
+test('annotation projection uses the PDFGPU page transform', () => {
   const controller = {
-    projectOverlays(items) {
-      return items.map((item) => ({
-        ...item,
-        left: 24 + item.rect.x * 2,
-        top: 40 + item.rect.y * 3,
-        width: item.rect.width * 2,
-        height: item.rect.height * 3,
-      }));
+    getPageTransform() {
+      return { a: 2, b: 0, c: 0, d: 3, e: 24, f: 40 };
     },
   };
   const projection = projectAnnotationPages(controller, [2]).get(2);
@@ -26,18 +21,37 @@ test('annotation projection uses PDFGPU overlay coordinates as the canonical tra
   assert.deepEqual(pagePointToLayerPoint(projection, { x: 10, y: 5 }), { x: 44, y: 55 });
   assert.deepEqual(pageRectToLayerRect(projection, { x: 10, y: 5, width: 20, height: 8 }), { x: 44, y: 55, width: 40, height: 24 });
   assert.deepEqual(layerPointToPagePoint(projection, { x: 44, y: 55 }), { x: 10, y: 5 });
+  assert.equal(annotationSvgTransform(projection), undefined);
 });
 
-test('annotation projection de-duplicates visible pages', () => {
-  let count = 0;
+test('annotation projection de-duplicates pages and skips missing transforms', () => {
+  const requested = [];
   const controller = {
-    projectOverlays(items) {
-      count = items.length;
-      return items.map((item) => ({ ...item, left: 0, top: 0, width: 1, height: 1 }));
+    getPageTransform(pageIndex) {
+      requested.push(pageIndex);
+      if (pageIndex === 0) return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
     },
   };
-  projectAnnotationPages(controller, [0, 0, 1]);
-  assert.equal(count, 2);
+  const projections = projectAnnotationPages(controller, [0, 0, 1]);
+  assert.deepEqual(requested, [0, 1]);
+  assert.deepEqual([...projections.keys()], [0]);
+});
+
+test('rotated annotation geometry and pointer input use the same transform', () => {
+  const angle = -2 * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const matrix = { a: 2 * cos, b: 2 * sin, c: -3 * sin, d: 3 * cos, e: 24, f: 40 };
+  const projection = projectAnnotationPages({ getPageTransform: () => matrix }, [0]).get(0);
+  const point = { x: 90, y: 190 };
+  const groupPoint = pagePointToLayerPoint(projection, point);
+  const [a, b, c, d, e, f] = annotationSvgTransform(projection).slice(7, -1).split(' ').map(Number);
+  const screenPoint = { x: a * groupPoint.x + c * groupPoint.y + e, y: b * groupPoint.x + d * groupPoint.y + f };
+  assert.ok(Math.abs(screenPoint.x - (matrix.a * point.x + matrix.c * point.y + matrix.e)) < 1e-9);
+  assert.ok(Math.abs(screenPoint.y - (matrix.b * point.x + matrix.d * point.y + matrix.f)) < 1e-9);
+  const restored = layerPointToPagePoint(projection, screenPoint);
+  assert.ok(Math.abs(restored.x - point.x) < 1e-9);
+  assert.ok(Math.abs(restored.y - point.y) < 1e-9);
 });
 
 test('drawing gestures create supported vector annotations', () => {

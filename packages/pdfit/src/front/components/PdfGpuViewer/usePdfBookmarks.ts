@@ -64,6 +64,8 @@ export function usePdfBookmarks({ enabled, controller, onCaptured, onSelectionFi
     if (!enabled || !onCaptured || captureBusy || event.button !== 0) return;
     const target = event.target;
     if (target instanceof Element && target.closest('button, input, textarea, select, [role="button"], [role="dialog"]')) return;
+    // Focusing the viewport on mouse-down can scroll the page during the drag.
+    event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const start = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     captureStartRef.current = start;

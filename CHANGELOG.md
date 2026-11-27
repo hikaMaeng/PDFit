@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.21] - 2026-11-27
+
+- Level mildly skewed scans in the GPU viewer and keep annotations and clips aligned with the corrected pages.
+
 ## [0.4.20] - 2026-11-27
 
 - Add reference pages to book comments and filter the viewer's comments by the current PDF page.

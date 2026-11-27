@@ -21,6 +21,8 @@ Run:
 
 [Viewer image adjustments](../tests/plans/viewer-image-adjustments-20261120.md) checks the **Image** button and its localized dialog, presets, switch, and sliders. It compares rendered RGB in PDF.js, WebGPU on a real adapter, and PDFGPU Canvas 2D with the adapter disabled.
 
+[Viewer deskew](../tests/plans/viewer-deskew-20261127.md) measures opposite scan angles in PDF.js, WebGPU and Canvas 2D. It checks detail tiles after zoom, source coordinates for drawn annotations and clips, and the clip image and overlay rotation.
+
 [Viewer progressive cache](../tests/plans/viewer-progressive-cache-20261120.md) verifies the GPU viewer's preview, visible detail, and directional prefetch against a deployed Free server. It checks rendered pixels and uses worker traces to verify scheduling and cache reuse.
 
 [Viewer comments](../tests/plans/viewer-comments-20261125.md) checks the floating board in both renderers, including per-book window geometry, mouse, keyboard and touch movement, and image uploads shared with the cover and list views.
