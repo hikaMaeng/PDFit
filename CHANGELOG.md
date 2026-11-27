@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-11-27
+
+- Move and resize Bot, Comments, page OCR, and Contents while reading. PDFit remembers each popup's size and position for each book.
+- Jump to a Contents entry and immediately save the reading position with its page save button.
+- Edit saved page OCR as Markdown and switch pages inside the same popup.
+- Attach images to book comments and view them at the full width of the comment.
+- Ask Bot about a book and follow page citations. PDFit queues requests to shared AI servers and shows their progress in the viewer.
+
 ## [0.4.18] - 2026-11-25
 
 - Show the percentage of the whole PDF with saved OCR text beside the viewer's **Scan** button.
