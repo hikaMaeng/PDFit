@@ -88,8 +88,15 @@ async function checkPopup(definition, engine) {
   async function dismiss() {
     const box = await bounds(popup);
     const button = await bounds(close);
-    assert.ok(box.x + box.width - (button.x + button.width) <= 32 && button.y < box.y + 48,
-      `${id}: Close is at the upper right`);
+    const inset = await close.evaluate((button) => {
+      const header = button.parentElement;
+      return {
+        padding: getComputedStyle(header).paddingRight,
+        gap: header.getBoundingClientRect().right - button.getBoundingClientRect().right,
+      };
+    });
+    assert.equal(inset.padding, '5px', `${id}: title bar right padding`);
+    assert.ok(Math.abs(inset.gap - 5) <= 0.5 && button.y < box.y + 48, `${id}: Close is inset 5px from the right`);
     await close.click();
     await popup.waitFor({ state: 'hidden' });
   }
