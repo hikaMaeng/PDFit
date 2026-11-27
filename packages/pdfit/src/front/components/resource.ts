@@ -9,6 +9,8 @@ export enum RSC {
   VIEWER_OCR_UNSCANNED_STATUS = 'viewer.ocr.unscanned.status',
   VIEWER_OCR_SCAN_BUTTON = 'viewer.ocr.scan.button',
   VIEWER_OCR_MOVE_LABEL = 'viewer.ocr.move.label',
+  VIEWER_OCR_PAGE_TEXT = 'viewer.ocr.page.text',
+  VIEWER_OCR_GO_TO_PAGE_BUTTON = 'viewer.ocr.goToPage.button',
   VIEWER_OCR_EDITOR_LABEL = 'viewer.ocr.editor.label',
   VIEWER_OCR_SAVE_ALERT = 'viewer.ocr.save.alert',
   VIEWER_OCR_CONFLICT_ALERT = 'viewer.ocr.conflict.alert',

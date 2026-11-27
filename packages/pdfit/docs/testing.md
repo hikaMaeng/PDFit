@@ -5,8 +5,9 @@
 Run the [Free browser scenario](../../../apps/pdfit/tests/page-ocr-popup-browser.mjs)
 against an isolated runtime with the two fixture books described in the
 [test plan](../../../apps/pdfit/tests/plans/page-ocr-popup-20261127.md).
-Use the page text dialog’s title, named resize handle and editor, and the
-`page-ocr-scroll` anchor to assert overflow. `npm run test:ocr` covers the
+Use the dialog’s accessible page name, filename heading, named move and resize
+controls, and lower-right footer actions. Use the `page-ocr-scroll` anchor
+to assert overflow. `npm run test:ocr` covers the
 saved text revision, cache, and recognition paths.
 
 ## Tag folder editing

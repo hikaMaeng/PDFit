@@ -78,7 +78,7 @@ const snap = async (name) => { await page.screenshot({ path: shot(name), fullPag
 const panelState = async () => page.evaluate(() => ({
   status: document.querySelector('[data-testid="page-ocr"]')?.getAttribute('data-ocr-status') ?? null,
   failed: document.querySelector('[data-testid="page-ocr-failed"]')?.textContent?.trim() ?? null,
-  source: document.querySelector('[data-testid="page-ocr-source"]')?.getAttribute('data-source') ?? null,
+  source: document.querySelector('[data-testid="page-ocr"]')?.getAttribute('data-source') ?? null,
 }));
 // 패널을 250 ms마다 읽어 끝 상태(done/failed/unavailable)까지 시간표로 남긴다.
 const watchPanel = async (limitMs) => {

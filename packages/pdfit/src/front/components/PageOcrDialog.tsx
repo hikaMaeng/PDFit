@@ -7,36 +7,39 @@ import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { OcrUnreachableError } from '../api/ocr.js';
 import { pageOcrModel } from '../model/pageOcr.js';
 import { useViewerPopupGeometry, viewerPopupBookKey } from '../hooks/useViewerPopupGeometry.js';
-import { ViewerPopupCloseButton } from './viewer-popup/ViewerPopupCloseButton.js';
+import { VIEWER_POPUP_CLOSE_INSET, ViewerPopupCloseButton } from './viewer-popup/ViewerPopupCloseButton.js';
 import { RSC } from './resource.js';
-import OcrTextPanel, { type OcrPanelState } from './OcrTextPanel.js';
+import { OcrTextActions, OcrTextContent, type OcrPanelState } from './OcrTextPanel.js';
 import { BookCommentMarkdown } from './book-comments/BookCommentMarkdown.js';
 import { ViewerPopupResizeHandle } from './viewer-popup/ViewerPopupResizeHandle.js';
 
 // See docs/usage.md#page-text-popup.
-export default function PageOcrDialog({ folder, filename }: { folder: string; filename: string }) {
+export default function PageOcrDialog({ folder, filename, onPage }: { folder: string; filename: string; onPage: (page: number) => void }) {
   useSyncExternalStore(pageOcrModel.subscribe, pageOcrModel.getVersion, pageOcrModel.getVersion);
   const { target } = pageOcrModel;
   if (!target || target.folder !== folder || target.filename !== filename) return null;
   const bookKey = viewerPopupBookKey({ folder, filename });
-  return <PageOcrPopup key={bookKey} bookKey={bookKey} filename={filename} page={target.page} pageCount={target.pageCount} />;
+  return <PageOcrPopup key={bookKey} bookKey={bookKey} filename={filename} page={target.page} pageCount={target.pageCount} onPage={onPage} />;
 }
 
 const defaultRect = () => ({ x: 24, y: 84, width: 680, height: 550 });
+const minWidth = 400;
 const renderMarkdown = (text: string) => <BookCommentMarkdown body={text} />;
 
-function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string; filename: string; page: number; pageCount: number }) {
+function PageOcrPopup({ bookKey, filename, page, pageCount, onPage }: {
+  bookKey: string; filename: string; page: number; pageCount: number; onPage: (page: number) => void;
+}) {
   const { t, language } = usePdfitI18n();
   const { state } = pageOcrModel;
   const { popupRef, rect, moveHandleProps, resizeHandleProps } = useViewerPopupGeometry({
-    kind: 'ocr', bookKey, defaultRect, minWidth: 340, minHeight: 280, open: true,
+    kind: 'ocr', bookKey, defaultRect, minWidth, minHeight: 280, open: true,
   });
-  const headingRef = useRef<HTMLDivElement>(null);
+  const moveHandleRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const editor = state.status === 'editing' ? state : null;
   const editing = editor !== null;
   useLayoutEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [page, editing]);
-  useEffect(() => { if (!editing) headingRef.current?.focus(); }, [editing]);
+  useEffect(() => { if (!editing) moveHandleRef.current?.focus(); }, [editing]);
   const close = () => {
     if (editor?.saving) return;
     pageOcrModel.close();
@@ -45,6 +48,7 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
   };
 
   const rtl = language === 'ar';
+  const jumpLabel = t(RSC.VIEWER_OCR_GO_TO_PAGE_BUTTON, { page });
   const reason = state.status === 'failed'
     ? state.error instanceof OcrUnreachableError ? t('ocrUnreachable') : String(state.error instanceof Error ? state.error.message : state.error)
     : '';
@@ -56,23 +60,35 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
     panel = source === 'none' ? { status: 'unavailable' } : { status: 'done', text, source };
   }
 
-  return <Portal><Paper ref={popupRef} role="dialog" aria-modal={false} aria-labelledby="page-ocr-dialog-title" data-testid="page-ocr-dialog" elevation={16}
+  return <Portal><Paper ref={popupRef} role="dialog" aria-modal={false} aria-label={t('ocrPageTitle', { page })} data-testid="page-ocr-dialog" elevation={16}
     sx={{
       position: 'fixed', left: rect.x, top: rect.y, width: rect.width, height: rect.height, boxSizing: 'border-box',
       zIndex: (theme) => theme.zIndex.modal - 1, display: 'flex', flexDirection: 'column',
       border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden',
-      bgcolor: 'background.paper', backgroundImage: 'none',
+      bgcolor: 'background.paper', backgroundImage: 'none', containerType: 'inline-size', containerName: 'page-ocr',
     }}
     onKeyDown={(event) => {
       event.stopPropagation();
       if (event.key === 'Escape' && !event.nativeEvent.isComposing) close();
     }}>
-    <Box component="header" dir="ltr" sx={{ display: 'flex', alignItems: 'center', gap: .25, px: 1, py: .75, borderBottom: 1, borderColor: 'divider' }}>
-      <Box ref={headingRef} {...moveHandleProps} tabIndex={0} title={t(RSC.VIEWER_OCR_MOVE_LABEL)}
+    <Box component="header" dir="ltr" sx={{
+      display: 'flex', alignItems: 'center', gap: .5, pl: 1, paddingRight: VIEWER_POPUP_CLOSE_INSET,
+      py: .75, borderBottom: 1, borderColor: 'divider',
+    }}>
+      <Box ref={moveHandleRef} {...moveHandleProps} tabIndex={0} title={t(RSC.VIEWER_OCR_MOVE_LABEL)}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-        sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: .75, p: .5, cursor: 'grab', touchAction: 'none', userSelect: 'none' }}>
+        sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', p: .5, cursor: 'grab', touchAction: 'none', userSelect: 'none' }}>
         <DragIndicatorIcon fontSize="small" color="action" />
-        <Typography id="page-ocr-dialog-title" component="h2" variant="subtitle1" fontWeight={700} dir={rtl ? 'rtl' : 'ltr'} aria-live="polite">{t('ocrPageTitle', { page })}</Typography>
+      </Box>
+      <Typography id="page-ocr-dialog-title" component="h2" variant="subtitle1" fontWeight={700}
+        dir="auto" translate="no" title={filename} noWrap sx={{ flex: 1, minWidth: 0 }}>{filename}</Typography>
+      <Box sx={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: .5, whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" component="span" color="text.secondary" aria-live="polite"
+          sx={{ minWidth: `${String(pageCount).length + 2}ch`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+          {t(RSC.VIEWER_OCR_PAGE_TEXT, { page })}
+        </Typography>
+        <Button size="small" aria-label={jumpLabel} title={jumpLabel} onClick={() => onPage(page)}
+          sx={{ minWidth: 0 }}>{t('move')}</Button>
       </Box>
       <Box dir={rtl ? 'rtl' : 'ltr'} sx={{ display: 'flex', flexShrink: 0 }}>
         <IconButton size="small" aria-label={t('previousPage')} title={t('previousPage')} disabled={editing || page <= 1} onClick={() => pageOcrModel.move(-1)}>
@@ -84,9 +100,8 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
       </Box>
       <ViewerPopupCloseButton onClose={close} disabled={editor?.saving} />
     </Box>
-    <Typography variant="body2" color="text.secondary" translate="no" title={filename} noWrap sx={{ px: 2, pt: 1 }}>{filename}</Typography>
     <Box ref={scrollRef} data-testid="page-ocr-scroll" sx={{
-      display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, p: 2, pt: 1,
+      display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, p: 2,
       overflow: 'auto', overscrollBehavior: 'contain',
     }}>
       {state.status === 'checking' ? (
@@ -104,8 +119,7 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
       {state.status === 'failed' && state.during === 'lookup' ? (
         <Alert severity="warning" action={<Button color="inherit" onClick={pageOcrModel.checkPage}>{t('retry')}</Button>}>{t('ocrFailed', { reason })}</Alert>
       ) : null}
-      {panel ? <OcrTextPanel testId="page-ocr" state={panel} onRetry={pageOcrModel.scanPage} maxHeight="none" renderText={renderMarkdown}
-        onEdit={state.status === 'ready' && state.result.revision ? pageOcrModel.edit : undefined} /> : null}
+      {panel ? <OcrTextContent testId="page-ocr" state={panel} maxHeight="none" renderText={renderMarkdown} labelledBy="page-ocr-dialog-title" /> : null}
       {editor ? <>
         {editor.saveError && <Alert severity="error" sx={{ mb: 1 }}>{t(editor.saveError === 'conflict' ? RSC.VIEWER_OCR_CONFLICT_ALERT : RSC.VIEWER_OCR_SAVE_ALERT)}</Alert>}
         <Box component="textarea" autoFocus aria-label={t(RSC.VIEWER_OCR_EDITOR_LABEL)} dir="auto" spellCheck={false}
@@ -117,15 +131,23 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
           }} />
       </> : null}
     </Box>
-    <Box component="footer" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: .5,
-      minHeight: 38, pl: 2, pr: 4, py: .25, borderTop: 1, borderColor: 'divider' }}>
-      <Box>
-        {state.status === 'ready' ? <Typography variant="caption" color="text.secondary" data-testid="page-ocr-duration">{(state.result.durationMs / 1000).toFixed(1)} s</Typography> : null}
-      </Box>
-      {editor ? <Box sx={{ display: 'flex', gap: .5 }}>
+    <Box component="footer" dir="ltr" sx={{ display: 'flex', flexShrink: 0, alignItems: 'center', justifyContent: 'flex-end',
+      minHeight: 38, pl: 1, pr: 4, py: .25, borderTop: 1, borderColor: 'divider' }}>
+      {editor ? <Box dir={rtl ? 'rtl' : 'ltr'} sx={{ display: 'flex', gap: .5 }}>
         <Button size="small" disabled={editor.saving} onClick={pageOcrModel.cancelEdit}>{t('cancel')}</Button>
         <Button size="small" variant="contained" disabled={editor.saving || editor.saveError === 'conflict' || editor.draft === editor.result.text}
           onClick={() => void pageOcrModel.save()}>{t(editor.saving ? 'saving' : 'save')}</Button>
+      </Box> : panel ? <Box dir={rtl ? 'rtl' : 'ltr'} sx={{
+        display: 'flex', flexShrink: 0, gap: .5,
+        '& .MuiButton-root': { flexShrink: 0, whiteSpace: 'nowrap' },
+        [`@container page-ocr (width < ${minWidth - 2}px)`]: {
+          '& .ocr-action-label': { display: 'none' },
+          '& .MuiButton-startIcon': { margin: 0 },
+          '& .MuiButton-root': { minWidth: 36 },
+        },
+      }}>
+        <OcrTextActions key={page} testId="page-ocr" state={panel} onRetry={pageOcrModel.scanPage}
+          onEdit={state.status === 'ready' && state.result.revision ? pageOcrModel.edit : undefined} />
       </Box> : null}
     </Box>
     <ViewerPopupResizeHandle {...resizeHandleProps} />

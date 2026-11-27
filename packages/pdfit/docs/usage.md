@@ -121,16 +121,21 @@ dialog, deletes the clip, or opens the captured page in the viewer.
 
 ## Page text popup
 
-In Free, select **Read page text** in the viewer toolbar. Drag the title bar
-to move the popup. Drag its lower-right handle to resize it. The minimum is
-340 × 280 CSS pixels, or the available space on a smaller screen. The browser
-remembers the position and size for each book.
+In Free, select **Read page text** in the viewer toolbar. Drag the grip next
+to the filename to move the popup, or drag the lower-right handle to resize
+it. The minimum is 400 × 280 CSS pixels, bounded by the viewport. The browser
+remembers the position and size for each book. The filename uses the remaining
+header space and ends with an ellipsis when it overflows.
 
-The arrows in the popup browse OCR results while the PDF viewer stays on its
-current page. Long results scroll within the popup. Select **Scan page** on a
-page that has no saved OCR result. Use the X in the upper-right to close.
+The header shows the selected OCR page as **p.115**. Select **Move** next to
+it to open that page in the PDF viewer. The popup arrows browse OCR results
+independently. Long results scroll within the popup. Select **Scan page** on
+a page that has no saved OCR result. The close button's right inset is 5 CSS
+pixels in every language.
 
-Select **Edit** to open a plain text area. **Save** stores the Markdown for
+**Copy text**, **Read again**, and **Edit** appear in the lower-right footer.
+On a screen narrower than the minimum popup width, the footer uses icons with
+the same accessible names. **Edit** opens a plain text area. **Save** stores the Markdown for
 that page and returns to the formatted view. **Cancel** restores the saved
 view. Save or cancel before using the popup’s page arrows. Closing the window
 discards an unsaved draft. **Copy text** copies

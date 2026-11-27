@@ -188,7 +188,7 @@ const readPanel = (page, prefix) => page.evaluate((prefix) => {
   return {
     status: q('')?.getAttribute('data-ocr-status') ?? null,
     text: q('-text')?.textContent ?? null,
-    source: q('-source')?.getAttribute('data-source') ?? null,
+    source: q('')?.getAttribute('data-source') ?? null,
     sourceLabel: q('-source')?.textContent ?? null,
     copy: Boolean(q('-copy')),
     retry: Boolean(q('-retry')),
@@ -221,7 +221,7 @@ const openPageOcr = async (page) => {
   const request = await requestSeen;
   const { folder, filename, pageIndex } = Object.fromEntries(new URL(request.url()).searchParams);
   const requestBody = { folder, filename, pageIndex: Number(pageIndex) };
-  const title = (await page.locator('#page-ocr-dialog-title').innerText()).trim();
+  const title = await dialog.getAttribute('aria-label');
   const roleDialog = await page.getByRole('dialog', { name: title }).count();
   return { dialog, request, requestBody, title, roleDialog, ariaLabel };
 };
@@ -327,7 +327,6 @@ try {
     const panel = await watchPanel(mainPage, 'page-ocr', 60_000);
     const ui = await readPagePanel(mainPage, opened.dialog);
     const browserResponse = await responseOf(opened.request);
-    const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     const expected = await pageOcrApi(digitalFile, digitalPageIndex);
     digitalPageText = expected.body?.text ?? null;
     // 복사: 버튼을 누르고 클립보드를 읽는다(헤드리스 권한 부여).
@@ -337,7 +336,7 @@ try {
       clipboard = await mainPage.evaluate(() => navigator.clipboard.readText()).catch((error) => `ERR ${error.message}`);
     }
     await snap(mainPage, 'page-ocr-digital-light.png');
-    const partial = { filename: digitalFile, pageNumberInput: shownPage, title: opened.title, ariaLabel: opened.ariaLabel, roleDialog: opened.roleDialog, requestBody: opened.requestBody, browserResponse: { status: browserResponse.status, source: browserResponse.body?.source, cached: browserResponse.body?.cached, durationMs: browserResponse.body?.durationMs, chars: browserResponse.body?.text?.length }, panel, ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null }, durationLabel: duration, expected: { status: expected.status, source: expected.body?.source, cached: expected.body?.cached, chars: expected.body?.text?.length, durationMs: expected.body?.durationMs }, textEqualsApi: ui.text === expected.body?.text, clipboardEqualsText: typeof clipboard === 'string' && clipboard.replace(/\r\n/g, '\n') === ui.text, clipboardChars: typeof clipboard === 'string' ? clipboard.length : null };
+    const partial = { filename: digitalFile, pageNumberInput: shownPage, title: opened.title, ariaLabel: opened.ariaLabel, roleDialog: opened.roleDialog, requestBody: opened.requestBody, browserResponse: { status: browserResponse.status, source: browserResponse.body?.source, cached: browserResponse.body?.cached, durationMs: browserResponse.body?.durationMs, chars: browserResponse.body?.text?.length }, panel, ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null }, expected: { status: expected.status, source: expected.body?.source, cached: expected.body?.cached, chars: expected.body?.text?.length, durationMs: expected.body?.durationMs }, textEqualsApi: ui.text === expected.body?.text, clipboardEqualsText: typeof clipboard === 'string' && clipboard.replace(/\r\n/g, '\n') === ui.text, clipboardChars: typeof clipboard === 'string' ? clipboard.length : null };
     try {
       assert.equal(shownPage, String(digitalPage), '페이지 번호 칸');
       assert.equal(opened.ariaLabel, TEXT.ocrPage, '버튼 접근 이름');
@@ -346,11 +345,11 @@ try {
       assert.deepEqual(opened.requestBody, { folder, filename: digitalFile, pageIndex: digitalPageIndex }, '조회 pageIndex = 페이지 - 1');
       assert.equal(panel.final, 'done', '패널 done');
       assert.equal(ui.source, 'text-layer', 'data-source=text-layer');
-      assert.equal(ui.sourceLabel, TEXT.sourceTextLayer);
+      assert.equal(ui.sourceLabel, null, '출처 배지 제거');
       assert.equal(ui.text, expected.body?.text, '편집 원문 = POST /api/ocr/page 글');
       assert.ok(partial.clipboardEqualsText, '복사 = 편집 원문');
       assert.ok(ui.copy, '복사 버튼');
-      assert.ok(duration && /^\d+\.\d s$/.test(duration), `소요 시간 표시 ${duration}`);
+      assert.doesNotMatch(await opened.dialog.locator('footer').innerText(), /\d+\.\d\s*s/);
     } catch (error) { throw failWith(error.message, partial); }
     await closeDialog(mainPage, opened.dialog);
     return partial;
@@ -424,6 +423,7 @@ try {
       assert.deepEqual(missingLines, [], '클립 글의 모든 줄(공백 제거)이 그 페이지 글(공백 제거) 안에 있다');
       assert.equal(ui.status, 'done');
       assert.equal(ui.source, 'text-layer');
+      assert.equal(ui.sourceLabel, TEXT.sourceTextLayer);
       assert.equal(ui.text, server?.ocr?.text, '대화상자 글 = 서버 ocr.text');
       assert.ok(ui.copy && ui.retry, '복사·다시 읽기 버튼');
       assert.equal(retry.status(), 202, '다시 읽기 202');
@@ -460,21 +460,11 @@ try {
         const popup = document.querySelector('[data-testid="page-ocr-dialog"]');
         const paper = popup.getBoundingClientRect();
         const text = document.querySelector('[data-testid="page-ocr-text"]');
-        // 패널 머리줄(제목 "텍스트", 출처 칩, 복사, 다시 읽기)의 글자 줄 수: 글자 노드 Range의 서로 다른 top 수.
-        const lines = (node) => {
-          if (!node) return null;
-          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-          const tops = new Set();
-          for (let t = walker.nextNode(); t; t = walker.nextNode()) {
-            if (!t.textContent.trim()) continue;
-            const range = document.createRange();
-            range.selectNodeContents(t);
-            for (const rect of range.getClientRects()) if (rect.width > 0) tops.add(Math.round(rect.top));
-          }
-          return tops.size;
-        };
-        const headerLines = { heading: lines(document.getElementById('page-ocr-heading')), source: lines(document.querySelector('[data-testid="page-ocr-source"]')), copy: lines(document.querySelector('[data-testid="page-ocr-copy"]')), retry: lines(document.querySelector('[data-testid="page-ocr-retry"]')) };
-        return { viewport: window.innerWidth, paperLeft: Math.round(paper.left), paperRight: Math.round(paper.right), pageOverflow: document.documentElement.scrollWidth - window.innerWidth, textOverflowX: text ? text.scrollWidth - text.clientWidth : null, headerLines, paperBackground: getComputedStyle(popup).backgroundColor };
+        const footerButtons = [...popup.querySelectorAll('footer button')].map((button) => {
+          const { top, left, right } = button.getBoundingClientRect();
+          return { top, left, right };
+        });
+        return { viewport: window.innerWidth, paperLeft: Math.round(paper.left), paperRight: Math.round(paper.right), pageOverflow: document.documentElement.scrollWidth - window.innerWidth, textOverflowX: text ? text.scrollWidth - text.clientWidth : null, footerButtons, paperBackground: getComputedStyle(popup).backgroundColor };
       });
       await snap(page, `page-ocr-digital-${variant.name}.png`);
       out[variant.name] = { title: opened.title, buttonBox, panel, source: ui.source, textChars: ui.text?.length ?? null, textEqualsApi: ui.text === digitalPageText, geometry };
@@ -490,7 +480,11 @@ try {
         assert.ok(geometry.paperLeft >= 0 && geometry.paperRight <= geometry.viewport, `${name} 대화상자가 화면 안 ${JSON.stringify(geometry)}`);
         assert.ok(geometry.pageOverflow <= 0, `${name} 페이지 가로 넘침 없음 ${geometry.pageOverflow}`);
         assert.ok(geometry.textOverflowX === null || geometry.textOverflowX <= 0, `${name} 글 상자 가로 넘침 없음 ${geometry.textOverflowX}`);
-        for (const [part, count] of Object.entries(geometry.headerLines)) assert.ok(count === null || count === 1, `${name} 패널 머리줄 "${part}" 글자가 한 줄이어야 한다 ${JSON.stringify(geometry.headerLines)}`);
+        assert.equal(geometry.footerButtons.length, 3);
+        for (const button of geometry.footerButtons) {
+          assert.equal(button.top, geometry.footerButtons[0].top);
+          assert.ok(button.left >= geometry.paperLeft && button.right <= geometry.paperRight);
+        }
       }
     } catch (error) { throw failWith(error.message, out); }
     return out;
@@ -504,16 +498,15 @@ try {
     const panel = await watchPanel(mainPage, 'page-ocr', 60_000);
     const ui = await readPagePanel(mainPage, opened.dialog);
     const browserResponse = await responseOf(opened.request);
-    const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     const expected = await pageOcrApi(scannedFile, scannedCachedIndex);
     await snap(mainPage, 'page-ocr-scanned-cached-light.png');
-    const partial = { filename: scannedFile, pageNumberInput: shownPage, title: opened.title, requestBody: opened.requestBody, browserResponse: { status: browserResponse.status, source: browserResponse.body?.source, cached: browserResponse.body?.cached, durationMs: browserResponse.body?.durationMs, chars: browserResponse.body?.text?.length }, panel, ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null }, durationLabel: duration, expected: { source: expected.body?.source, cached: expected.body?.cached, chars: expected.body?.text?.length }, textEqualsApi: ui.text === expected.body?.text };
+    const partial = { filename: scannedFile, pageNumberInput: shownPage, title: opened.title, requestBody: opened.requestBody, browserResponse: { status: browserResponse.status, source: browserResponse.body?.source, cached: browserResponse.body?.cached, durationMs: browserResponse.body?.durationMs, chars: browserResponse.body?.text?.length }, panel, ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null }, expected: { source: expected.body?.source, cached: expected.body?.cached, chars: expected.body?.text?.length }, textEqualsApi: ui.text === expected.body?.text };
     try {
       assert.equal(opened.title, TEXT.pageTitle(cachedPage));
       assert.equal(opened.requestBody.pageIndex, scannedCachedIndex);
       assert.equal(panel.final, 'done');
       assert.equal(ui.source, 'vision');
-      assert.equal(ui.sourceLabel, TEXT.sourceVision);
+      assert.equal(ui.sourceLabel, null, '출처 배지 제거');
       assert.equal(browserResponse.body?.cached, true, '캐시 경로');
       assert.ok(panel.finalAtMs < 4000, `캐시 경로는 느림 안내(4 s) 전에 끝난다 ${panel.finalAtMs}`);
       assert.equal(panel.slowHintAtMs, null, '느림 안내가 보이지 않는다');
@@ -537,7 +530,6 @@ try {
     const panel = await watchPanel(mainPage, 'page-ocr', visionWaitMs);
     const ui = await readPagePanel(mainPage, opened.dialog);
     const scanResponse = await responseOf(request);
-    const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     await snap(mainPage, 'page-ocr-scanned-uncached-final.png');
     await closeDialog(mainPage, opened.dialog);
     const reopened = await openPageOcr(mainPage);
@@ -546,7 +538,6 @@ try {
       filename: scannedFile, pageNumberInput: shownPage, title: opened.title, panel,
       scanStatus: scanResponse.status, cachedStatus: expected.status, cached: expected.body?.cached,
       ui: { ...ui, text: undefined, textChars: ui.text?.length ?? null, textHead: ui.text?.slice(0, 120) ?? null },
-      durationLabel: duration,
       textEqualsApi: ui.text === expected.body?.text,
     };
     try {

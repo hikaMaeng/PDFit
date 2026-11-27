@@ -10,7 +10,7 @@ await mkdir(artifacts, { recursive: true });
 const definitions = [
   { id: 'bot', trigger: (p) => p.getByRole('button', { name: 'Bot', exact: true }), name: 'Bot', min: [320, 300] },
   { id: 'comments', trigger: (p) => p.getByRole('button', { name: 'Comments', exact: true }), name: 'Comments', min: [320, 300] },
-  { id: 'ocr', trigger: (p) => p.getByTestId('page-ocr-open'), name: /^Page 1 text$/i, min: [340, 280] },
+  { id: 'ocr', trigger: (p) => p.getByTestId('page-ocr-open'), name: /^Page 1 text$/i, min: [400, 280] },
   { id: 'outline', trigger: (p) => p.getByTestId('viewer-outline-open'), name: 'Table of contents', min: [300, 260] },
 ];
 const selected = (process.env.PDFIT_TEST_POPUPS ?? '').split(',').filter(Boolean);

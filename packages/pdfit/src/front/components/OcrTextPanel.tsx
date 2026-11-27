@@ -21,12 +21,26 @@ type Props = {
   /** Prefix for data-testid hooks, e.g. `clip-ocr` or `page-ocr`. */
   testId: string;
   maxHeight?: number | string;
-  onEdit?: () => void;
   renderText?: (text: string) => ReactNode;
 };
 
-/** Shows text read from a clip or a page, with its source, copy and retry. */
-export default function OcrTextPanel({ state, onRetry, retrying = false, testId, maxHeight = 260, onEdit, renderText }: Props) {
+type ActionProps = Pick<Props, 'state' | 'testId' | 'onRetry' | 'retrying'> & { onEdit?: () => void };
+
+/** Shows clip OCR text with its source, copy and retry. */
+export default function OcrTextPanel({ state, onRetry, retrying, testId, maxHeight, renderText }: Props) {
+  const { t } = usePdfitI18n();
+  return <OcrTextContent state={state} testId={testId} maxHeight={maxHeight} renderText={renderText} labelledBy={`${testId}-heading`}>
+    {/* A narrow clip dialog moves whole items to the next row. */}
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1, rowGap: .5, minHeight: 30, '& > *': { flexShrink: 0 }, '& .MuiButton-root': { whiteSpace: 'nowrap' } }}>
+      <Typography id={`${testId}-heading`} variant="subtitle2" component="h3" sx={{ whiteSpace: 'nowrap' }}>{t('ocrText')}</Typography>
+      {state.status === 'done' ? <Chip size="small" variant="outlined" label={state.source === 'vision' ? t('ocrSourceVision') : t('ocrSourceTextLayer')} data-testid={`${testId}-source`} data-source={state.source} /> : null}
+      <Box sx={{ flex: '1 0 0' }} />
+      <OcrTextActions state={state} testId={testId} onRetry={onRetry} retrying={retrying} />
+    </Box>
+  </OcrTextContent>;
+}
+
+export function OcrTextActions({ state, onRetry, retrying = false, testId, onEdit }: ActionProps) {
   const { t } = usePdfitI18n();
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -41,20 +55,26 @@ export default function OcrTextPanel({ state, onRetry, retrying = false, testId,
     } catch { /* clipboard blocked: the text stays selectable */ }
   };
 
-  const retryButton = onRetry
-    ? <Button size="small" startIcon={retrying ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />} disabled={retrying || state.status === 'pending'} onClick={onRetry} data-testid={`${testId}-retry`}>{t('ocrRetry')}</Button>
-    : null;
+  if (state.status === 'pending') return null;
+  const copyLabel = t(copied ? 'ocrCopied' : 'ocrCopy');
+  const retryLabel = t('ocrRetry');
+  const editLabel = t('edit');
+  return <>
+    {state.status === 'done' && state.text ? <Button size="small" aria-label={copyLabel} title={copyLabel}
+      startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => void copy(state.text)} data-testid={`${testId}-copy`}><span className="ocr-action-label">{copyLabel}</span></Button> : null}
+    {onRetry ? <Button size="small" aria-label={retryLabel} title={retryLabel}
+      startIcon={retrying ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />} disabled={retrying}
+      onClick={onRetry} data-testid={`${testId}-retry`}><span className="ocr-action-label">{retryLabel}</span></Button> : null}
+    {onEdit && state.status === 'done' ? <Button size="small" aria-label={editLabel} title={editLabel}
+      startIcon={<EditOutlinedIcon fontSize="small" />} onClick={onEdit}><span className="ocr-action-label">{editLabel}</span></Button> : null}
+  </>;
+}
 
-  return <Box component="section" aria-labelledby={`${testId}-heading`} data-testid={testId} data-ocr-status={state.status} sx={{ display: 'grid', gap: 1 }}>
-    {/* Each item keeps its one line; a narrow screen moves whole items to the next row. */}
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1, rowGap: .5, minHeight: 30, '& > *': { flexShrink: 0 }, '& .MuiButton-root': { whiteSpace: 'nowrap' } }}>
-      <Typography id={`${testId}-heading`} variant="subtitle2" component="h3" sx={{ whiteSpace: 'nowrap' }}>{t('ocrText')}</Typography>
-      {state.status === 'done' ? <Chip size="small" variant="outlined" label={state.source === 'vision' ? t('ocrSourceVision') : t('ocrSourceTextLayer')} data-testid={`${testId}-source`} data-source={state.source} /> : null}
-      <Box sx={{ flex: '1 0 0' }} />
-      {state.status === 'done' && state.text ? <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => void copy(state.text)} data-testid={`${testId}-copy`}>{copied ? t('ocrCopied') : t('ocrCopy')}</Button> : null}
-      {state.status !== 'pending' ? retryButton : null}
-      {onEdit && state.status === 'done' ? <Button size="small" startIcon={<EditOutlinedIcon fontSize="small" />} onClick={onEdit}>{t('edit')}</Button> : null}
-    </Box>
+export function OcrTextContent({ state, testId, maxHeight = 260, renderText, children, labelledBy }: Pick<Props, 'state' | 'testId' | 'maxHeight' | 'renderText'> & { children?: ReactNode; labelledBy?: string }) {
+  const { t } = usePdfitI18n();
+  return <Box component="section" aria-labelledby={labelledBy} data-testid={testId} data-ocr-status={state.status}
+    data-source={state.status === 'done' ? state.source : undefined} sx={{ display: 'grid', gap: 1 }}>
+    {children}
     {state.status === 'pending' ? <Box role="status" sx={{ display: 'grid', gap: .5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={16} /><Typography variant="body2">{t(state.modelPhase ? modelPhaseKeys[state.modelPhase] : 'ocrReading')}</Typography></Box>
       {state.slowHint && state.modelPhase !== 'queued' ? <Typography variant="caption" color="text.secondary">{t('ocrPageSlow')}</Typography> : null}
