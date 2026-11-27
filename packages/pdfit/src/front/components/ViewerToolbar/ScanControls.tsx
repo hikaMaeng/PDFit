@@ -6,6 +6,7 @@ import { isOcrScanActive, type OcrScanJob } from '../../../common/protocol/ocr/s
 import type { OcrScanBook } from '../../api/ocr.js';
 import { usePdfitI18n, type PdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { getOcrScanModel } from '../../model/ocrScanModel.js';
+import { VIEWER_POPUP_CLOSE_INSET, ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { scanKeys, toolbarLabels } from './resource.js';
 
 function scanNotice(job: OcrScanJob | null, requestFailed: boolean, t: PdfitI18n['t']) {
@@ -30,14 +31,31 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
 
   const saved = t(scanKeys.saved);
   const unsaved = t(scanKeys.unsaved);
-  const tileStyle = (indexed: boolean) => ({
-    py: 0.75, border: '1px solid', borderRadius: 1, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+  const statusStyle = (indexed: boolean) => ({
+    border: '1px solid', textAlign: 'center',
     borderColor: indexed ? 'success.main' : 'divider',
     bgcolor: (theme: import('@mui/material').Theme) => indexed ? alpha(theme.palette.success.main, 0.16) : theme.palette.action.hover,
   } as const);
-  return <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby={title}>
-    <DialogTitle id={title}>{t(scanKeys.status)}</DialogTitle>
-    <DialogContent dividers>
+  const status = t(scanKeys.status);
+  return <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby={title} PaperProps={{
+    sx: { m: { xs: 1.5, sm: 4 }, width: { xs: 'calc(100% - 24px)', sm: 'calc(100% - 64px)' } },
+  }}>
+    <Box component="header" dir="ltr" sx={{
+      display: 'flex', alignItems: 'center', flexShrink: 0, gap: { xs: 0.5, sm: 0.75 },
+      pl: { xs: 1, sm: 2 }, paddingRight: VIEWER_POPUP_CLOSE_INSET, py: 0.5,
+    }}>
+      <Typography id={title} component="h2" variant="h6" noWrap title={status} dir="auto"
+        sx={{ flex: 1, textAlign: 'left', fontSize: { xs: '0.8125rem', sm: '1.25rem' } }}>{status}</Typography>
+      {pages && !failed && <Box sx={{
+        display: 'flex', gap: { xs: '3px', sm: 0.5 }, whiteSpace: 'nowrap',
+        '& > span': { borderRadius: 0.5, px: { xs: '3px', sm: 0.5 }, py: '2px', fontSize: { xs: '10px', sm: '12px' }, lineHeight: 1.25 },
+      }}>
+        <Typography variant="caption" dir="auto" sx={statusStyle(true)}>{saved}</Typography>
+        <Typography variant="caption" dir="auto" sx={statusStyle(false)}>{unsaved}</Typography>
+      </Box>}
+      <ViewerPopupCloseButton size="medium" onClose={onClose} />
+    </Box>
+    <DialogContent dividers sx={{ px: { xs: 1.5, sm: 2 }, py: 1, borderBottom: 0 }}>
       {notice && <Typography variant="body2" sx={{ mb: 1 }} role="status">{notice}</Typography>}
       {failure === 'unavailable' && <Alert severity="warning" sx={{ mb: 1 }}>{t('ocrUnavailable')}</Alert>}
       {failure === 'source-changed' && <Alert severity="warning" sx={{ mb: 1 }}>{t(scanKeys.sourceChanged)}</Alert>}
@@ -45,24 +63,19 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
         {t(scanKeys.requestFailed)}
       </Alert>}
       {!pages && !failed && <Typography role="status" variant="body2">{t('loading')}</Typography>}
-      {pages && !failed && <>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
-          <Typography variant="caption" sx={{ ...tileStyle(true), px: 1 }}>{saved}</Typography>
-          <Typography variant="caption" sx={{ ...tileStyle(false), px: 1 }}>{unsaved}</Typography>
-        </Box>
-        <Box component="ul" role="list" aria-label={t(scanKeys.status)} sx={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(48px, 1fr))', gap: 0.75, listStyle: 'none', m: 0, p: 0,
-        }}>
-          {Array.from({ length: pageCount }, (_, index) => {
-            const indexed = pages.has(index);
-            const page = index + 1;
-            const label = t(scanKeys.pageStatus, { page, status: indexed ? saved : unsaved });
-            return <Box component="li" key={page} aria-label={label} title={label} sx={tileStyle(indexed)}>{page}</Box>;
-          })}
-        </Box>
-      </>}
+      {pages && !failed && <Box component="ul" role="list" aria-labelledby={title} sx={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(30px, 1fr))', gap: '3px', listStyle: 'none', m: 0, p: 0,
+        fontSize: '10px', lineHeight: '14px', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
+      }}>
+        {Array.from({ length: pageCount }, (_, index) => {
+          const indexed = pages.has(index);
+          const page = index + 1;
+          const label = t(scanKeys.pageStatus, { page, status: indexed ? saved : unsaved });
+          return <Box component="li" key={page} aria-label={label} title={label}
+            sx={{ ...statusStyle(indexed), borderRadius: 0.5, py: '1px' }}>{page}</Box>;
+        })}
+      </Box>}
     </DialogContent>
-    <DialogActions><Button onClick={onClose}>{t('close')}</Button></DialogActions>
   </Dialog>;
 }
 

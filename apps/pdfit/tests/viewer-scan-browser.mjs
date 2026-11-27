@@ -98,6 +98,29 @@ async function verifyScan() {
   const progress = (page, pattern) => page.getByRole('progressbar', { name: pattern });
   const coverage = (page) => page.getByRole('meter', { name: '스캔 완료 페이지 비율' });
   const shot = (page, filename) => page.screenshot({ path: path.join(output, filename), animations: 'disabled' });
+  async function verifyStatusHeader(dialog) {
+    const heading = dialog.getByRole('heading', { name: '스캔 상태', exact: true });
+    const saved = dialog.getByText('텍스트 저장됨', { exact: true });
+    const unsaved = dialog.getByText('저장된 텍스트 없음', { exact: true });
+    const close = button(dialog, '닫기');
+    const [headingBox, savedBox, unsavedBox, closeBox] = await Promise.all(
+      [heading, saved, unsaved, close].map((locator) => locator.boundingBox()),
+    );
+    assert.ok(headingBox && savedBox && unsavedBox && closeBox);
+    assert.ok(headingBox.x + headingBox.width <= savedBox.x && savedBox.x < unsavedBox.x && unsavedBox.x < closeBox.x);
+    assert.ok(await heading.evaluate((element) => element.scrollWidth <= element.clientWidth));
+    const centerY = (box) => box.y + box.height / 2;
+    assert.ok([savedBox, unsavedBox, closeBox].every((box) => Math.abs(centerY(box) - centerY(headingBox)) <= 1));
+    assert.equal(await close.textContent(), '');
+    const inset = await close.evaluate((element) => {
+      const header = element.closest('header');
+      return {
+        padding: getComputedStyle(header).paddingRight,
+        distance: header.getBoundingClientRect().right - element.getBoundingClientRect().right,
+      };
+    });
+    assert.deepEqual(inset, { padding: '5px', distance: 5 });
+  }
   const expectCoverage = (page, percent) => until(
     () => coverage(page).filter({ hasText: new RegExp(`^${percent}%$`) }).count(),
     (count) => count === 1,
@@ -168,14 +191,19 @@ async function verifyScan() {
     assert.ok(await fontSize(coverage(mixed)) < await fontSize(button(mixed, '시작')));
     await mixed.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-toolbar.png') });
     await button(mixed, '스캔 상태').click();
-    const initial = mixed.getByRole('dialog', { name: '스캔 상태' });
+    const initial = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
     const saved = initial.getByRole('listitem', { name: '2페이지, 텍스트 저장됨' });
     const unsaved = initial.getByRole('listitem', { name: '3페이지, 저장된 텍스트 없음' });
     await saved.waitFor();
     assert.equal(await initial.getByRole('listitem').count(), 5);
+    await verifyStatusHeader(initial);
+    assert.equal(await fontSize(saved), 10);
+    assert.ok((await saved.boundingBox()).height <= 20);
     const color = (tile) => tile.evaluate((element) => getComputedStyle(element).backgroundColor);
     assert.notEqual(await color(saved), await color(unsaved));
     await button(initial, '닫기').click();
+    await initial.waitFor({ state: 'hidden' });
+    assert.equal(await button(mixed, '스캔 상태').evaluate((element) => element === document.activeElement), true);
     await shot(mixed, 'scan-idle.png');
 
     await start(mixed, 2);
@@ -235,7 +263,7 @@ async function verifyScan() {
     steps.push('Two documents shared two slots; GPU viewer closed/reopened; cancellation drained its admitted page');
 
     await button(mixed, '스캔 상태').click();
-    const complete = mixed.getByRole('dialog', { name: '스캔 상태' });
+    const complete = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
     await complete.getByRole('listitem', { name: '5페이지, 텍스트 저장됨' }).waitFor();
     await complete.getByRole('listitem', { name: '1페이지, 저장된 텍스트 없음' }).waitFor();
     await shot(mixed, 'page-status.png');
@@ -255,7 +283,7 @@ async function verifyScan() {
     assert.equal(retained[0], stopped.activePages[0] - 1);
     await expectCoverage(failure, 33);
     await button(failure, '스캔 상태').click();
-    const failureDialog = failure.getByRole('dialog', { name: '스캔 상태' });
+    const failureDialog = failure.getByRole('dialog', { name: '스캔 상태', exact: true });
     await failureDialog.getByText(`${failed.failedPage}페이지에서 스캔이 중단됐습니다.`).waitFor();
     await shot(failure, 'scan-error.png');
     await button(failureDialog, '닫기').click();
@@ -276,15 +304,17 @@ async function verifyScan() {
 
     await mixed.setViewportSize({ width: 320, height: 730 });
     await button(mixed, '스캔 상태').click();
-    await mixed.getByRole('listitem', { name: '5페이지, 텍스트 저장됨' }).waitFor();
+    const mobileStatus = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
+    await mobileStatus.getByRole('listitem', { name: '5페이지, 텍스트 저장됨' }).waitFor();
+    await verifyStatusHeader(mobileStatus);
     await shot(mixed, 'mobile-page-status.png');
-    await button(mixed.getByRole('dialog', { name: '스캔 상태' }), '닫기').click();
+    await button(mobileStatus, '닫기').click();
     const width = await mixed.getByRole('toolbar').evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     assert.ok(width.scroll <= width.client, JSON.stringify(width));
     await expectCoverage(mixed, 80);
     await mixed.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-toolbar-mobile.png') });
     assert.deepEqual(pageErrors, []);
-    steps.push('320px toolbar fits and the status dialog opens without browser page errors');
+    steps.push('Scan status put both legend labels and the X on the title row at 1280px and 320px, used 10px page numbers, and restored focus on close; the 320px toolbar fit');
     steps.push('Small whole-document coverage appears beside Scan before the start page and updates from saved pages at idle, during scans, after cancellation or failure, and at completion');
 
     const parallel = await context.newPage();
