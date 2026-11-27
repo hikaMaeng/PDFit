@@ -1,6 +1,6 @@
 # OCR·코멘트 임베딩 검색 계획
 
-2026-11-27 독립 리뷰 반영본. 구현과 배포 검증은 후속 작업이다.
+2026-11-27 독립 리뷰 반영본. Free 구현 계약과 실행 결과는 후속 문서에서 확인한다. [구현 계약](../packages/pdfit/docs/content-search.md#의미-검색) · [격리 Free 검증 보고서](../apps/pdfit/tests/reports/embedding-search/20261128_001226.md)
 
 ## 첫 적용 범위
 
