@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Box, IconButton, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, type IconButtonProps } from '@mui/material';
+import { useId, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Box, ButtonBase, IconButton, Popover, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, type IconButtonProps } from '@mui/material';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
@@ -11,6 +11,8 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import FitScreenIcon from '@mui/icons-material/FitScreen';
 import HeightIcon from '@mui/icons-material/Height';
 import TuneIcon from '@mui/icons-material/Tune';
+import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
+import CheckIcon from '@mui/icons-material/Check';
 import StraightenIcon from '@mui/icons-material/Straighten';
 import TocIcon from '@mui/icons-material/Toc';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
@@ -18,7 +20,8 @@ import TextSnippetOutlinedIcon from '@mui/icons-material/TextSnippetOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { DEFAULT_COLOR_ADJUSTMENTS, sameColorAdjustments, type PdfGpuColorAdjustments, type PdfGpuColorAdjustmentState } from '@pdfgpu/core';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { deskewKeys, toolbarLabels as labels } from './resource.js';
+import { backgroundKeys, deskewKeys, toolbarLabels as labels } from './resource.js';
+import { viewerBackgroundPalette, viewerBackgroundPreference } from '../../model/viewerBackgroundPreference.js';
 import { ImageAdjustmentPopover } from './ImageAdjustmentPopover.js';
 import { ScanControls } from './ScanControls.js';
 import type { OcrScanBook } from '../../api/ocr.js';
@@ -36,6 +39,7 @@ type Props = {
   zoomOutDisabled?: boolean;
   zoomInDisabled?: boolean;
   colorAdjustments: PdfGpuColorAdjustmentState;
+  showBackgroundControl?: boolean;
   deskew?: ViewerDeskewControl;
   documentActions?: ReactNode;
   scanBook?: OcrScanBook;
@@ -116,6 +120,42 @@ function ImageAdjustmentControl({ colors, onChange }: { colors: PdfGpuColorAdjus
   </>;
 }
 
+function ViewerBackgroundControl() {
+  const { t } = usePdfitI18n();
+  const { subscribe, getColor } = viewerBackgroundPreference;
+  const selected = useSyncExternalStore(subscribe, getColor, getColor);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const label = t(backgroundKeys.button);
+  const dialogId = useId();
+  const titleId = useId();
+  return <>
+    <ToolbarButton icon={<PaletteOutlinedIcon />} caption={labels.background} label={label} aria-haspopup="dialog"
+      aria-expanded={anchor !== null} aria-controls={anchor ? dialogId : undefined} onClick={(event) => setAnchor(event.currentTarget)} />
+    <Popover open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} marginThreshold={12}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      PaperProps={{ id: dialogId, role: 'dialog', 'aria-modal': true, 'aria-labelledby': titleId, sx: { mt: 0.5, p: 1.5 } }}>
+      <Typography id={titleId} variant="subtitle2" sx={{ mb: 1 }}>{label}</Typography>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0.5 }}>
+        {viewerBackgroundPalette.map(([name, color]) => {
+          const colorLabel = t(backgroundKeys.colors[name]);
+          return <Tooltip key={name} title={colorLabel} arrow>
+            <ButtonBase aria-label={colorLabel} aria-pressed={selected === color} onClick={() => {
+              viewerBackgroundPreference.select(color);
+              setAnchor(null);
+            }} sx={{
+              width: 40, height: 40, border: '1px solid', borderColor: 'divider', borderRadius: 1,
+              backgroundColor: color, color: (theme) => theme.palette.getContrastText(color),
+              '&.Mui-focusVisible, &:hover': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 1 },
+            }}>
+              {selected === color && <CheckIcon fontSize="small" />}
+            </ButtonBase>
+          </Tooltip>;
+        })}
+      </Box>
+    </Popover>
+  </>;
+}
+
 export function ViewerToolbar(props: Props) {
   const { t } = usePdfitI18n();
   return <ViewerToolbarFrame>
@@ -156,6 +196,7 @@ export function ViewerToolbar(props: Props) {
     </Box>
     <Box sx={dividedGroupStyle}>
       <ImageAdjustmentControl colors={props.colorAdjustments} onChange={props.onColorAdjustmentsChange} />
+      {props.showBackgroundControl && <ViewerBackgroundControl />}
       {props.deskew && <ToolbarButton icon={<StraightenIcon />} caption={labels.deskew} label={t(deskewKeys.toggle)}
         aria-pressed={props.deskew.enabled} disabled={props.pageCount === 0}
         color={props.deskew.enabled ? 'primary' : 'default'} onClick={props.deskew.onToggle}

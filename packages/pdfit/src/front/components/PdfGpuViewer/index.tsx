@@ -25,6 +25,7 @@ import { PdfLoadingProgress } from '../PdfLoadingProgress.js';
 import { AnnotationLayer } from './AnnotationLayer.js';
 import { usePdfAnnotations } from './usePdfAnnotations.js';
 import { ViewerToolbar, ViewerToolbarFrame, type RenderViewerDocumentActions } from '../ViewerToolbar/index.js';
+import { viewerBackgroundPreference } from '../../model/viewerBackgroundPreference.js';
 import { RSC } from './resource.js';
 import PdfOutlineDialog from '../PdfViewer/PdfOutlineDialog.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
@@ -244,6 +245,7 @@ export default function PdfGpuViewer({
           container: viewport,
           provider,
           providerKind: 'in-memory',
+          transparentBackground: true,
           initialZoom: initialScale ?? DEFAULT_VIEWER_ZOOM,
           minZoom: 0.25,
           maxZoom: 5,
@@ -421,6 +423,7 @@ export default function PdfGpuViewer({
       {gpuUnavailable && <Alert severity="error">{t(isSecureContext ? RSC.webgpuUnavailable : RSC.webgpuInsecure)}</Alert>}
       {!uiHidden && !gpuUnavailable && (
         <ViewerToolbar
+          showBackgroundControl
           deskew={{ enabled: state.deskew === true, onToggle: () => controller?.setDeskew(!state.deskew) }}
           pageLayout={isSpread ? 'double' : 'single'}
           coverAloneSelected={isSpread ? state.spreadPairing === 'alone' : undefined}
@@ -462,13 +465,13 @@ export default function PdfGpuViewer({
         <PdfLoadingProgress progress={displayLoadProgress} determinate={state.loadProgressDeterminate} />
       ) : null}
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', visibility: gpuUnavailable ? 'hidden' : 'visible' }}>
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', boxSizing: 'border-box', py: 3, bgcolor: (theme) => theme.palette.mode === 'light' ? '#e8decd' : '#3a3a3a' }}>
+        <ViewerBackground>
           <Box ref={surfaceWheelRef} data-testid="bookmark-capture-surface" sx={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, position: 'relative', touchAction: clipArmed || (state.scrollMode === 'page' && (state.fitMode === 'page' || state.fitMode === 'height')) ? 'none' : 'auto', cursor: clipArmed && onBookmarkCaptured ? 'crosshair' : annotation.tool === 'select' ? pan.active ? 'grabbing' : 'grab' : 'default' }} onTouchStart={pageSwipe.touchStart} onTouchEnd={pageSwipe.touchEnd} onTouchCancel={pageSwipe.touchCancel} onPointerDown={annotation.tool === 'bookmark' ? bookmark.pointerDown : annotation.tool === 'select' ? pan.pointerDown : undefined} onPointerMove={annotation.tool === 'bookmark' ? bookmark.pointerMove : annotation.tool === 'select' ? pan.pointerMove : undefined} onPointerUp={annotation.tool === 'bookmark' ? (event) => void bookmark.pointerUp(event) : annotation.tool === 'select' ? pan.pointerUp : undefined} onPointerCancel={annotation.tool === 'bookmark' ? bookmark.cancelCapture : annotation.tool === 'select' ? pan.pointerCancel : undefined} onClickCapture={bookmark.suppressCaptureClick}>
             <Box ref={viewportRef} role="region" aria-label="PDF viewer" data-testid="pdfgpu-scroll-area" sx={{ width: '100%', height: '100%', overflow: 'auto', scrollbarGutter: 'stable', position: 'relative' }} />
             <AnnotationLayer controller={controller} annotations={annotation.annotations} visiblePages={annotationPageIndices} viewportElement={viewportRef.current} documentId={url} tool={annotation.tool} style={annotation.style} selectedId={annotation.selectedId} onSelect={annotation.setSelectedId} onChange={annotation.preview} onCommit={annotation.commit} />
             <BookmarkOverlayLayer overlays={overlayProjections} bookmarks={visibleOverlayBookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} captureDrag={bookmark.captureDrag} onDelete={(id) => void bookmark.deleteItem(id)} />
           </Box>
-        </Box>
+        </ViewerBackground>
         {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
         {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
         {floatingPanel?.(goToPage, state.pageCount)}
@@ -480,4 +483,12 @@ export default function PdfGpuViewer({
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />
     </Box>
   );
+}
+
+function ViewerBackground({ children }: { children: ReactNode }) {
+  const { subscribe, getColor } = viewerBackgroundPreference;
+  const color = useSyncExternalStore(subscribe, getColor, getColor);
+  return <Box style={{ backgroundColor: color }} sx={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', boxSizing: 'border-box', py: 3 }}>
+    {children}
+  </Box>;
 }

@@ -1,6 +1,6 @@
 {
   "name": "pdfit-workspace",
-  "version": "0.4.24",
+  "version": "0.4.25",
   "private": true,
   "bin": {
     "pdfit": "bin/pdfit.mjs"

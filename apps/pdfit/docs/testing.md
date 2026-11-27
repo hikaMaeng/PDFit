@@ -11,6 +11,8 @@ Run:
 
 Current viewer checks use Chrome with WebGPU. Browser scripts that check PDF.js or the Canvas 2D fallback apply to their original release builds.
 
+[Viewer background](../tests/plans/viewer-background-20261127.md) compares rendered pixels around and between pages, checks the palette and browser persistence, and verifies opaque paper corners with Deskew enabled.
+
 `apps/pdfit/tests/free-cover-view-deployed-browser.mjs` is a read-only headless check of the cover view against a deployed standalone server (`PDFIT_BASE_URL`, default `http://127.0.0.1:15203`). It reads `/api/tasks/status`, switches to the grid, and asserts that at least `PDFIT_MIN_READY_COVERS` covers are loaded 360 px wide server thumbnails with non-blank pixels and a `v=<mtime>-<size>` URL, that the page contains no browser-side PDF canvas, that no PDF file was downloaded, and that the view choice persists. `PDFIT_WAIT_TASKS_IDLE_SECONDS` waits for the task queue to drain first. Set `PDFIT_BROWSER_CHANNEL=chrome` to use an installed Chrome, and `PDFIT_EVIDENCE_DIR` to save a screenshot and JSON.
 
 [Cover card tag drag test](../tests/plans/cover-tag-drag-20261123.md) uses native mouse drags in the deployed Free UI with isolated tag API responses.

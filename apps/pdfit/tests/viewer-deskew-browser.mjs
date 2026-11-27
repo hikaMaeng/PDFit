@@ -150,6 +150,7 @@ async function checkViewer(browser) {
 
     const status = page.getByRole('status', { name: 'viewer status' });
     const deskew = page.getByRole('button', { name: '기울임 보정', exact: true });
+    const background = page.getByRole('button', { name: '배경색', exact: true });
     const pageNumberInput = page.getByRole('textbox', { name: '페이지 번호' });
     const nextPage = page.getByRole('button', { name: '다음 페이지', exact: true });
     const canvas = page.getByTestId('pdfgpu-scroll-area').locator('canvas').first();
@@ -166,6 +167,10 @@ async function checkViewer(browser) {
         await pageNumberInput.and(page.locator(`[value="${step + 2}"]`)).waitFor();
       }
       await waitForGpuDetail(pageNumber);
+      await background.click();
+      const palette = page.getByRole('dialog', { name: '배경색' });
+      await palette.getByRole('button', { name: '가지색', exact: true }).click();
+      await palette.waitFor({ state: 'hidden' });
       const shellSelector = `[data-pdfgpu-page-shell="true"][data-page-index="${index}"]`;
       const shell = page.locator(shellSelector);
       const originalGuide = await waitForGuide(shell, sourceAngle, `webgpu-off-page-${pageNumber}.png`);
@@ -179,6 +184,13 @@ async function checkViewer(browser) {
       await deskew.and(page.locator('[aria-pressed="true"]')).waitFor();
       await page.waitForFunction(() => window.skewRequests > 0);
       const guide = await waitForGuide(shell, 0, `webgpu-on-page-${pageNumber}.png`);
+      const { data, info } = await sharp(await shell.screenshot()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      for (const x of [3, info.width - 4]) {
+        for (const y of [3, info.height - 4]) {
+          const offset = (y * info.width + x) * info.channels;
+          assert.deepEqual([...data.subarray(offset, offset + 3)], [255, 255, 255], 'deskew keeps the paper corners white');
+        }
+      }
       assert.equal(await pageNumberInput.inputValue(), String(pageNumber));
       assert.ok(await canvas.evaluate((element, original) => element === original, originalCanvas));
       assert.equal(documentReads, documentReadsBeforeToggle, 'enabling deskew reuses the open PDF');

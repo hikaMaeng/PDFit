@@ -97,6 +97,8 @@ Select **Clips** to open the document's clip list and enable area selection. Dra
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
 
+Open **Background** to choose one of 20 colors for the area around and between PDF pages. The default is dark gray. The browser remembers your choice across documents and reloads. **Image** controls the colors on the pages.
+
 ## Viewer popups
 
 Bot, Comments, page OCR, and Contents open as floating popups while the viewer remains usable. Drag the header to move a popup or drag the grip at the lower right to resize it. Use the arrow keys when either handle has focus. Hold Shift for larger steps. Close the popup with the X at the upper right or press Escape while it has focus.
