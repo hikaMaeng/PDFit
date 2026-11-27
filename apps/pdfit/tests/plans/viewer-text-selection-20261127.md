@@ -22,6 +22,12 @@ workspace root.
 - Emulate a Chromium touch pointer. Hold the Korean word and use **Copy
   text** to verify the clipboard.
 
+For OCR copy spacing, run `node --test packages/pdfit/tests/viewer-ocr-layout.test.mjs`
+after building the shared package. Test fragmented Korean words, real
+spaces, and wrapped prose beside headings and code. When the local sample
+from the incident is available, copy the heading and the following
+paragraph on PDF page 175 and compare the clipboard with the visible text.
+
 Find the viewport and selectable pages by `pdfgpu-scroll-area` and
 `pdf-selectable-page`. Use the exact tool names and fixture text for the
 other locators. Save the request and clipboard results and the selected

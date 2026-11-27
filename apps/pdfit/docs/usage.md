@@ -109,8 +109,9 @@ again to return to text selection.
 
 The viewer uses embedded PDF text when available. For scans it reads the
 visible page with Korean and English OCR in the browser. The scan may take
-a moment on the first page. Pages with multiple columns or tables can
-copy in a different order from the printed layout.
+a moment on the first page. Copying Korean prose joins OCR fragments that
+belong to the same word and removes line breaks caused by wrapping. Pages
+with multiple columns or tables can copy in a different reading order.
 
 ## Viewer popups
 

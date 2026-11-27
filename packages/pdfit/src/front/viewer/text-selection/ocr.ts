@@ -2,7 +2,7 @@ import { createWorker, OEM, PSM, type Worker } from 'tesseract.js';
 import workerPath from 'tesseract.js/dist/worker.min.js?url&no-inline';
 import corePath from 'tesseract.js-core/tesseract-core-simd-lstm.wasm.js?url&no-inline';
 import { VIEWER_OCR_MODELS_PATH } from '../../../common/ocr/modelAssets.js';
-import type { PageTextRun } from './pageTextModel.js';
+import { buildOcrRuns } from './ocrLayout.js';
 
 /** Reuse the loaded worker across pages of this document. */
 export class SelectionOcr {
@@ -17,24 +17,7 @@ export class SelectionOcr {
     signal.throwIfAborted();
     const { data } = await this.untilClosed(() => worker.recognize(canvas, {}, { blocks: true }));
     signal.throwIfAborted();
-    const scaleX = pageWidth / canvas.width;
-    const scaleY = pageHeight / canvas.height;
-    const runs: PageTextRun[] = [];
-    for (const block of data.blocks ?? []) {
-      for (const paragraph of block.paragraphs) {
-        for (const line of paragraph.lines) {
-          let before: PageTextRun['before'] = runs.length ? '\n' : undefined;
-          for (const word of line.words) {
-            const { x0, y0, x1, y1 } = word.bbox;
-            if (!word.text.trim() || x1 <= x0 || y1 <= y0) continue;
-            runs.push({ text: word.text, before, x: x0 * scaleX, y: y0 * scaleY,
-              width: (x1 - x0) * scaleX, height: (y1 - y0) * scaleY });
-            before = ' ';
-          }
-        }
-      }
-    }
-    return runs;
+    return buildOcrRuns(data.blocks ?? [], pageWidth / canvas.width, pageHeight / canvas.height);
   }
 
   dispose() {

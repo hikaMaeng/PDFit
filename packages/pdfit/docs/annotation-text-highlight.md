@@ -17,8 +17,10 @@ order can vary on pages with multiple columns or tables.
 [PageTextModel][model] prioritizes the active page and keeps up to 24 page
 results per open document. It stores coordinates in display-oriented PDF
 points. The text layer applies `getPageTransform()` on zoom, scroll, and
-Deskew updates. Clipboard copy uses the selected offsets and the line breaks
-and spaces from the text source. If a touch hold has produced no browser
+Deskew updates. Clipboard copy uses the selected offsets. For scans,
+[OCR layout][layout] infers word gaps and joins wrapped lines of Korean
+prose using the OCR boxes. The selectable boxes keep their original
+positions. If a touch hold has produced no browser
 selection after 650 ms, the viewer selects the word and shows a copy button.
 
 Highlights saved by the palette use the dragged area's existing vector
@@ -28,4 +30,5 @@ ranges to PDF rectangles and store the multiple rectangles as one annotation.
 [layer]: ../src/front/components/PdfGpuViewer/DocumentTextLayer.tsx
 [source]: ../src/front/viewer/text-selection/pageTextSource.ts
 [model]: ../src/front/viewer/text-selection/pageTextModel.ts
+[layout]: ../src/front/viewer/text-selection/ocrLayout.ts
 [models]: https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0
