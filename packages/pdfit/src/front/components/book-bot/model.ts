@@ -6,6 +6,7 @@ import {
 import { readServerSentData } from '../../../common/protocol/server-sent-data.js';
 import { createBrowserUuid } from '../../browserUuid.js';
 import { outlinesApi } from '../../api/outlines.js';
+import { viewerPopupBookKey } from '../../model/viewerPopupGeometry.js';
 import { readPdfOutlineFromUrl } from '../../viewer/readPdfOutlineFromUrl.js';
 import type { BookOutlineEntry } from '../../../common/protocol/outlines/index.js';
 
@@ -31,6 +32,7 @@ class BookBotModel {
   private attempted: BookBotQuestion | null = null;
   private retryLoad: (() => Promise<void>) | null = null;
   private outline: Promise<BookOutlineEntry[] | undefined> | null = null;
+  readonly popupBookKey: string;
 
   open = false;
   history = false;
@@ -44,6 +46,7 @@ class BookBotModel {
   progress: BookBotProgress | null = null;
 
   constructor(private readonly book: BookBotBook) {
+    this.popupBookKey = viewerPopupBookKey(book);
     this.bookQuery = new URLSearchParams({ folder: book.folder, filename: book.filename });
     if (book.driveFileId) this.bookQuery.set('driveFileId', book.driveFileId);
   }

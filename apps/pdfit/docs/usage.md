@@ -95,9 +95,15 @@ Select **Clips** to open the document's clip list and enable area selection. Dra
 
 Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**, or **High contrast**, or use the invert switch and the brightness, contrast, and saturation sliders. **Reset** restores the original display. Inversion is saved with the book's reading position. The other adjustments last for the current viewer session. Downloads and clips use the original PDF colors.
 
+## Viewer popups
+
+Drag the header of Bot, Comments, page OCR, or Contents to move the popup. Drag the grip at the lower right to resize it. The arrow keys also work when the move or resize handle has focus. Hold Shift for larger steps. Use the X at the upper right to close the popup.
+
+The browser remembers the position and size of each popup for each book. Every popup has a minimum size. If the screen becomes too small, the popup fits the available area and returns to its saved size when there is room again.
+
 ## Viewer Bot
 
-Choose **Bot** in the viewer toolbar to open a floating chat for the current book. Drag the header or focus it and use the arrow keys to move the chat. Ask a question or request a summary. The reply can cite the PDF page number and distinguish your comments from the book's text.
+Choose **Bot** in the viewer toolbar to open a floating chat for the current book. Ask a question or request a summary. The reply can cite the PDF page number and distinguish your comments from the book's text.
 
 Bot shows its current stage while it prepares context, reads sections, waits for the model, or saves the conversation. Answer text appears as it arrives. Select a page reference such as **p. 9** to jump to that PDF page while keeping the chat open. If a reply fails, send the question again using the draft left in the input.
 

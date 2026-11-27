@@ -10,7 +10,8 @@ import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import Markdown from 'react-markdown';
 import { BOOK_BOT_QUESTION_LIMIT } from '../../../common/protocol/book-bot/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
-import { useDraggablePalette } from '../PdfGpuViewer/useDraggablePalette.js';
+import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
+import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { ToolbarButton } from '../ViewerToolbar/index.js';
 import type { getBookBotModel } from './model.js';
 import { BOT } from './resource.js';
@@ -35,13 +36,15 @@ export function BookBotPanel(props: PanelProps) {
   return model.open ? <FloatingChat {...props} /> : null;
 }
 
-const topRight = { x: Number.MAX_SAFE_INTEGER, y: 12 };
 const errorKeys = { load: BOT.LOAD_ERROR, send: BOT.SEND_ERROR, settings: BOT.SETTINGS_ERROR, conflict: BOT.CONFLICT };
 
 function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage }: PanelProps) {
   const { t } = usePdfitI18n();
   const titleId = useId();
-  const { paletteRef, position, dragHandleProps } = useDraggablePalette('pdfit.bookBot.position', topRight);
+  const { popupRef, rect, moveHandleProps, resizeHandleProps } = useViewerPopupGeometry({
+    kind: 'bot', bookKey: model.popupBookKey, open: true, minWidth: 320, minHeight: 300,
+    defaultRect: ({ width }) => ({ x: width - 488, y: 12, width: 480, height: 600 }),
+  });
   const headingRef = useRef<HTMLDivElement>(null);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   useEffect(() => { headingRef.current?.focus(); }, []);
@@ -51,19 +54,19 @@ function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage
     document.getElementById(buttonId)?.focus();
   };
   const busy = model.phase !== 'ready';
-  return <Paper ref={paletteRef} id={panelId} role="dialog" aria-modal={false} aria-labelledby={titleId} elevation={16}
+  return <Paper ref={popupRef} id={panelId} role="dialog" aria-modal={false} aria-labelledby={titleId} elevation={16}
     onKeyDown={(event) => {
       event.stopPropagation();
       if (event.key === 'Escape') close();
     }}
     sx={{
-      position: 'absolute', left: position.x, top: position.y, zIndex: 27, display: 'flex', flexDirection: 'column',
-      width: 'min(480px, calc(100% - 16px))', height: 'min(600px, calc(100% - 16px))',
+      position: 'absolute', left: rect.x, top: rect.y, zIndex: 27, display: 'flex', flexDirection: 'column',
+      width: rect.width, height: rect.height, boxSizing: 'border-box',
       border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden',
       bgcolor: 'background.paper', backgroundImage: 'none',
     }}>
-    <Stack direction="row" alignItems="center" gap={0.25} sx={{ px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
-      <Box ref={headingRef} {...dragHandleProps} tabIndex={0} title={t(BOT.MOVE)}
+    <Stack direction="row" alignItems="center" gap={0.25} sx={{ direction: 'ltr', px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider' }}>
+      <Box ref={headingRef} {...moveHandleProps} tabIndex={0} title={t(BOT.MOVE)}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
         sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'grab', touchAction: 'none', userSelect: 'none', p: 0.5 }}>
         <DragIndicatorIcon fontSize="small" color="action" />
@@ -92,6 +95,7 @@ function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage
       ? <Button size="small" onClick={() => model.retry()}>{t('retry')}</Button> : undefined}>{t(errorKeys[model.error])}</Alert>}
     {model.history ? <SessionList model={model} /> :
       <Conversation model={model} documentUrl={documentUrl} pageCount={pageCount} onPage={onPage} />}
+    <ViewerPopupResizeHandle {...resizeHandleProps} />
   </Paper>;
 }
 
@@ -160,7 +164,7 @@ function Conversation({ model, documentUrl, pageCount, onPage }: PageNavigation 
     </Stack>
     <Stack component="form" direction="row" gap={0.75} alignItems="end"
       onSubmit={(event) => { event.preventDefault(); void model.send(documentUrl); }}
-      sx={{ borderTop: 1, borderColor: 'divider', p: 1, bgcolor: 'background.paper' }}>
+      sx={{ borderTop: 1, borderColor: 'divider', p: 1, pr: 3, bgcolor: 'background.paper' }}>
       <TextField size="small" multiline minRows={2} maxRows={4} fullWidth
         disabled={busy || model.error === 'load'} label={t(BOT.QUESTION)} value={model.draft}
         inputProps={{ maxLength: BOOK_BOT_QUESTION_LIMIT, dir: 'auto' }}
