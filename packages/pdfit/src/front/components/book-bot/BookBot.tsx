@@ -22,12 +22,12 @@ type ToolProps = { model: Model; buttonId: string; panelId: string };
 type PageNavigation = { pageCount: number; onPage: (page: number) => void };
 type PanelProps = ToolProps & PageNavigation & { documentUrl: string };
 
-export function BookBotButton({ model, buttonId, panelId }: ToolProps) {
+export function BookBotButton({ model, buttonId, panelId, documentUrl }: ToolProps & { documentUrl: string }) {
   const { t } = usePdfitI18n();
   useSyncExternalStore(model.subscribe, () => model.open, () => model.open);
   return <ToolbarButton id={buttonId} icon={<SmartToyOutlinedIcon />} caption={t(BOT.BUTTON)} label={t(BOT.BUTTON)}
     aria-haspopup="dialog" aria-expanded={model.open} aria-controls={model.open ? panelId : undefined}
-    color={model.open ? 'primary' : 'default'} onClick={() => model.toggle()} />;
+    color={model.open ? 'primary' : 'default'} onClick={() => model.toggle(documentUrl)} />;
 }
 
 export function BookBotPanel(props: PanelProps) {
@@ -120,7 +120,8 @@ function SessionList({ model }: { model: Model }) {
 
 const progressLabels = {
   preparing: BOT.PREPARING, clips: BOT.CLIPS, history: BOT.HISTORY_PROGRESS, evidence: BOT.EVIDENCE,
-  queued: BOT.QUEUED, generating: BOT.GENERATING, thinking: BOT.THINKING, saving: BOT.SAVING,
+  queued: BOT.QUEUED, analyzing: BOT.ANALYZING, loadingPages: BOT.LOADING_PAGES,
+  generating: BOT.GENERATING, thinking: BOT.THINKING, saving: BOT.SAVING,
 } as const;
 const citationPlugins = [remarkPdfPageCitations];
 

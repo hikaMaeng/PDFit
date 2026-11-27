@@ -38,11 +38,14 @@ test('each Free AI feature uses the 20-minute deadline', async (t) => {
 
   const visible = [];
   const turn = await answerBookQuestion({
-    model: server, source: { title: 'Fixture', outline: null, pages: [], clips: [], comments: [] },
-    store: {}, question: 'Question', turns: [], request: modelReply('TI', 'TLE: Topic\r', '\n', 'An', 'swer'),
+    model: server, book: botBook, source: { title: 'Fixture', outline: null },
+    store: {}, question: 'Question', turns: [], historySummary: null,
+    request: (url, init) => (JSON.parse(init.body).max_tokens === 2048
+      ? modelReply('{"outlineKeys":[]}') : modelReply('TI', 'TLE: Topic\r', '\n', 'An', 'swer'))(url, init),
     onAnswerDelta: (text) => visible.push(text),
   });
-  assert.deepEqual(turn, { answer: 'Answer', title: 'Topic' });
+  assert.equal(turn.answer, 'Answer');
+  assert.equal(turn.title, 'Topic');
   assert.deepEqual(visible, ['An', 'swer']);
 
   const translator = createServer(async (request, response) => {
@@ -70,7 +73,9 @@ test('each Free AI feature uses the 20-minute deadline', async (t) => {
     });
     assert.deepEqual(await suggest({ title: 'Fixture', availableTags: [], currentTags: [] }), ['프로그래밍']);
   }
-  assert.deepEqual(deadlines.filter((ms) => ms > 10_000), Array(5).fill(1_200_000));
+  const modelDeadlines = deadlines.filter((ms) => ms > 10_000);
+  assert.equal(modelDeadlines.length, 6);
+  assert.ok(modelDeadlines.every((ms) => ms > 1_199_000 && ms <= 1_200_000));
 });
 
 test('stream decoder handles split UTF-8 and rejects incomplete or filtered completions', async () => {
@@ -96,110 +101,148 @@ test('stream decoder handles split UTF-8 and rejects incomplete or filtered comp
   assert.equal(await streamAiCompletion('http://fixture', {}, { signal, request: async () => completion('JSON fallback') }), 'JSON fallback');
 });
 
-test('a chapter summary sends the verified chapter directly even when the book exceeds the Bot budget', async () => {
-  const outline = [
-    { key: '0', title: '03장', depth: 0, page: 90 },
-    { key: '1', title: '▣ 04장: 컨텍스트 엔진 조립', depth: 0, page: 128 },
-    { key: '1.0', title: '4.1 설명', depth: 1, page: null },
-    { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
-  ];
-  const pages = [
-    ...Array.from({ length: 100 }, (_, index) => ({ page: index + 1, text: 'Unrelated page. '.repeat(200) })),
-    { page: 128, text: 'First requested page.' },
-    { page: 161, text: 'Last requested page.' },
-    { page: 162, text: 'Next chapter.' },
-  ];
+const botBook = { folder: 'Test', filename: 'Fixture.pdf' };
+const botOutline = [
+  { key: '0', title: '03장', depth: 0, page: 90 },
+  { key: '1', title: '▣ 04장: 컨텍스트 엔진 조립', depth: 0, page: 128 },
+  { key: '1.0', title: '4.1 설명', depth: 1, page: null },
+  { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
+];
+
+test('Bot first plans from the full outline and then reads only the chosen OCR pages', async () => {
   const calls = [];
   const phases = [];
   const visible = [];
-  const store = { clipDescription: async () => assert.fail('an out-of-range clip was sent to the model') };
-  const model = { baseUrl: 'http://scope.test/v1', model: 'fixture', contextTokens: 150_000 };
   const result = await answerBookQuestion({
-    model, vision: model, source: { title: 'Fixture', outline, pages, clips: [{ pageIndex: 7 }], comments: [] },
-    question: '4장의 내용을 요약해줘', turns: [], store,
+    model: { baseUrl: 'http://scope.test/v1', model: 'qwen36-35b', contextTokens: 150_000 },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: '4장의 내용을 요약해줘',
+    turns: [], historySummary: null,
+    store: { pages: async (book, ranges) => {
+      assert.deepEqual(book, botBook);
+      assert.equal(calls.length, 1);
+      assert.deepEqual(ranges, [{ first: 128, last: 161 }]);
+      return [{ page: 128, text: 'Saved OCR' }, { page: 161, text: 'Last page OCR' }];
+    } },
     request: async (_url, init) => {
-      calls.push(JSON.parse(init.body));
-      return streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
+      const { messages } = JSON.parse(init.body);
+      calls.push(JSON.parse(messages[1].content));
+      return calls.length === 1
+        ? streamReply('{"outlineKeys":["unknown","1.0","1","1"]}')
+        : streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
     },
     onProgress: ({ phase }) => phases.push(phase), onAnswerDelta: (text) => visible.push(text),
   });
-  assert.equal(calls.length, 1);
-  assert.deepEqual(phases, ['generating']);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(phases, ['analyzing', 'loadingPages', 'generating']);
   assert.deepEqual(visible, ['First line.', ' Second line.']);
   assert.equal(result.answer, 'First line. Second line.');
-  const { coverage, evidence } = JSON.parse(calls[0].messages[1].content);
-  assert.deepEqual(coverage.chapter, { number: 4, firstPdfPage: 128, lastPdfPage: 161 });
-  assert.equal(coverage.ocrPages, 2);
-  assert.match(evidence, /4\.1 설명/);
-  assert.match(evidence, /First requested page\./);
-  assert.match(evidence, /Last requested page\./);
-  assert.doesNotMatch(evidence, /Unrelated page|Next chapter/);
+  assert.deepEqual(result.outlineKeys, ['1']);
+  assert.deepEqual(result.addedPages.map(({ page }) => page), [128, 161]);
+  assert.equal(calls[0].evidence, undefined);
+  assert.deepEqual(calls[0].book, calls[1].book);
+  assert.deepEqual(calls[1].book.outline, botOutline);
+  assert.deepEqual(calls[1].evidence.pages.map(({ page }) => page), [128, 161]);
 });
 
-test('the Bot keeps book evidence when a question or outline cannot identify one bounded chapter', async () => {
-  const model = { baseUrl: 'http://scope.test/v1', model: 'fixture', contextTokens: 150_000 };
-  const outline = [
-    { key: '0', title: 'Chapter 4', depth: 0, page: 128 },
-    { key: '1', title: 'Chapter 5', depth: 0, page: 162 },
-  ];
-  for (const [question, entries] of [
-    ['4장과 5장을 비교해줘', outline],
-    ['Summarize Chapter 4', outline.slice(0, 1)],
-    ['Summarize Chapter 4', [...outline, { key: '2', title: 'Chapter 4', depth: 0, page: 170 }]],
-  ]) {
-    await answerBookQuestion({
-      model, source: { title: 'Fixture', outline: entries, pages: [{ page: 1, text: 'Outside chapter' }], clips: [], comments: [] },
-      store: {}, question, turns: [], request: async (_url, init) => {
-        const { coverage, evidence } = JSON.parse(JSON.parse(init.body).messages[1].content);
-        assert.equal(coverage.chapter, undefined);
-        assert.match(evidence, /Outside chapter/);
-        return streamReply('TITLE: Fixture\nAnswer');
+test('an outline-only question skips source reads when there are no retained pages', async () => {
+  for (const outline of [botOutline, [], null]) {
+    let calls = 0;
+    const result = await answerBookQuestion({
+      model: { baseUrl: 'http://scope.test/v1', model: 'fixture' },
+      book: botBook, source: { title: 'Fixture', outline }, store: {}, turns: [], historySummary: null,
+      question: 'What is in the table of contents?',
+      request: async (_url, init) => {
+        const { evidence } = JSON.parse(JSON.parse(init.body).messages[1].content);
+        if (++calls === 1) return streamReply('{"outlineKeys":[]}');
+        assert.deepEqual(evidence.pages, []);
+        return streamReply('Overview without a title line');
       },
     });
+    assert.equal(calls, 2);
+    assert.equal(result.title, 'What is in the table of contents?');
   }
 });
 
-test('Qwen counts tokens for a one-call answer even when the serialized prompt exceeds the old byte limit', async () => {
-  const pages = Array.from({ length: 100 }, (_, index) => ({ page: index + 1, text: '문서 내용을 읽고 정리합니다. '.repeat(100) }));
-  const model = { baseUrl: 'http://scope.test/v1', model: 'qwen36-35b', contextTokens: 150_000 };
-  const calls = [];
-  const phases = [];
-  await answerBookQuestion({
-    model, source: { title: 'Fixture', outline: null, pages, clips: [], comments: [] },
-    store: {}, question: '책 전체를 요약해줘', turns: [], request: async (_url, init) => {
-      calls.push(JSON.parse(init.body));
-      return streamReply('TITLE: Book\nAnswer');
+test('a follow-up sees previous page references and adds only new page references to the transcript', async () => {
+  let calls = 0;
+  const turns = [{ id: 'saved', question: 'Summarize chapter four', answer: 'Earlier answer', outlineKeys: ['1'],
+    addedPages: [{ page: 128, tokens: 20 }, { page: 129, tokens: 20 }] }];
+  const result = await answerBookQuestion({
+    model: { baseUrl: 'http://scope.test/v1', model: 'fixture' },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, turns, historySummary: null,
+    question: 'Compare that chapter with the next one.',
+    store: { pages: async (_book, ranges) => {
+      assert.equal(calls, 1);
+      assert.deepEqual(ranges, [{ first: 162, last: null }, { first: 128, last: 129 }]);
+      return [{ page: 128, text: 'Earlier OCR' }, { page: 162, text: 'New OCR' }];
+    } },
+    request: async (_url, init) => {
+      const prompt = JSON.parse(JSON.parse(init.body).messages[1].content);
+      assert.deepEqual(prompt.history.turns[0].addedPages, [128, 129]);
+      assert.equal(prompt.history.turns[0].answer, 'Earlier answer');
+      if (++calls === 1) {
+        assert.equal(prompt.evidence, undefined);
+        return streamReply('{"outlineKeys":["2"]}');
+      }
+      assert.deepEqual(prompt.evidence.pages.map(({ page }) => page), [162, 128]);
+      return streamReply('Compared');
     },
-    onProgress: ({ phase }) => phases.push(phase),
   });
-  assert.equal(calls.length, 1);
-  assert.deepEqual(phases, ['generating']);
-  assert.ok(Buffer.byteLength(JSON.stringify(calls[0].messages)) > 245_784);
-  const count = await bookBotPromptTokenCounter(model.model);
-  assert.ok(count(calls[0].messages) < model.contextTokens - calls[0].max_tokens);
-  const { coverage, evidence } = JSON.parse(calls[0].messages[1].content);
-  assert.equal(coverage.ocrPages, 100);
-  assert.match(evidence, /PDF p\. 100\n/);
+  assert.equal(calls, 2);
+  assert.deepEqual(result.addedPages.map(({ page }) => page), [162]);
 });
 
-test('Qwen starts evidence reduction only for an oversized prompt and keeps each call within the window', async () => {
-  const pages = Array.from({ length: 20 }, (_, index) => ({ page: index + 1, text: '문서 내용을 읽고 정리합니다. '.repeat(100) }));
+test('repeated rollover summarizes the previous summary and tail while keeping the full outline in both stages', async () => {
+  const model = { baseUrl: 'http://scope.test/v1', model: 'qwen36-35b', contextTokens: 16_384 };
+  const turns = [];
+  let historySummary = null;
+  for (let index = 0; index < 3; index += 1) {
+    turns.push({ id: 'saved-' + index, question: 'Past question ' + index, answer: 'Past answer ' + index,
+      addedPages: [{ page: 128 + index, tokens: 13_108 }] });
+    let calls = 0;
+    const result = await answerBookQuestion({
+      model, book: botBook, source: { title: 'Fixture', outline: botOutline }, store: {}, turns, historySummary,
+      question: 'What have we discussed?',
+      request: async (_url, init) => {
+        const { messages } = JSON.parse(init.body);
+        const { book, history, evidence } = JSON.parse(messages[1].content);
+        assert.deepEqual(book.outline, botOutline);
+        if (++calls === 1) {
+          assert.match(messages[0].content, /rolling summary/);
+          assert.equal(history.summary, historySummary?.text ?? null);
+          assert.deepEqual(history.turns.map(({ answer }) => answer), ['Past answer ' + index]);
+          assert.equal(evidence, undefined);
+          return streamReply(JSON.stringify({ outlineKeys: [], historySummary: 'Summary ' + index }));
+        }
+        assert.deepEqual(history, { summary: 'Summary ' + index, turns: [] });
+        return streamReply('Answer using the summary');
+      },
+    });
+    assert.equal(calls, 2);
+    assert.deepEqual(result.historySummary, { through: index + 1, text: 'Summary ' + index });
+    historySummary = result.historySummary;
+  }
+});
+
+test('oversized selected OCR fits the Qwen answer window without extra model calls', async () => {
+  const pages = Array.from({ length: 20 }, (_, index) => ({ page: index + 90, text: '문서 내용을 읽고 정리합니다. '.repeat(100) }));
   const model = { baseUrl: 'http://scope.test/v1', model: 'toolspace-35b-a3b', contextTokens: 16_384 };
-  const phases = [];
   const calls = [];
   await answerBookQuestion({
-    model, source: { title: 'Fixture', outline: null, pages, clips: [], comments: [] },
-    store: {}, question: '책 전체를 요약해줘', turns: [], request: async (_url, init) => {
-      const request = JSON.parse(init.body);
-      calls.push(request);
-      return streamReply(request.max_tokens === 2048 ? 'Short evidence note' : 'TITLE: Summary\nAnswer');
+    model, book: botBook, source: { title: 'Fixture', outline: botOutline },
+    store: { pages: async () => pages }, turns: [], historySummary: null, question: '책 전체를 요약해줘',
+    request: async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      return streamReply(calls.length === 1 ? '{"outlineKeys":["0","1","2"]}' : 'TITLE: Summary\nAnswer');
     },
-    onProgress: ({ phase, completed, total }) => phases.push({ phase, completed, total }),
   });
-  assert.notEqual(phases.find(({ phase }) => phase === 'evidence'), undefined);
-  assert.equal(calls.at(-1).max_tokens, 4096);
+  assert.equal(calls.length, 2);
   const count = await bookBotPromptTokenCounter(model.model);
   assert.ok(calls.every((call) => count(call.messages) + call.max_tokens <= model.contextTokens));
+  const { evidence } = JSON.parse(calls[1].messages[1].content);
+  assert.ok(evidence.omittedOcrPages > 0);
+  assert.ok(evidence.pages.length > 0);
+  assert.equal(evidence.pages.length + evidence.omittedOcrPages, pages.length);
 });
 
 test('chat and tags overtake waiting scan pages without interrupting occupied model slots', async (t) => {
@@ -214,6 +257,8 @@ test('chat and tags overtake waiting scan pages without interrupting occupied mo
   const left = Promise.withResolvers();
   const right = Promise.withResolvers();
   const chatQueued = Promise.withResolvers();
+  const answerQueued = Promise.withResolvers();
+  const tagResponse = Promise.withResolvers();
   const order = [];
   const phases = { chat: [], tags: [] };
   const request = (label, reply) => async (_url, init) => {
@@ -229,15 +274,21 @@ test('chat and tags overtake waiting scan pages without interrupting occupied mo
   cancel.abort();
   await assert.rejects(cancelled, { name: 'AbortError' });
   const chat = answerBookQuestion({
-    model: { ...upstream, model: 'chat' }, source: { title: 'Fixture', outline: null, pages: [], clips: [], comments: [] },
-    store: {}, question: 'Question', turns: [], request: request('chat', 'TITLE: Topic\nAnswer'),
+    model: { ...upstream, model: 'chat' }, book: botBook, source: { title: 'Fixture', outline: null },
+    store: {}, question: 'Question', turns: [], historySummary: null,
+    request: (url, init) => JSON.parse(init.body).max_tokens === 2048
+      ? request('chat plan', '{"outlineKeys":[]}')(url, init)
+      : request('chat answer', 'TITLE: Topic\nAnswer')(url, init),
     onProgress: ({ phase }) => {
       phases.chat.push(phase);
-      if (phase === 'queued') chatQueued.resolve();
+      if (phase === 'queued') {
+        if (phases.chat.includes('analyzing')) answerQueued.resolve();
+        else chatQueued.resolve();
+      }
     },
   });
   await chatQueued.promise;
-  const suggest = createOpenAiCompatibleTagSuggestionProvider({ ...upstream, model: 'tag', timeoutMs: 15 }, request('tags', '["프로그래밍"]'));
+  const suggest = createOpenAiCompatibleTagSuggestionProvider({ ...upstream, model: 'tag', timeoutMs: 15 }, request('tags', tagResponse.promise));
   const tags = suggest({ title: 'Fixture', availableTags: [], currentTags: [], onModelProgress: (phase) => phases.tags.push(phase) });
 
   try {
@@ -246,15 +297,20 @@ test('chat and tags overtake waiting scan pages without interrupting occupied mo
     assert.deepEqual(deadlines, [1_200_000, 1_200_000]);
     assert.deepEqual(phases, { chat: ['queued'], tags: ['queued'] });
     left.resolve('page A');
-    assert.deepEqual(await chat, { title: 'Topic', answer: 'Answer' });
+    await answerQueued.promise;
+    tagResponse.resolve('["프로그래밍"]');
+    assert.equal((await chat).answer, 'Answer');
     assert.deepEqual(await tags, ['프로그래밍']);
     assert.equal(await next, 'text');
-    assert.deepEqual(order, ['scan A', 'scan B', 'chat', 'tags', 'next scan']);
-    assert.deepEqual(phases, { chat: ['queued', 'generating'], tags: ['queued', 'running'] });
-    assert.deepEqual(deadlines, [1_200_000, 1_200_000, 1_200_000, 15, 1_200_000]);
+    assert.deepEqual(order, ['scan A', 'scan B', 'chat plan', 'tags', 'chat answer', 'next scan']);
+    assert.deepEqual(phases, { chat: ['queued', 'analyzing', 'queued', 'generating'], tags: ['queued', 'running'] });
+    assert.deepEqual(deadlines.slice(0, 4), [1_200_000, 1_200_000, 1_200_000, 15]);
+    assert.ok(deadlines[4] > 1_199_000 && deadlines[4] <= 1_200_000);
+    assert.equal(deadlines[5], 1_200_000);
   } finally {
     left.resolve('page A');
     right.resolve('page B');
+    tagResponse.resolve('["프로그래밍"]');
     await Promise.allSettled([first, second, next, chat, tags]);
   }
 });

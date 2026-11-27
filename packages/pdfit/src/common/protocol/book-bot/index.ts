@@ -8,12 +8,12 @@ export const BOOK_BOT_QUESTION_LIMIT = 4000;
 export const BOOK_BOT_ID = BOOK_COMMENT_ID;
 export const BOOK_BOT_STREAM_TYPE = 'text/event-stream';
 export const BOOK_BOT_PROGRESS_HEADER = 'X-PDFit-Bot-Progress';
-export const BOOK_BOT_PROGRESS_VERSION = '2';
+export const BOOK_BOT_PROGRESS_VERSION = '3';
 export const BOOK_BOT_MIN_CONTEXT_TOKENS = 16_384;
 export const BOOK_BOT_MAX_CONTEXT_TOKENS = 2_097_152;
 
 export type BookBotProgress =
-  | { phase: 'preparing' | 'queued' | 'generating' | 'thinking' | 'saving' }
+  | { phase: 'preparing' | 'queued' | 'analyzing' | 'loadingPages' | 'generating' | 'thinking' | 'saving' }
   | { phase: 'clips' | 'history' | 'evidence'; completed: number; total: number };
 
 export type BookBotBook = CommentBook;
@@ -40,6 +40,12 @@ export interface BookBotSessionsPayload {
 
 export interface BookBotSessionPayload {
   session: BookBotSession | null;
+  context?: BookBotContext;
+}
+
+export interface BookBotContext {
+  title: string;
+  outline: BookOutlineEntry[] | null;
 }
 
 export type BookBotStreamEvent =
@@ -96,8 +102,16 @@ export function parseBookBotSessions(value: unknown): BookBotSessionsPayload | n
 
 export function parseBookBotSession(value: unknown): BookBotSessionPayload | null {
   if (!value || typeof value !== 'object' || !('session' in value)) return null;
+  let context: BookBotContext | undefined;
+  if ('context' in value && value.context !== undefined) {
+    const entry = value.context;
+    if (!entry || typeof entry !== 'object' || !('title' in entry) || typeof entry.title !== 'string' || !('outline' in entry)) return null;
+    const outline = entry.outline === null ? null : parseBookOutlineEntries(entry.outline, { allowEmpty: true });
+    if (outline === null && entry.outline !== null) return null;
+    context = { title: entry.title, outline };
+  }
   const entry = value.session;
-  if (entry === null) return { session: null };
+  if (entry === null) return { session: null, ...(context && { context }) };
   const summary = parseSummary(entry);
   if (!summary || !entry || typeof entry !== 'object' || !('turns' in entry) || !Array.isArray(entry.turns)) return null;
   const turns: BookBotTurn[] = [];
@@ -106,7 +120,7 @@ export function parseBookBotSession(value: unknown): BookBotSessionPayload | nul
     if (!turn) return null;
     turns.push(turn);
   }
-  return { session: { ...summary, turns } };
+  return { session: { ...summary, turns }, ...(context && { context }) };
 }
 
 export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | null {
@@ -116,7 +130,8 @@ export function parseBookBotStreamEvent(value: unknown): BookBotStreamEvent | nu
   }
   if (value.type === 'progress' && 'phase' in value) {
     const { phase } = value;
-    if (phase === 'preparing' || phase === 'queued' || phase === 'generating' || phase === 'thinking' || phase === 'saving') {
+    if (phase === 'preparing' || phase === 'queued' || phase === 'analyzing' || phase === 'loadingPages' ||
+      phase === 'generating' || phase === 'thinking' || phase === 'saving') {
       return { type: 'progress', phase };
     }
     if ((phase === 'clips' || phase === 'history' || phase === 'evidence') &&

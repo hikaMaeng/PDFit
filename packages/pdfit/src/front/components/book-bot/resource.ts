@@ -12,6 +12,8 @@ export const BOT = {
   LOADING: 'bookBotLoading',
   WAITING: 'bookBotWaiting',
   PREPARING: 'bookBotPreparing',
+  ANALYZING: 'bookBotAnalyzing',
+  LOADING_PAGES: 'bookBotLoadingPages',
   CLIPS: 'bookBotPreparingClips',
   HISTORY_PROGRESS: 'bookBotPreparingHistory',
   EVIDENCE: 'bookBotPreparingEvidence',

@@ -1,22 +1,26 @@
-import type { BookBotBook, BookBotSession, BookBotSessionSummary, BookBotTurn } from '../../common/protocol/book-bot/index.js';
-import type { BookmarkRecord } from '../../common/protocol/bookmarks/index.js';
-import type { BookOutlineEntry } from '../../common/protocol/outlines/index.js';
-
-export interface BookBotSource {
-  title: string;
-  outline: BookOutlineEntry[] | null;
-  pages: Array<{ page: number; text: string }>;
-  clips: BookmarkRecord[];
-  comments: Array<{ id: string; body: string; createdAt: string }>;
-}
+import type { BookBotBook, BookBotContext, BookBotSession, BookBotSessionSummary, BookBotTurn } from '../../common/protocol/book-bot/index.js';
+export type BookBotPageRange = { first: number; last: number | null };
+export type BookBotPage = { page: number; text: string };
+export type BookBotClip = { id: string; page: number; createdAt: string; ocr: string | null; comment: string | null; imageDescription: string | null };
+export type BookBotComment = { id: string; body: string; createdAt: string };
+export type BookBotHistoryPage = { page: number; tokens: number };
+export type BookBotStoredTurn = BookBotTurn & { outlineKeys?: string[]; addedPages?: BookBotHistoryPage[] };
+export type BookBotHistorySummary = { through: number; text: string };
+export type BookBotStoredSession = Omit<BookBotSession, 'turns'> & {
+  turns: BookBotStoredTurn[];
+  historySummary: BookBotHistorySummary | null;
+};
 
 export interface BookBotStore {
   list(book: BookBotBook): Promise<BookBotSessionSummary[]>;
-  get(book: BookBotBook, id?: string): Promise<BookBotSession | null>;
-  create(book: BookBotBook, id: string): Promise<BookBotSession | null>;
-  saveTurn(book: BookBotBook, sessionId: string | null, revision: number, turn: BookBotTurn, title: string | null): Promise<BookBotSession | null>;
-  source(book: BookBotBook): Promise<BookBotSource | null>;
-  clipDescription?(clip: BookmarkRecord, modelKey: string, describe: (image: Buffer) => Promise<string>): Promise<string | null>;
+  get(book: BookBotBook, id?: string): Promise<BookBotStoredSession | null>;
+  create(book: BookBotBook, id: string): Promise<BookBotStoredSession | null>;
+  saveTurn(book: BookBotBook, sessionId: string | null, revision: number, turn: BookBotStoredTurn, title: string | null,
+    historySummary: BookBotHistorySummary | null): Promise<BookBotStoredSession | null>;
+  source(book: BookBotBook): Promise<BookBotContext | null>;
+  pages(book: BookBotBook, ranges: BookBotPageRange[]): Promise<BookBotPage[]>;
+  clips(book: BookBotBook, ranges: BookBotPageRange[]): Promise<BookBotClip[]>;
+  comments(book: BookBotBook): Promise<BookBotComment[]>;
 }
 
 export interface BookBotModelConfig {

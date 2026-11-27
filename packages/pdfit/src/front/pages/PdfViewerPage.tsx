@@ -330,7 +330,7 @@ export default function PdfViewerPage() {
         setOpenCommentsKey(commentsBookKey);
       },
     } : undefined}
-  />{bot && <BookBotButton {...bot} />}</>;
+  />{bot && <BookBotButton {...bot} documentUrl={pdfUrl} />}</>;
 
   return (
     <Box component="main" sx={{ display: 'flex', flexDirection: 'column', height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, minHeight: 0, overflow: 'hidden' }}>

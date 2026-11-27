@@ -73,7 +73,7 @@ export class PostgresMetadataStore implements MetadataStore {
 
   constructor(private readonly db: Pool, private readonly bookmarkAssetRoot: string) {
     this.bookComments = createPostgresBookComments(db);
-    this.bookBot = createPostgresBookBot(db, this, bookmarkAssetRoot);
+    this.bookBot = createPostgresBookBot(db, this);
     this.libraryFileOperations = createPostgresLibraryFileOperations(db, {
       relocate: (client, source, folder, file) => this.relocateBookInTransaction(client, source.folder, source.filename, folder, file),
       purge: async (client, { folder, filename }) => {

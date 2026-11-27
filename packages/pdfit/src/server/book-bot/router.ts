@@ -5,14 +5,17 @@ import {
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
 import { openEventStream } from '../services/eventStream.js';
-import type { BookBotModelConfig, BookBotStore } from './types.js';
+import type { BookBotModelConfig, BookBotStore, BookBotStoredSession } from './types.js';
 
 export interface BookBotOptions {
   store: BookBotStore;
   resolveModel: () => Promise<BookBotModelConfig | null>;
-  resolveVision?: () => Promise<BookBotModelConfig | null>;
   getCachedPageText?: (book: BookBotBook, page: number) => Promise<string | null>;
   request?: typeof fetch;
+}
+
+function publicSession({ id, title, createdAt, turns }: BookBotStoredSession): BookBotSession {
+  return { id, title, createdAt, turns: turns.map(({ id, question, answer }) => ({ id, question, answer })) };
 }
 
 export function createBookBotRouter(options: BookBotOptions): Router {
@@ -40,7 +43,8 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       if (typeof id !== 'string' || (id !== 'latest' && !BOOK_BOT_ID.test(id))) { res.status(400).end(); return; }
       const session = await store.get(book, id === 'latest' ? undefined : id);
       if (!session && id !== 'latest') { res.status(404).end(); return; }
-      res.json({ session } satisfies BookBotSessionPayload);
+      const context = await store.source(book);
+      res.json({ session: session && publicSession(session), context: context ?? undefined } satisfies BookBotSessionPayload);
     } catch (error) { next(error); }
   });
   router.post(BOOK_BOT_SESSIONS, async (req, res, next) => {
@@ -50,7 +54,8 @@ export function createBookBotRouter(options: BookBotOptions): Router {
     try {
       const session = await store.create(book, id);
       if (!session) { res.status(404).end(); return; }
-      res.status(201).json({ session } satisfies BookBotSessionPayload);
+      const context = await store.source(book);
+      res.status(201).json({ session: publicSession(session), context: context ?? undefined } satisfies BookBotSessionPayload);
     } catch (error) { next(error); }
   });
   router.post(BOOK_BOT_TURNS, async (req, res, next) => {
@@ -64,19 +69,20 @@ export function createBookBotRouter(options: BookBotOptions): Router {
     const wantsStream = req.accepts(['json', BOOK_BOT_STREAM_TYPE]) === BOOK_BOT_STREAM_TYPE;
     let stream: ReturnType<typeof openEventStream<BookBotStreamEvent>> | undefined;
     const progressVersion = req.get(BOOK_BOT_PROGRESS_HEADER);
-    const reportProgress = progressVersion === '1' || progressVersion === BOOK_BOT_PROGRESS_VERSION
+    const reportProgress = progressVersion === '1' || progressVersion === '2' || progressVersion === BOOK_BOT_PROGRESS_VERSION
       ? (progress: BookBotProgress) => {
-        if (progress.phase !== 'queued' || progressVersion === BOOK_BOT_PROGRESS_VERSION) {
-          stream?.write({ type: 'progress', ...progress });
-        }
+        if (progress.phase === 'queued' && progressVersion === '1') return;
+        const phase = progressVersion !== BOOK_BOT_PROGRESS_VERSION && (progress.phase === 'analyzing' || progress.phase === 'loadingPages')
+          ? { phase: 'preparing' as const } : progress;
+        stream?.write({ type: 'progress', ...phase });
       }
       : undefined;
-    const succeed = (session: BookBotSession, turn: BookBotTurn) => {
+    const succeed = (session: BookBotStoredSession, turn: BookBotTurn) => {
       if (wantsStream && !res.destroyed) {
         stream ??= openEventStream(res, BOOK_BOT_STREAM_TYPE);
         const { id, title, createdAt, turns } = session;
         stream.write({ type: 'saved', session: { id, title, createdAt }, turn, revision: turns.length });
-      } else if (!res.destroyed) res.json({ session } satisfies BookBotSessionPayload);
+      } else if (!res.destroyed) res.json({ session: publicSession(session) } satisfies BookBotSessionPayload);
     };
     const fail = (status: 409 | 500 | 502) => {
       if (stream) stream.write({ type: 'error', status });
@@ -87,7 +93,7 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       const replay = existing?.turns.find((turn) => turn.id === turnId);
       if (existing && replay) {
         if (replay.question !== question) { res.status(409).end(); return; }
-        succeed(existing, replay);
+        succeed(existing, { id: replay.id, question: replay.question, answer: replay.answer });
         return;
       }
       if (sessionId && !existing) { res.status(404).end(); return; }
@@ -96,24 +102,25 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       if (!model) { res.status(503).end(); return; }
       const source = await store.source(book);
       if (!source) { res.status(404).end(); return; }
-      if (source.outline === null) source.outline = input.embeddedOutline ?? null;
       if (wantsStream && !res.destroyed) stream = openEventStream(res, BOOK_BOT_STREAM_TYPE);
       reportProgress?.({ phase: 'preparing' });
-      const vision = source.clips.length ? await options.resolveVision?.() : null;
       const result = await answerBookQuestion({
-        model, vision, source, store, question, turns: existing?.turns ?? [], request,
+        model, book, source: { ...source, outline: source.outline ?? input.embeddedOutline ?? null },
+        store, question, turns: existing?.turns ?? [], historySummary: existing?.historySummary ?? null, request,
         pageText: (page) => options.getCachedPageText?.(book, page) ?? Promise.resolve(null),
         onAnswerDelta: stream && ((text) => stream?.write({ type: 'delta', text })),
         onProgress: stream && reportProgress,
       }).catch((error: unknown) => {
-        console.warn('[book-bot] generation failed:', error instanceof Error ? error.name : 'unknown');
+        console.warn('[book-bot] generation failed:', error instanceof Error ? error.name : 'unknown',
+          error instanceof Error && 'code' in error ? error.code : '');
         return null;
       });
       if (!result) { fail(502); return; }
       reportProgress?.({ phase: 'saving' });
       // A closed browser connection may be retried by turn ID. Finish saving upstream success.
       const turn = { id: turnId, question, answer: result.answer };
-      const session = await store.saveTurn(book, sessionId, revision, turn, result.title);
+      const session = await store.saveTurn(book, sessionId, revision,
+        { ...turn, outlineKeys: result.outlineKeys, addedPages: result.addedPages }, result.title, result.historySummary);
       if (!session) { fail(409); return; }
       succeed(session, turn);
     } catch (error) {

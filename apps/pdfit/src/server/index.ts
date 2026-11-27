@@ -67,7 +67,7 @@ const resolveChatModel = async () => {
     ocrConcurrency: aiServerConcurrency(servers, server.url), contextTokens: server.botContextTokens,
   } : null;
 };
-// Both OCR and Bot clip descriptions can use a multimodal LLM when no vision model is set.
+// OCR can use a multimodal LLM when no vision model is set.
 const resolveVisionModel = async () => {
   const servers = await settingsStore.listAiServers();
   const server = servers.find((candidate) => Boolean(candidate.models.vision)) ?? servers.find((candidate) => Boolean(candidate.models.llm));
@@ -103,7 +103,6 @@ const app = createPdfitServer({
   bookBot: {
     store: metadataStore.bookBot,
     resolveModel: resolveChatModel,
-    resolveVision: resolveVisionModel,
     request: fetchAiModel,
   },
   backgroundTasks: {

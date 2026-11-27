@@ -1,7 +1,7 @@
 import {
   BOOK_BOT_PATH, BOOK_BOT_PROGRESS_HEADER, BOOK_BOT_PROGRESS_VERSION, BOOK_BOT_SESSIONS, BOOK_BOT_TURNS, BOOK_BOT_STREAM_TYPE, parseBookBotSession, parseBookBotSessions,
   parseBookBotStreamEvent,
-  type BookBotBook, type BookBotProgress, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
+  type BookBotBook, type BookBotContext, type BookBotProgress, type BookBotQuestion, type BookBotSession, type BookBotSessionSummary,
 } from '../../../common/protocol/book-bot/index.js';
 import { readServerSentData } from '../../../common/protocol/server-sent-data.js';
 import { createBrowserUuid } from '../../browserUuid.js';
@@ -32,6 +32,8 @@ class BookBotModel {
   private attempted: BookBotQuestion | null = null;
   private retryLoad: (() => Promise<void>) | null = null;
   private outline: Promise<BookOutlineEntry[] | undefined> | null = null;
+  private context: BookBotContext | undefined;
+  private documentUrl = '';
   readonly popupBookKey: string;
 
   open = false;
@@ -68,11 +70,12 @@ class BookBotModel {
     return `${BOOK_BOT_PATH}${path}?${query}`;
   }
 
-  toggle() {
+  toggle(documentUrl: string) {
     if (this.open) { this.close(); return; }
     this.open = true;
     this.history = false;
     this.outline = null;
+    this.documentUrl = documentUrl;
     if (this.phase === 'ready') {
       // Replay an uncertain send after reopening without replacing its session or operation ID.
       if (this.attempted) this.emit();
@@ -112,6 +115,8 @@ class BookBotModel {
     if (!result) throw new Error('Failed to load Bot conversation');
     if (id !== 'latest' || result.session?.id !== this.session?.id) this.draft = '';
     this.session = result.session;
+    this.context = result.context;
+    this.outline ??= this.readEmbeddedOutline(this.documentUrl).catch(() => undefined);
     this.attempted = null;
     this.history = false;
   });
@@ -123,6 +128,8 @@ class BookBotModel {
       const result = response.ok ? parseBookBotSession(await response.json()) : null;
       if (!result?.session) throw new Error('Failed to create Bot session');
       this.session = result.session;
+      this.context = result.context;
+      this.outline ??= this.readEmbeddedOutline(this.documentUrl).catch(() => undefined);
       this.draft = '';
       this.attempted = null;
       this.history = false;
@@ -149,9 +156,12 @@ class BookBotModel {
   }
 
   private async readEmbeddedOutline(documentUrl: string) {
-    const { folder, filename, driveFileId } = this.book;
-    const stored = await outlinesApi.getStored(folder, filename, driveFileId);
-    if (stored !== null) return undefined;
+    if (this.context) {
+      if (this.context.outline !== null) return undefined;
+    } else {
+      const { folder, filename, driveFileId } = this.book;
+      if (await outlinesApi.getStored(folder, filename, driveFileId) !== null) return undefined;
+    }
     const result = await readPdfOutlineFromUrl(documentUrl);
     return result.status === 'ok' ? result.entries : undefined;
   }
