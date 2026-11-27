@@ -97,7 +97,7 @@ Open **Image** for live page color adjustments. Choose **Night**, **Grayscale**,
 
 ## Viewer popups
 
-Drag the header of Bot, Comments, page OCR, or Contents to move the popup. Drag the grip at the lower right to resize it. The arrow keys also work when the move or resize handle has focus. Hold Shift for larger steps. Use the X at the upper right to close the popup.
+Bot, Comments, page OCR, and Contents open as floating popups while the viewer remains usable. Drag the header to move a popup or drag the grip at the lower right to resize it. Use the arrow keys when either handle has focus. Hold Shift for larger steps. Close the popup with the X at the upper right or press Escape while it has focus.
 
 The browser remembers the position and size of each popup for each book. Every popup has a minimum size. If the screen becomes too small, the popup fits the available area and returns to its saved size when there is room again.
 
@@ -120,8 +120,6 @@ See [context and storage](../../../packages/pdfit/docs/book-bot.md).
 The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and closes the dialog.
 
 Select the save icon beside a page number to jump there and save the reading position immediately. The dialog closes after the save succeeds. If the save fails, select the icon again to retry. In two-page mode, the saved position is the first page of the spread containing the destination.
-
-You can keep reading while the outline is open. Drag its title to move it and use the bottom-right handle to resize it. The browser remembers the position and size for each book. When the viewer is small, the outline fits inside it and restores its preferred size when space is available. Close the outline with the top-right X or press Escape while the outline has focus.
 
 If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
 

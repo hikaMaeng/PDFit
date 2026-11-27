@@ -4,13 +4,13 @@ import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import HistoryIcon from '@mui/icons-material/History';
 import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import CloseIcon from '@mui/icons-material/Close';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import Markdown from 'react-markdown';
 import { BOOK_BOT_QUESTION_LIMIT } from '../../../common/protocol/book-bot/index.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
+import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { ToolbarButton } from '../ViewerToolbar/index.js';
 import type { getBookBotModel } from './model.js';
@@ -86,9 +86,7 @@ function FloatingChat({ model, buttonId, panelId, documentUrl, pageCount, onPage
           <AddCommentOutlinedIcon fontSize="small" />
         </IconButton></span>
       </Tooltip>
-      <Tooltip title={t('close')}>
-        <IconButton size="small" aria-label={t('close')} onClick={close}><CloseIcon fontSize="small" /></IconButton>
-      </Tooltip>
+      <ViewerPopupCloseButton onClose={close} />
     </Stack>
     {model.phase === 'loading' && <Typography role="status" color="text.secondary" sx={{ px: 2, py: 1 }}>{t(BOT.LOADING)}</Typography>}
     {model.error && <Alert severity="error" sx={{ mx: 1, mt: 1 }} action={model.error === 'load'

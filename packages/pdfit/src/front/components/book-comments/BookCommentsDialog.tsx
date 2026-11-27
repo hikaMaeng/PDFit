@@ -1,8 +1,8 @@
 import { useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloseIcon from '@mui/icons-material/Close';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {
   BOOK_COMMENT_IMAGE_BYTES, BOOK_COMMENT_IMAGE_LIMIT, BOOK_COMMENT_IMAGE_TYPES, BOOK_COMMENT_LIMIT,
@@ -13,6 +13,7 @@ import { BookCommentMarkdown } from './BookCommentMarkdown.js';
 import { bookCommentsModel, viewerBookCommentsModel } from './model.js';
 import { COMMENT } from './resource.js';
 import { useViewerPopupGeometry, viewerPopupBookKey } from '../../hooks/useViewerPopupGeometry.js';
+import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 
 type BoardProps = { book: CommentBook; onClose: () => void };
@@ -59,7 +60,7 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
           <Typography component="div" variant="body2" color="text.secondary" noWrap title={book.filename}>{book.filename}</Typography>
         </Box>
       </Box>
-      <IconButton aria-label={t('close')} onClick={onClose} disabled={saving}><CloseIcon /></IconButton>
+      <ViewerPopupCloseButton size="medium" onClose={onClose} disabled={saving} />
     </DialogTitle>
     <DialogContent ref={content} dividers tabIndex={0} data-testid="book-comments-content" aria-busy={loading || saving}
       sx={{ minHeight: 0, overflowY: 'auto', overscrollBehaviorY: 'contain', px: { xs: 2, sm: 3 } }}>

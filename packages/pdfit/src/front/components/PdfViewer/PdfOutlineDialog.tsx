@@ -3,7 +3,6 @@ import {
   Alert, AlertTitle, Box, Button, CircularProgress, IconButton, LinearProgress,
   List, ListItem, ListItemButton, ListItemText, Paper, TextField, Typography,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -12,6 +11,7 @@ import { useViewerPopupGeometry } from '../../hooks/useViewerPopupGeometry.js';
 import { usePdfitI18n } from '../../i18n/usePdfitI18n.js';
 import { getOutlineModel } from '../../viewer/outlineModel.js';
 import type { OutlineReader, PdfOutlineStorage } from '../../viewer/storedOutline.js';
+import { ViewerPopupCloseButton } from '../viewer-popup/ViewerPopupCloseButton.js';
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { RSC } from './resource.js';
 
@@ -115,9 +115,7 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
         <DragIndicatorIcon fontSize="small" color="action" />
         <Typography id={titleId} component="h2" variant="subtitle2" fontWeight={700}>{t('tableOfContents')}</Typography>
       </Box>
-      <IconButton type="button" size="small" aria-label={t('close')} title={t('close')} disabled={changing} onClick={close}>
-        <CloseIcon fontSize="small" />
-      </IconButton>
+      <ViewerPopupCloseButton onClose={close} disabled={changing} />
     </Box>
     <Box aria-busy={loading || changing} sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       {changing && <LinearProgress aria-label={t('tableOfContents')} />}

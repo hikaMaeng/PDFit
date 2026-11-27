@@ -19,6 +19,7 @@ Build the shared package and standalone app. Use the standalone deployment entry
 3. Drag the move handle and shrink the popup past its minimum. It stays inside the viewer, keeps its top and left edges while resizing, and stops at a usable size. Drag outward and use an arrow key on the resize handle to grow it again.
 4. Close and reopen the popup. Narrow the viewport and check the popup and X fit. Reopen at the original viewport size and check all four geometry values match.
 5. Open book B and check the default geometry. Return to A with a fresh document load. Check the saved geometry is restored.
+6. In touch-enabled mobile Chromium, resize each popup and tap the X once. The popup closes after that tap.
 
 ## Evidence and locators
 

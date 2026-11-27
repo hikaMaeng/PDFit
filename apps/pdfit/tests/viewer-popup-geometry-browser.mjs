@@ -18,12 +18,21 @@ const large = { width: 1440, height: 1000 };
 const small = { width: 285, height: 310 };
 const results = [];
 const errors = [];
+const consoleErrors = [];
 const browser = await chromium.launch({ ...(channel ? { channel } : {}), args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] });
 const context = await browser.newContext({ baseURL: origin, viewport: large, locale: 'en-US' });
 context.setDefaultTimeout(10_000);
 await context.tracing.start({ screenshots: true, snapshots: true });
 const page = await context.newPage();
-page.on('pageerror', (error) => errors.push(error.message));
+
+function captureErrors(page) {
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+}
+
+captureErrors(page);
 
 async function bounds(locator) {
   const box = await locator.boundingBox();
@@ -79,7 +88,8 @@ async function checkPopup(definition, engine) {
   async function dismiss() {
     const box = await bounds(popup);
     const button = await bounds(close);
-    assert.ok(button.x > box.x + box.width - 65 && button.y < box.y + 48, 'Close is at the upper right');
+    assert.ok(box.x + box.width - (button.x + button.width) <= 32 && button.y < box.y + 48,
+      `${id}: Close is at the upper right`);
     await close.click();
     await popup.waitFor({ state: 'hidden' });
   }
@@ -136,21 +146,55 @@ async function checkPopup(definition, engine) {
   console.log(`PASS ${engine} ${id}`);
 }
 
+async function checkTouchClose(definitions) {
+  const mobile = await browser.newContext({ baseURL: origin, viewport: { width: 600, height: 840 },
+    locale: 'en-US', isMobile: true, hasTouch: true });
+  try {
+    const mobilePage = await mobile.newPage();
+    captureErrors(mobilePage);
+    const session = await mobile.newCDPSession(mobilePage);
+    const touch = (type, touchPoints) => session.send('Input.dispatchTouchEvent', { type, touchPoints });
+    for (const { id, name, trigger } of definitions) {
+      await mobilePage.goto('/viewer/Fixture/Popup%20A.pdf');
+      await mobilePage.getByTestId('pdf-scroll-area').waitFor();
+      await trigger(mobilePage).tap();
+      const popup = mobilePage.getByRole('dialog', { name, exact: true });
+      const grip = popup.getByRole('button', { name: 'Resize popup', exact: true });
+      await grip.waitFor();
+      const before = await bounds(popup);
+      const handle = await bounds(grip);
+      const x = handle.x + handle.width / 2;
+      const y = handle.y + handle.height / 2;
+      await touch('touchStart', [{ x, y }]);
+      try { await touch('touchMove', [{ x: x - 40, y: y - 65 }]); }
+      finally { await touch('touchEnd', []); }
+      const after = await bounds(popup);
+      assert.ok(after.width < before.width - 30 && after.height < before.height - 55, `${id}: touch resize`);
+      await popup.getByRole('button', { name: 'Close', exact: true }).tap();
+      await popup.waitFor({ state: 'hidden', timeout: 3000 });
+      results.push({ id, engine: 'legacy-touch', before, after });
+      console.log(`PASS touch resize and close ${id}`);
+    }
+  } finally {
+    await mobile.close();
+  }
+}
+
 try {
+  const cases = definitions.filter(({ id }) => !selected.length || selected.includes(id));
   for (const engine of ['legacy', 'gpu']) {
     await context.clearCookies();
     await page.goto('/health');
     await page.evaluate(() => localStorage.clear());
-    for (const definition of definitions) {
-      if (!selected.length || selected.includes(definition.id)) await checkPopup(definition, engine);
-    }
+    for (const definition of cases) await checkPopup(definition, engine);
   }
+  await checkTouchClose(cases);
   assert.deepEqual(errors, []);
 } catch (error) {
   await page.screenshot({ path: path.join(artifacts, 'failure.png') });
   throw error;
 } finally {
-  await writeFile(path.join(artifacts, 'results.json'), JSON.stringify({ origin, results, errors }, null, 2));
+  await writeFile(path.join(artifacts, 'results.json'), JSON.stringify({ origin, results, errors, consoleErrors }, null, 2));
   await context.tracing.stop({ path: path.join(artifacts, 'trace.zip') });
   await browser.close();
 }

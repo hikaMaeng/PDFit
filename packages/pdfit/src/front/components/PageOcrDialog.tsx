@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, CircularProgress, IconButton, Paper, Portal, Typography } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -8,6 +7,7 @@ import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { OcrUnreachableError } from '../api/ocr.js';
 import { pageOcrModel } from '../model/pageOcr.js';
 import { useViewerPopupGeometry, viewerPopupBookKey } from '../hooks/useViewerPopupGeometry.js';
+import { ViewerPopupCloseButton } from './viewer-popup/ViewerPopupCloseButton.js';
 import { RSC } from './resource.js';
 import OcrTextPanel, { type OcrPanelState } from './OcrTextPanel.js';
 import { BookCommentMarkdown } from './book-comments/BookCommentMarkdown.js';
@@ -82,7 +82,7 @@ function PageOcrPopup({ bookKey, filename, page, pageCount }: { bookKey: string;
           {rtl ? <NavigateBeforeIcon /> : <NavigateNextIcon />}
         </IconButton>
       </Box>
-      <IconButton size="small" aria-label={t('close')} title={t('close')} disabled={editor?.saving} onClick={close}><CloseIcon fontSize="small" /></IconButton>
+      <ViewerPopupCloseButton onClose={close} disabled={editor?.saving} />
     </Box>
     <Typography variant="body2" color="text.secondary" translate="no" title={filename} noWrap sx={{ px: 2, pt: 1 }}>{filename}</Typography>
     <Box ref={scrollRef} data-testid="page-ocr-scroll" sx={{
