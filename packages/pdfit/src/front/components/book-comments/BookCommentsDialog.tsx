@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { memo, useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -43,12 +43,13 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   const { loading, saving, error, mode, page, selectedId, draftImages, draftReferencePages, imageError, referencePagesError, filter } = model;
   const comment = page?.comments.find((entry) => entry.id === selectedId);
-  const pageCount = bookCommentPageCount(page?.total ?? 0);
+  const visiblePage = loading || error === 'load' ? null : page;
+  const pageCount = bookCommentPageCount(visiblePage?.total ?? 0);
   const composing = mode === 'create' || mode === 'edit';
   const reading = mode === 'read';
   const dateFormat = new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' });
 
-  useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [mode, page?.page]);
+  useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [mode, visiblePage]);
 
   return <>
     <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', direction: 'ltr', alignItems: 'center', gap: .5,
@@ -107,9 +108,9 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
           </Stack>)}
         </Stack>}
       </Box>}
-      {!loading && !error && page?.total === 0 && reading &&
+      {!error && visiblePage?.total === 0 && reading &&
         <Typography color="text.secondary">{t(filter === 'current' ? COMMENT.CURRENT_PAGE_EMPTY : COMMENT.EMPTY)}</Typography>}
-      {!loading && reading && page?.comments.map((entry) => <Box component="article" key={entry.id} sx={{
+      {reading && <Box hidden={!visiblePage}>{page?.comments.map((entry) => <Box component="article" key={entry.id} sx={{
         py: 1.5,
         '&:first-of-type': { pt: 0 },
         '&:not(:last-of-type)': { borderBottom: '1px solid', borderColor: 'divider' },
@@ -122,7 +123,7 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
           </Stack>
         </Stack>
         <BookCommentContent book={book} comment={entry} />
-      </Box>)}
+      </Box>)}</Box>}
       {mode === 'delete' && comment && <Box component="article" sx={{ mb: 2 }}>
         <Typography component="time" variant="caption" color="text.secondary" dateTime={comment.updatedAt}>{dateFormat.format(new Date(comment.updatedAt))}</Typography>
         <BookCommentContent book={book} comment={comment} />
@@ -131,10 +132,10 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
     </DialogContent>
     {reading ? <DialogActions disableSpacing sx={{ flexWrap: 'wrap', gap: .75, pl: { xs: 1, sm: 2 },
       pr: dragHandle ? 4 : { xs: 1, sm: 2 } }}>
-      {page && page.total > 0 && <Stack component="nav" aria-label={t(COMMENT.BUTTON)} direction="row" gap={.5} flexWrap="wrap" alignItems="center">
-        <Button disabled={loading || page.page <= 1} onClick={() => void model.load(page.page - 1)}>{t('previousPage')}</Button>
-        <Typography variant="body2" aria-live="polite">{t(COMMENT.PAGE, { page: page.page, total: pageCount })}</Typography>
-        <Button disabled={loading || page.page >= pageCount} onClick={() => void model.load(page.page + 1)}>{t('nextPage')}</Button>
+      {visiblePage && visiblePage.total > 0 && <Stack component="nav" aria-label={t(COMMENT.BUTTON)} direction="row" gap={.5} flexWrap="wrap" alignItems="center">
+        <Button disabled={visiblePage.page <= 1} onClick={() => void model.load(visiblePage.page - 1)}>{t('previousPage')}</Button>
+        <Typography variant="body2" aria-live="polite">{t(COMMENT.PAGE, { page: visiblePage.page, total: pageCount })}</Typography>
+        <Button disabled={visiblePage.page >= pageCount} onClick={() => void model.load(visiblePage.page + 1)}>{t('nextPage')}</Button>
       </Stack>}
       <Button variant="contained" startIcon={<AddIcon />} disabled={loading || Boolean(error)} onClick={() => model.setMode('create')}
         sx={{ marginInlineStart: 'auto' }}>{t(COMMENT.CREATE)}</Button>
@@ -162,9 +163,8 @@ export default function BookCommentsDialog(props: BoardProps) {
   </Dialog>;
 }
 
-export function FloatingBookComments({ id, currentPage, ...props }: BoardProps & { id: string; currentPage: number }) {
+export const FloatingBookComments = memo(function FloatingBookComments({ id, ...props }: BoardProps & { id: string }) {
   const titleId = useId();
-  useLayoutEffect(() => { viewerBookCommentsModel.setViewerPage(currentPage); }, [currentPage]);
   const { popupRef, rect, moveHandleProps, resizeHandleProps } = useViewerPopupGeometry({
     kind: 'comments', bookKey: viewerPopupBookKey(props.book), open: true,
     defaultRect: ({ width }) => ({ x: width - 480 - 8, y: 12, width: 480, height: 620 }),
@@ -181,4 +181,4 @@ export function FloatingBookComments({ id, currentPage, ...props }: BoardProps &
     <BookCommentsBoard {...props} titleId={titleId} model={viewerBookCommentsModel} dragHandle={moveHandleProps} />
     <ViewerPopupResizeHandle {...resizeHandleProps} />
   </Paper>;
-}
+});

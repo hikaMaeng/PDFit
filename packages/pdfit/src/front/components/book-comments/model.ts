@@ -60,10 +60,10 @@ class BookCommentsModel {
     this.listeners.forEach((listener) => listener());
   }
 
-  open(book: CommentBook) {
+  open(book: CommentBook, viewerPage?: number) {
     this.book = book;
     this.page = null;
-    this.viewerPage = undefined;
+    this.viewerPage = viewerPage;
     this.filter = 'latest';
     this.refreshOnRead = false;
     this.mode = 'read';
@@ -110,23 +110,21 @@ class BookCommentsModel {
 
   retry = () => void this.load(this.requestedPage);
 
-  setViewerPage(page: number) {
+  setViewerPage = (page: number) => {
     if (!this.book || page === this.viewerPage) return;
     this.viewerPage = page;
     if (this.filter !== 'current') return;
     this.requestedPage = 1;
     if (this.mode === 'read') {
-      this.page = null;
       void this.load(1);
     } else {
       this.refreshOnRead = true;
     }
-  }
+  };
 
   setFilter(filter: ListFilter) {
     if (filter === this.filter || this.mode !== 'read') return;
     this.filter = filter;
-    this.page = null;
     void this.load(1);
   }
 
@@ -142,7 +140,6 @@ class BookCommentsModel {
     if (mode === 'create') this.draftId = createBrowserUuid();
     if (mode === 'read' && this.refreshOnRead) {
       this.refreshOnRead = false;
-      this.page = null;
       void this.load(1);
     } else {
       this.emit();
@@ -205,7 +202,6 @@ class BookCommentsModel {
       this.draftImages = [];
       this.imageError = false;
       this.refreshOnRead = false;
-      this.page = null;
       void this.load(mode === 'create' ? 1 : this.requestedPage);
     } catch {
       if (this.book === book) this.error = 'save';

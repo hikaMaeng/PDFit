@@ -321,18 +321,20 @@ export default function PdfViewerPage() {
   }, [fileName, folderName, localOcr]);
 
   const scanBook = localOcr ? { folder: folderName, filename: fileName } : undefined;
-  const commentsBook = { folder: folderName, filename: fileName, driveFileId: driveFileId ?? undefined };
-  const closeComments = () => {
+  const commentsBook = useMemo(() => ({ folder: folderName, filename: fileName, driveFileId: driveFileId ?? undefined }),
+    [folderName, fileName, driveFileId]);
+  const closeComments = useCallback(() => {
     if (viewerBookCommentsModel.saving) return;
     viewerBookCommentsModel.close();
     setOpenCommentsKey(null);
     document.getElementById(commentsButtonId)?.focus();
-  };
+  }, [commentsButtonId]);
+  const onCommentPageChange = commentsOpen ? viewerBookCommentsModel.setViewerPage : undefined;
   const bot = bookBotEnabled && localOcr && stateLoaded ? {
     model: getBookBotModel(commentsBook), buttonId: botButtonId, panelId: botPanelId,
   } : null;
-  const floatingPanel = commentsOpen || bot || localOcr ? (onPage: (page: number) => void, pageCount: number, currentPage: number) => <>
-    {commentsOpen && <FloatingBookComments id={commentsPanelId} book={commentsBook} currentPage={currentPage} onClose={closeComments} />}
+  const floatingPanel = commentsOpen || bot || localOcr ? (onPage: (page: number) => void, pageCount: number) => <>
+    {commentsOpen && <FloatingBookComments id={commentsPanelId} book={commentsBook} onClose={closeComments} />}
     {bot && <BookBotPanel {...bot} documentUrl={pdfUrl} pageCount={pageCount} onPage={onPage} />}
     {localOcr && <PageOcrDialog folder={folderName} filename={fileName} onPage={onPage} />}
   </> : undefined;
@@ -343,7 +345,7 @@ export default function PdfViewerPage() {
     comments={!sample && !pendingUpload && stateLoaded ? {
       buttonId: commentsButtonId, panelId: commentsPanelId, open: commentsOpen, onToggle: () => {
         if (commentsOpen) { closeComments(); return; }
-        viewerBookCommentsModel.open(commentsBook);
+        viewerBookCommentsModel.open(commentsBook, page);
         setOpenCommentsKey(commentsBookKey);
       },
     } : undefined}
@@ -476,6 +478,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          onPageChange={onCommentPageChange}
           floatingPanel={floatingPanel}
           scanBook={scanBook}
         />
@@ -498,6 +501,7 @@ export default function PdfViewerPage() {
           outlineStorage={outlineStorage}
           outlineLookup={sample ? undefined : outlineLookup}
           documentActions={documentActions}
+          onPageChange={onCommentPageChange}
           floatingPanel={floatingPanel}
           scanBook={scanBook}
         />

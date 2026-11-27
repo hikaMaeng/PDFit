@@ -135,6 +135,12 @@ async function watch(context) {
 async function checkReferencePages(page) {
   const otherPath = `/api/book-comments?${new URLSearchParams({ folder: 'Other', filename: 'Second book.pdf' })}`;
   const seeded = [];
+  let listReads = 0;
+  const countListReads = (request) => {
+    const { pathname, searchParams } = new URL(request.url());
+    if (request.method() === 'GET' && pathname === '/api/book-comments' && searchParams.get('folder') === 'Other') listReads++;
+  };
+  page.on('request', countListReads);
   try {
     for (let index = 1; index <= 6; index++) {
       const id = randomUUID();
@@ -158,6 +164,7 @@ async function checkReferencePages(page) {
         await page.getByRole('status', { name: 'viewer status' }).filter({ hasText: /Pages: 2 \/ 3.*100%/ }).waitFor();
       }
       const viewerPage = controls(page).getByRole('textbox', { name: '페이지 번호' });
+      const viewerPrevious = controls(page).getByRole('button', { name: '이전 페이지', exact: true });
       const goTo = async (number) => {
         await viewerPage.fill(String(number));
         await viewerPage.press('Enter');
@@ -167,6 +174,12 @@ async function checkReferencePages(page) {
       assert.equal(await panelText(page, 'Second book.pdf').count(), 0);
       await assertCloseInset(commentAction(page, '닫기'));
       assert.equal(await commentAction(page, '최신순').getAttribute('aria-pressed'), 'true');
+      const latestReads = listReads;
+      await goTo(1);
+      await viewerPrevious.and(page.locator(':disabled')).waitFor();
+      await goTo(2);
+      await viewerPrevious.and(page.locator(':enabled')).waitFor();
+      assert.equal(listReads, latestReads, 'page changes in Latest mode do not query comments');
       await commentAction(page, '현재페이지').click();
       await panelText(page, 'Legacy note').waitFor({ state: 'hidden' });
       await commentAction(page, '다음 페이지').click();
@@ -220,14 +233,28 @@ async function checkReferencePages(page) {
       } else {
         await commentAction(page, '취소').click();
         await panelText(page, '1 / 2').waitFor();
+        const matchingPost = panel(page).getByRole('article').filter({ hasText: 'Reference note 6' });
+        const before = await matchingPost.elementHandle();
+        await goTo(3);
+        await panelText(page, '1 / 1').waitFor();
+        assert.equal(await matchingPost.evaluate((node, previous) => node === previous, before), true);
+        await before.dispose();
         await goTo(1);
         await panelText(page, '현재 페이지를 참고하는 코멘트가 없습니다.').waitFor();
         assert.equal(await panel(page).getByRole('article').count(), 0);
       }
       await commentAction(page, '최신순').click();
       await panelText(page, 'Legacy note').waitFor();
+      await commentAction(page, '닫기').click();
+      await panel(page).waitFor({ state: 'hidden' });
+      const closedReads = listReads;
+      const gpu = engine === 'gpu';
+      await goTo(gpu ? 2 : 1);
+      await viewerPrevious.and(page.locator(gpu ? ':enabled' : ':disabled')).waitFor();
+      assert.equal(listReads, closedReads, 'page changes with the comments window closed do not query comments');
     }
   } finally {
+    page.off('request', countListReads);
     for (const id of seeded) await desktop.request.delete(`${otherPath}&id=${id}`);
   }
 }
