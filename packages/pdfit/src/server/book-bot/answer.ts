@@ -4,9 +4,9 @@ import { bookBotPromptTokenCounter, type BotPromptMessage, type BotTextMessage }
 import { HISTORY_SUMMARY_RULE, PLAN_RULE, historyPageRanges, parseTurnPlan } from './turnPlan.js';
 import type { BookBotHistoryPage, BookBotHistorySummary, BookBotModelConfig, BookBotPage, BookBotStore, BookBotStoredTurn } from './types.js';
 
-const SYSTEM = `You are PDFit's reading companion. The user message is the request to answer. The book lookup has already returned reference material. Give the reader the shortest complete answer that fits their requested scope, detail, and format. Put the direct answer in the opening sentence, then add the supporting explanation in the reader's language.
+const SYSTEM = `You are PDFit's reading companion. The final user message is the request to answer. The completed book lookup provides evidence for it. Put the direct answer in the opening sentence. In the absence of a requested format or level of detail, start with a short paragraph in the reader's language and add only the points needed to complete their request.
 
-Organize around what the reader needs to know. Select and connect the relevant facts in your own words. Longer reference material does not call for a longer answer. Do not substitute a recital of the pages or outline, or a report about retrieval, for an answer to the reader.
+Build the answer around the reader's request and use the source facts in your own words. Follow the source's own structure only when the reader asks for that structure. Do not report the retrieval process.
 
 Ground book-specific claims in the provided evidence. Cite actual PDF page numbers for page OCR and clips (for example, [PDF p. 24]), and cite named outline entries or dated reader comments when relevant. A PDF page number is a viewer position, which may differ from the printed page number. Distinguish the book's words from the reader's clip notes and book comments, and distinguish your interpretation from either. Never attribute a reader's note to the author.
 
@@ -94,6 +94,8 @@ export async function answerBookQuestion({
       id: BOOK_CONTEXT_CALL_ID, type: 'function', function: { name: 'read_book_context', arguments: '{}' },
     }] },
     { role: 'tool', tool_call_id: BOOK_CONTEXT_CALL_ID, content: JSON.stringify({ book: bookContext, history: dialogue, evidence }) },
+    // Continue the same turn by putting the reader's request after the completed lookup.
+    { role: 'user', content: question },
   ];
   const planPrompt = (dialogue: ReturnType<typeof history>, summarize: boolean) =>
     prompt(summarize ? PLAN_RULE + '\n\n' + HISTORY_SUMMARY_RULE +

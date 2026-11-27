@@ -56,7 +56,7 @@ const upstream = createServer(async (req, res) => {
   const data = [];
   for await (const chunk of req) data.push(chunk);
   const { messages } = JSON.parse(Buffer.concat(data));
-  const context = JSON.parse(messages.at(-1).content);
+  const context = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
   const emit = (content) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, index: 0 }] }) + '\n\n';
   const done = 'data: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
   res.setHeader('Content-Type', 'text/event-stream');
@@ -110,8 +110,9 @@ try {
   assert.deepEqual(calls[1].context.book, opened.context);
   assert.equal(calls[1].context.question, undefined);
   assert.deepEqual(calls[1].messages[1], { role: 'user', content: first.question });
-  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool']);
+  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool', 'user']);
   assert.equal(calls[1].messages[2].tool_calls[0].id, calls[1].messages[3].tool_call_id);
+  assert.deepEqual(calls[1].messages.at(-1), { role: 'user', content: first.question });
   const wantedPages = Array.from({ length: 14 }, (_, i) => i + 8).filter((page) => page !== 12);
   assert.deepEqual(calls[1].context.evidence.pages.map(({ page }) => page), wantedPages);
   assert.deepEqual(events.filter(({ type }) => type === 'progress').map(({ phase }) => phase),
