@@ -90,6 +90,7 @@ export function createPostgresBookBot(db: Pool, metadata: MetadataStore, bookmar
           FROM book_page_ocr_search o JOIN books b USING (folder, filename)
           WHERE (o.folder, o.filename) = ($1, $2)
             AND o.source_size = b.size AND o.source_modified_at = b.modified_at
+            AND o.body <> ''
           ORDER BY o.page_index
         `, [folder, filename]),
         metadata.listBookmarks(folder, filename),

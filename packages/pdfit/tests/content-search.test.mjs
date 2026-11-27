@@ -48,6 +48,8 @@ test('OCR cache import accepts matching text results and skips malformed and old
       ['책.pdf', 'v2-1000-2', 4, { text: '정규화된 시각', source: 'vision', pageIndex: 4, metadataStamp: '1001-2' }],
       ['책.pdf', 'v1-1000-2', 3, { text: 'old', source: 'vision', pageIndex: 3 }],
       ['책.pdf', 'v2-1000-2', 5, { text: 'wrong page', source: 'vision', pageIndex: 6 }],
+      ['책.pdf', 'v2-1000-2', 6, { text: '', source: 'vision', pageIndex: 6, edited: true }],
+      ['책.pdf', 'v2-1000-2', 7, { text: '', source: 'vision', pageIndex: 7 }],
       ['unknown.pdf', 'v2-1000-2', 3, { text: 'unknown', source: 'text-layer', pageIndex: 3 }],
     ];
     await Promise.all(records.map(([name, stamp, pageIndex, body]) =>
@@ -59,6 +61,7 @@ test('OCR cache import accepts matching text results and skips malformed and old
     });
     assert.deepEqual(calls.sort((a, b) => a[3] - b[3]), [
       ['A', '책.pdf', '1000-2', 3, '본문'], ['A', '책.pdf', '1001-2', 4, '정규화된 시각'],
+      ['A', '책.pdf', '1000-2', 6, ''],
     ]);
   } finally {
     await rm(directory, { recursive: true, force: true });

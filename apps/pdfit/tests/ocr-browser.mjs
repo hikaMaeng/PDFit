@@ -199,6 +199,16 @@ const readPanel = (page, prefix) => page.evaluate((prefix) => {
   };
 }, prefix);
 
+// The page panel renders Markdown. Read its original text from the editor.
+const readPagePanel = async (page, dialog) => {
+  const panel = await readPanel(page, 'page-ocr');
+  if (panel.status !== 'done') return panel;
+  await dialog.getByRole('button', { name: '수정', exact: true }).click();
+  panel.text = await dialog.getByRole('textbox', { name: '페이지 텍스트 (Markdown)' }).inputValue();
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  return panel;
+};
+
 // 툴바에서 페이지 텍스트 대화상자를 열고 저장 결과 조회를 잡는다.
 const openPageOcr = async (page) => {
   const requestSeen = page.waitForRequest((request) => request.method() === 'GET' && new URL(request.url()).pathname === '/api/ocr/page', { timeout: 15_000 });
@@ -315,7 +325,7 @@ try {
     const shownPage = await openViewerAt(mainPage, digitalFile, digitalPage);
     const opened = await openPageOcr(mainPage);
     const panel = await watchPanel(mainPage, 'page-ocr', 60_000);
-    const ui = await readPanel(mainPage, 'page-ocr');
+    const ui = await readPagePanel(mainPage, opened.dialog);
     const browserResponse = await responseOf(opened.request);
     const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     const expected = await pageOcrApi(digitalFile, digitalPageIndex);
@@ -337,7 +347,8 @@ try {
       assert.equal(panel.final, 'done', '패널 done');
       assert.equal(ui.source, 'text-layer', 'data-source=text-layer');
       assert.equal(ui.sourceLabel, TEXT.sourceTextLayer);
-      assert.equal(ui.text, expected.body?.text, '화면 글 = POST /api/ocr/page 글');
+      assert.equal(ui.text, expected.body?.text, '편집 원문 = POST /api/ocr/page 글');
+      assert.ok(partial.clipboardEqualsText, '복사 = 편집 원문');
       assert.ok(ui.copy, '복사 버튼');
       assert.ok(duration && /^\d+\.\d s$/.test(duration), `소요 시간 표시 ${duration}`);
     } catch (error) { throw failWith(error.message, partial); }
@@ -444,9 +455,10 @@ try {
       const buttonBox = await page.getByTestId('page-ocr-open').boundingBox();
       const opened = await openPageOcr(page);
       const panel = await watchPanel(page, 'page-ocr', 60_000);
-      const ui = await readPanel(page, 'page-ocr');
+      const ui = await readPagePanel(page, opened.dialog);
       const geometry = await page.evaluate(() => {
-        const paper = document.querySelector('[data-testid="page-ocr-dialog"] .MuiDialog-paper').getBoundingClientRect();
+        const popup = document.querySelector('[data-testid="page-ocr-dialog"]');
+        const paper = popup.getBoundingClientRect();
         const text = document.querySelector('[data-testid="page-ocr-text"]');
         // 패널 머리줄(제목 "텍스트", 출처 칩, 복사, 다시 읽기)의 글자 줄 수: 글자 노드 Range의 서로 다른 top 수.
         const lines = (node) => {
@@ -462,7 +474,7 @@ try {
           return tops.size;
         };
         const headerLines = { heading: lines(document.getElementById('page-ocr-heading')), source: lines(document.querySelector('[data-testid="page-ocr-source"]')), copy: lines(document.querySelector('[data-testid="page-ocr-copy"]')), retry: lines(document.querySelector('[data-testid="page-ocr-retry"]')) };
-        return { viewport: window.innerWidth, paperLeft: Math.round(paper.left), paperRight: Math.round(paper.right), pageOverflow: document.documentElement.scrollWidth - window.innerWidth, textOverflowX: text ? text.scrollWidth - text.clientWidth : null, headerLines, paperBackground: getComputedStyle(document.querySelector('[data-testid="page-ocr-dialog"] .MuiDialog-paper')).backgroundColor };
+        return { viewport: window.innerWidth, paperLeft: Math.round(paper.left), paperRight: Math.round(paper.right), pageOverflow: document.documentElement.scrollWidth - window.innerWidth, textOverflowX: text ? text.scrollWidth - text.clientWidth : null, headerLines, paperBackground: getComputedStyle(popup).backgroundColor };
       });
       await snap(page, `page-ocr-digital-${variant.name}.png`);
       out[variant.name] = { title: opened.title, buttonBox, panel, source: ui.source, textChars: ui.text?.length ?? null, textEqualsApi: ui.text === digitalPageText, geometry };
@@ -490,7 +502,7 @@ try {
     const shownPage = await openViewerAt(mainPage, scannedFile, cachedPage);
     const opened = await openPageOcr(mainPage);
     const panel = await watchPanel(mainPage, 'page-ocr', 60_000);
-    const ui = await readPanel(mainPage, 'page-ocr');
+    const ui = await readPagePanel(mainPage, opened.dialog);
     const browserResponse = await responseOf(opened.request);
     const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     const expected = await pageOcrApi(scannedFile, scannedCachedIndex);
@@ -523,7 +535,7 @@ try {
     const request = await scanRequest;
     assert.deepEqual(request.postDataJSON(), { folder, filename: scannedFile, pageIndex: scannedUncachedIndex });
     const panel = await watchPanel(mainPage, 'page-ocr', visionWaitMs);
-    const ui = await readPanel(mainPage, 'page-ocr');
+    const ui = await readPagePanel(mainPage, opened.dialog);
     const scanResponse = await responseOf(request);
     const duration = await mainPage.getByTestId('page-ocr-duration').innerText().catch(() => null);
     await snap(mainPage, 'page-ocr-scanned-uncached-final.png');

@@ -307,6 +307,15 @@ See [the OCR route](../src/server/routes/ocr.ts).
 the page has no text layer and no vision model is configured. Errors: `400` invalid
 body or page out of range, `404` file not found, `502` task or model failure.
 Results are cached in `<ocrCacheRoot>/<sha1(folder NUL filename)>.v2-<mtimeMs-size>.p<index>.json`
+
+Saved text results also include a `revision` token. Send it with
+`PUT /api/ocr/page` `{ folder, filename, pageIndex, revision, text }` to edit
+an existing result. The response includes `edited: true` and the new revision.
+The endpoint accepts up to 1,000,000 UTF-16 code units, including empty text.
+It returns `409` when the base result changed and the requested text has not
+already been saved. The [OCR service](../src/server/ocr/ocrService.ts#createOcrService)
+stores the raw Markdown against the current PDF stamp and updates the search index.
+Subsequent scans preserve the saved edit for that stamp.
 (`v2`: results made before the hidden-layer check are not served and are deleted on the next save),
 by default `ocr` beside `thumbnailRoot` (`/app/data/ocr`). Saving a result deletes that
 file's results for older stamps. Results for deleted files are not collected. `none`

@@ -122,8 +122,10 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     assert.deepEqual({ text: first.text, source: first.source, cached: first.cached, pageCount: first.pageCount }, { text: 'PDFit OCR', source: 'text-layer', cached: false, pageCount: 1 });
     assert.equal(network.calls.length, 0, 'a page with text never reaches the vision model');
     const expectedCached = { text: 'PDFit OCR', source: 'text-layer', cached: true, pageCount: 1, pageIndex: 0 };
-    const { durationMs, ...cached } = await service.getCachedPage('A', 'text.pdf', 0);
+    const { durationMs, revision, ...cached } = await service.getCachedPage('A', 'text.pdf', 0);
     assert.deepEqual(cached, expectedCached);
+    assert.match(revision, /^[a-f0-9]{64}$/);
+    assert.equal(revision, first.revision);
     assert.equal(indexed.length, 1, 'lookup does not write the search index');
     sourceStamp = '2-1';
     assert.equal(await service.getCachedPage('A', 'text.pdf', 0), null, 'an older metadata stamp is a cache miss even with the same cache filename');
@@ -132,6 +134,18 @@ test('page OCR uses the text layer, caches it, and asks the vision model only fo
     assert.equal(second.cached, true);
     assert.equal(scheduler.submitted.length, 1, 'the cached result needs no task');
     await fs.stat(path.join(base, 'ocr', pageOcrCacheName('A', 'text.pdf', 'v2-1-1', 0)));
+
+    const edited = await service.savePageText('A', 'text.pdf', 0, revision, '# Edited\n\n**Markdown**');
+    assert.equal(edited.edited, true);
+    assert.notEqual(edited.revision, revision);
+    assert.equal((await service.recognizePage('A', 'text.pdf', 0)).text, edited.text);
+    assert.deepEqual(indexed.at(-1), ['A', 'text.pdf', sourceStamp, 0, edited.text]);
+    assert.equal((await service.savePageText('A', 'text.pdf', 0, revision, edited.text)).revision, edited.revision);
+    await assert.rejects(service.savePageText('A', 'text.pdf', 0, revision, 'stale edit'), { status: 409 });
+    const empty = await service.savePageText('A', 'text.pdf', 0, edited.revision, '');
+    assert.equal((await service.getCachedPage('A', 'text.pdf', 0)).revision, empty.revision);
+    assert.equal((await service.recognizePage('A', 'text.pdf', 0)).text, '');
+    assert.deepEqual(indexed.at(-1), ['A', 'text.pdf', sourceStamp, 0, '']);
 
     const scanned = await service.recognizePage('A', 'blank.pdf', 0);
     assert.equal(scanned.source, 'vision');

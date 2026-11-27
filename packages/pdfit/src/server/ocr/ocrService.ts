@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_TASK_PRIORITY, INTERACTIVE_TASK_PRIORITY, type TaskEnvelope, type TaskOutcome } from '../tasks/taskProtocol.js';
@@ -34,9 +34,20 @@ export interface PageOcrResult {
   pageIndex: number;
   pageCount: number;
   durationMs: number;
+  edited?: true;
+  revision?: string;
 }
 
-type CachedPageOcrRecord = Omit<PageOcrResult, 'cached' | 'durationMs'>;
+type CachedPageOcrRecord = Omit<PageOcrResult, 'cached' | 'durationMs' | 'revision'>;
+
+function pageRevision(record: CachedPageOcrRecord, stamp: string) {
+  return record.source === 'none' ? undefined : createHash('sha256')
+    .update(JSON.stringify([stamp, record.pageIndex, record.source, record.edited, record.text])).digest('hex');
+}
+
+function pageResult(record: CachedPageOcrRecord, stamp: string, cached: boolean, started: number): PageOcrResult {
+  return { ...record, revision: pageRevision(record, stamp), cached, durationMs: Date.now() - started };
+}
 
 /** Bookmark persistence the OCR service needs. Optional MetadataStore methods. */
 export interface BookmarkOcrStore {
@@ -80,6 +91,7 @@ export interface OcrService {
   enqueueBookmark(bookmark: BookmarkRecord): Promise<boolean>;
   /** Read an existing result for the current file stamp without starting OCR. */
   getCachedPage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult | null>;
+  savePageText(folder: string, filename: string, pageIndex: number, revision: string, text: string): Promise<PageOcrResult>;
   /** Text of one page: cache, then text layer, then the vision model on a rendering. */
   recognizePage(folder: string, filename: string, pageIndex: number): Promise<PageOcrResult>;
 }
@@ -100,15 +112,16 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const cached = JSON.parse(await fs.readFile(cachePath, 'utf8')) as (CachedPageOcrRecord & { metadataStamp?: string }) | null;
       if (typeof cached?.text !== 'string' || (cached.source !== 'text-layer' && cached.source !== 'vision')) return null;
       if (cached.metadataStamp !== undefined && cached.metadataStamp !== stamp) return null;
-      return { text: cached.text, source: cached.source, pageCount: cached.pageCount, pageIndex };
+      const record = { text: cached.text, source: cached.source, pageCount: cached.pageCount, pageIndex };
+      return cached.edited === true ? { ...record, edited: true } : record;
     } catch (error) {
       if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
   }
 
-  async function indexPage(folder: string, filename: string, stamp: string, result: Pick<PageOcrResult, 'source' | 'pageIndex' | 'text'>) {
-    if (pageSearchIndex && result.source !== 'none' && result.text.trim()) {
+  async function indexPage(folder: string, filename: string, stamp: string, result: PageOcrResult) {
+    if (pageSearchIndex && result.source !== 'none' && (result.edited || result.text.trim())) {
       await pageSearchIndex.save(folder, filename, stamp, result.pageIndex, result.text)
         .catch(() => log('Could not index page OCR text.'));
     }
@@ -177,7 +190,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     timeoutMs: 2 * 60 * 1000,
     async plan() {
       if (pageSearchIndex && !restoringPageIndex) {
-        restoringPageIndex = restorePageOcrSearchIndex(options.cacheRoot, PAGE_CACHE_VERSION, pageSearchIndex).catch(() => {
+        restoringPageIndex = restorePageOcrSearchIndex(options.cacheRoot, PAGE_CACHE_VERSION, pageSearchIndex, persistPage).catch(() => {
           log('Could not restore the page OCR search index. The next plan will retry.');
           restoringPageIndex = undefined;
         });
@@ -211,6 +224,14 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     if (!sourcePath) return null;
     const rect: PageTextRect = { ...bookmark.rect };
     return { sourcePath, pageIndex: bookmark.pageIndex, rect, render: CLIP_RENDER, folder: bookmark.folder, filename: bookmark.filename, bookmarkId: bookmark.id };
+  }
+
+  function cachedPagePath(document: OcrDocument, pageIndex: number) {
+    return path.join(options.cacheRoot, pageOcrCacheName(document.folder, document.filename, `${PAGE_CACHE_VERSION}-${document.cacheStamp}`, pageIndex));
+  }
+
+  function cachedPage(document: OcrDocument, pageIndex: number) {
+    return readCachedPage(cachedPagePath(document, pageIndex), document.stamp, pageIndex);
   }
 
   function runPageText(key: string, payload: PageTextOcrPayload, priority: number): Promise<PageTextWorkerResult> {
@@ -250,7 +271,7 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   async function assertCurrent(document: OcrDocument): Promise<void> {
     const current = await options.sourceStamps(document.sourcePath).catch(() => null);
     if (current?.stamp !== document.stamp || current.cacheStamp !== document.cacheStamp) {
-      throw new OcrScanError('source-changed', 'The PDF changed during the scan.');
+      throw Object.assign(new OcrScanError('source-changed', 'The PDF changed during page OCR.'), { status: 409 });
     }
   }
 
@@ -266,10 +287,9 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     const started = Date.now();
     const { folder, filename, sourcePath, stamp, cacheStamp } = document;
     const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
-    const cachePath = path.join(options.cacheRoot, cacheName);
     trace?.('page-cache-read');
-    const cached = await readCachedPage(cachePath, stamp, pageIndex).catch(() => null);
-    if (cached && (!background || cached.text.trim())) return { ...cached, cached: true, durationMs: Date.now() - started };
+    const cached = await cachedPage(document, pageIndex).catch(() => null);
+    if (cached && (!background || cached.edited || cached.text.trim())) return pageResult(cached, stamp, true, started);
 
     const key = `page:${cacheName.replace(/\.json$/, '')}`;
     const priority = background ? DEFAULT_TASK_PRIORITY : INTERACTIVE_PRIORITY;
@@ -286,21 +306,19 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       else if (!hasLayerText) { text = ''; source = 'none'; }
     }
     const record = { text, source, pageIndex, pageCount: result.pageCount };
-    return { ...record, cached: false, durationMs: Date.now() - started };
+    return pageResult(record, stamp, false, started);
   }
 
   async function cachePage(document: OcrDocument, result: PageOcrResult, cleanup: boolean) {
-    const { text, source, pageIndex, pageCount, cached } = result;
+    const { text, source, pageIndex, pageCount, cached, edited } = result;
     // Configuring a vision model takes effect on the next request when OCR was unavailable.
     if (cached || source === 'none') return;
-    const { folder, filename, stamp, cacheStamp } = document;
-    const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
-    const cachePath = path.join(options.cacheRoot, cacheName);
+    const cachePath = cachedPagePath(document, pageIndex);
     await fs.mkdir(options.cacheRoot, { recursive: true });
     if (cleanup) await clearOldPageCaches(document);
     const temporary = `${cachePath}.${randomUUID()}.tmp`;
     try {
-      await fs.writeFile(temporary, JSON.stringify({ text, source, pageIndex, pageCount, metadataStamp: stamp }), 'utf8');
+      await fs.writeFile(temporary, JSON.stringify({ text, source, pageIndex, pageCount, edited, metadataStamp: document.stamp }), 'utf8');
       await fs.rename(temporary, cachePath);
     } finally {
       await fs.rm(temporary, { force: true });
@@ -308,8 +326,18 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
   }
 
   const queryIndexedPages = pageSearchIndex?.listPages?.bind(pageSearchIndex);
-  // Every scan in this runtime hands its completed result to one serial listener.
-  let scanResults: Promise<void> = Promise.resolve();
+  // Commit cache and index updates in order. OCR can run outside this queue.
+  let pageWrites: Promise<unknown> = Promise.resolve();
+  function persistPage<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = pageWrites.then(operation);
+    pageWrites = pending.catch(() => undefined);
+    return pending;
+  }
+
+  async function preferEditedPage(document: OcrDocument, result: PageOcrResult) {
+    const latest = await cachedPage(document, result.pageIndex);
+    return latest?.edited ? { ...result, ...latest, revision: pageRevision(latest, document.stamp), cached: true } : result;
+  }
   const scan = pageSearchIndex && queryIndexedPages ? createOcrScan({
     resolveDocument,
     assertCurrent,
@@ -326,20 +354,19 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
       const result = await readPage(document, pageIndex, true, trace);
       if (result.source === 'none') throw new OcrScanError('unavailable', 'No vision model could read the page.');
       trace('persist-queued', { source: result.source, cached: result.cached });
-      const received = scanResults.then(async () => {
+      await persistPage(async () => {
         trace('verify-source');
         await assertCurrent(document);
+        const current = await preferEditedPage(document, result);
         trace('cache-write');
-        await cachePage(document, result, false);
-        if (!result.text.trim()) return;
+        await cachePage(document, current, false);
+        if (!current.edited && !current.text.trim()) return;
         const { folder, filename, stamp } = document;
         trace('index-write');
-        await pageSearchIndex.save(folder, filename, stamp, pageIndex, result.text);
+        await pageSearchIndex.save(folder, filename, stamp, pageIndex, current.text);
         trace('index-confirm');
         if (!(await queryIndexedPages(folder, filename, stamp, pageIndex)).length) throw new Error('Page OCR text was not saved.');
       });
-      scanResults = received.catch(() => undefined);
-      await received;
     },
     concurrency: async () => visionOcrConcurrency(await resolveVision()),
     log,
@@ -359,18 +386,36 @@ export function createOcrService(options: OcrServiceOptions): OcrService {
     },
     async getCachedPage(folder, filename, pageIndex) {
       const started = Date.now();
-      const { cacheStamp, stamp } = await resolveDocument(folder, filename);
-      const cacheName = pageOcrCacheName(folder, filename, `${PAGE_CACHE_VERSION}-${cacheStamp}`, pageIndex);
-      const cached = await readCachedPage(path.join(options.cacheRoot, cacheName), stamp, pageIndex);
-      return cached && { ...cached, cached: true, durationMs: Date.now() - started };
+      const document = await resolveDocument(folder, filename);
+      const cached = await cachedPage(document, pageIndex);
+      return cached && pageResult(cached, document.stamp, true, started);
+    },
+    async savePageText(folder, filename, pageIndex, revision, text) {
+      const started = Date.now();
+      return persistPage(async () => {
+        const document = await resolveDocument(folder, filename);
+        const cached = await cachedPage(document, pageIndex);
+        if (!cached || (pageRevision(cached, document.stamp) !== revision && !(cached.edited && cached.text === text))) {
+          throw Object.assign(new Error('The saved page text has changed.'), { status: 409 });
+        }
+        const result = pageResult({ ...cached, text, edited: true }, document.stamp, false, started);
+        await assertCurrent(document);
+        await cachePage(document, result, false);
+        await pageSearchIndex?.save(folder, filename, document.stamp, pageIndex, text);
+        return { ...result, cached: true, durationMs: Date.now() - started };
+      });
     },
     async recognizePage(folder, filename, pageIndex) {
       const started = Date.now();
       const document = await resolveDocument(folder, filename);
       const result = await readPage(document, pageIndex, false);
-      await cachePage(document, result, true);
-      await indexPage(folder, filename, document.stamp, result);
-      return { ...result, durationMs: Date.now() - started };
+      return persistPage(async () => {
+        await assertCurrent(document);
+        const current = await preferEditedPage(document, result);
+        await cachePage(document, current, true);
+        await indexPage(folder, filename, document.stamp, current);
+        return { ...current, durationMs: Date.now() - started };
+      });
     },
   };
 }

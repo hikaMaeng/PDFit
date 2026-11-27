@@ -85,5 +85,27 @@ export function createOcrRouter(ocr: OcrService): Router {
   };
   router.get('/page', handlePage(true));
   router.post('/page', handlePage(false));
+  router.put('/page', async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const book = scanBook(body);
+    const { pageIndex, revision, text } = body;
+    if (!book || typeof pageIndex !== 'number' || !Number.isSafeInteger(pageIndex) || pageIndex < 0
+      || typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)
+      || typeof text !== 'string' || text.length > 1_000_000 || text.includes('\0')) {
+      res.status(400).json({ error: 'A PDF, page index, current revision and valid page text are required.' });
+      return;
+    }
+    try {
+      res.set('Cache-Control', 'no-store').json(await ocr.savePageText(book.folder, book.filename, pageIndex, revision, text));
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 404 || status === 409) {
+        res.status(status).json({ error: status === 409 ? 'The saved page text has changed.' : 'File not found.' });
+        return;
+      }
+      console.error('[ocr] Could not save page text:', error);
+      res.status(500).json({ error: 'Could not save page text.' });
+    }
+  });
   return router;
 }

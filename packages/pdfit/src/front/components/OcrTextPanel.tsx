@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 
 export type OcrPanelState =
@@ -17,10 +18,12 @@ type Props = {
   /** Prefix for data-testid hooks, e.g. `clip-ocr` or `page-ocr`. */
   testId: string;
   maxHeight?: number | string;
+  onEdit?: () => void;
+  renderText?: (text: string) => ReactNode;
 };
 
 /** Shows text read from a clip or a page, with its source, copy and retry. */
-export default function OcrTextPanel({ state, onRetry, retrying = false, testId, maxHeight = 260 }: Props) {
+export default function OcrTextPanel({ state, onRetry, retrying = false, testId, maxHeight = 260, onEdit, renderText }: Props) {
   const { t } = usePdfitI18n();
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -47,13 +50,14 @@ export default function OcrTextPanel({ state, onRetry, retrying = false, testId,
       <Box sx={{ flex: '1 0 0' }} />
       {state.status === 'done' && state.text ? <Button size="small" startIcon={<ContentCopyIcon fontSize="small" />} onClick={() => void copy(state.text)} data-testid={`${testId}-copy`}>{copied ? t('ocrCopied') : t('ocrCopy')}</Button> : null}
       {state.status !== 'pending' ? retryButton : null}
+      {onEdit && state.status === 'done' ? <Button size="small" startIcon={<EditOutlinedIcon fontSize="small" />} onClick={onEdit}>{t('edit')}</Button> : null}
     </Box>
     {state.status === 'pending' ? <Box role="status" sx={{ display: 'grid', gap: .5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={16} /><Typography variant="body2">{t('ocrReading')}</Typography></Box>
       {state.slowHint ? <Typography variant="caption" color="text.secondary">{t('ocrPageSlow')}</Typography> : null}
     </Box> : null}
     {state.status === 'done' ? (state.text
-      ? <Box component="pre" data-testid={`${testId}-text`} tabIndex={0} sx={{ m: 0, p: 1.25, maxHeight, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', font: 'inherit', fontSize: '.875rem', lineHeight: 1.6, userSelect: 'text', border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>{state.text}</Box>
+      ? <Box component={renderText ? 'div' : 'pre'} data-testid={`${testId}-text`} tabIndex={0} sx={{ m: 0, p: 1.25, maxHeight, overflow: renderText ? 'hidden' : 'auto', whiteSpace: renderText ? 'normal' : 'pre-wrap', overflowWrap: 'anywhere', font: 'inherit', fontSize: '.875rem', lineHeight: 1.6, userSelect: 'text', border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>{renderText ? renderText(state.text) : state.text}</Box>
       : <Typography role="status" variant="body2" color="text.secondary" data-testid={`${testId}-empty`}>{t('ocrEmpty')}</Typography>) : null}
     {state.status === 'unavailable' ? <Alert severity="info" data-testid={`${testId}-unavailable`}>{t('ocrUnavailable')}</Alert> : null}
     {state.status === 'failed' ? <Alert severity="warning" data-testid={`${testId}-failed`}>{t('ocrFailed', { reason: state.error })}</Alert> : null}

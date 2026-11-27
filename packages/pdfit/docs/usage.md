@@ -110,6 +110,24 @@ Edit the memo below the capture, then select **Save**. **Reset** restores the la
 saved text, and saving an empty memo clears it. The header opens OCR in its own
 dialog, deletes the clip, or opens the captured page in the viewer.
 
+## Page text popup
+
+In Free, select **Read page text** in the viewer toolbar. Drag the title bar
+to move the popup. Drag its lower-right handle to resize it. The minimum is
+340 × 280 CSS pixels, or the available space on a smaller screen. The browser
+remembers the position and size for each book.
+
+The arrows in the popup browse OCR results while the PDF viewer stays on its
+current page. Long results scroll within the popup. Select **Scan page** on a
+page that has no saved OCR result. Use the X in the upper-right to close.
+
+Select **Edit** to open a plain text area. **Save** stores the Markdown for
+that page and returns to the formatted view. **Cancel** restores the saved
+view. Save or cancel before using the popup’s page arrows. Closing the window
+discards an unsaved draft. **Copy text** copies
+the Markdown source. The [popup](../src/front/components/PageOcrDialog.tsx#PageOcrPopup)
+uses the same Markdown parser as [book comments](#book-comments-markdown).
+
 ## Viewer toolbar
 
 The viewer toolbar orders page navigation before single-page and two-page layout,

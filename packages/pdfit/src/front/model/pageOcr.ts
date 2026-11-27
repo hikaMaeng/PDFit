@@ -1,10 +1,11 @@
-import { getCachedPageText, recognizePageText, type PageOcrResult } from '../api/ocr.js';
+import { getCachedPageText, OcrSaveConflictError, recognizePageText, savePageText, type PageOcrResult } from '../api/ocr.js';
 
 type PageOcrState =
   | { status: 'checking' }
   | { status: 'unscanned' }
   | { status: 'pending'; slowHint: boolean }
   | { status: 'ready'; result: PageOcrResult }
+  | { status: 'editing'; result: PageOcrResult; draft: string; saving: boolean; saveError?: 'failed' | 'conflict' }
   | { status: 'failed'; during: 'lookup' | 'scan'; error: unknown };
 
 type Target = { folder: string; filename: string; page: number; pageCount: number };
@@ -33,6 +34,10 @@ class PageOcrModel {
   }
 
   open(folder: string, filename: string, page: number, pageCount: number) {
+    if (this.target?.folder === folder && this.target.filename === filename) {
+      this.move(page - this.target.page);
+      return;
+    }
     this.close();
     this.target = { folder, filename, page, pageCount };
     this.checkPage();
@@ -49,7 +54,7 @@ class PageOcrModel {
   };
 
   move(offset: number) {
-    if (!this.target) return;
+    if (!this.target || !offset || this.state.status === 'editing') return;
     const page = this.target.page + offset;
     if (page < 1 || page > this.target.pageCount) return;
     this.target.page = page;
@@ -57,7 +62,7 @@ class PageOcrModel {
   }
 
   checkPage = () => {
-    if (!this.target) return;
+    if (!this.target || this.state.status === 'editing') return;
     const { folder, filename, page } = this.target;
     this.lookup?.abort();
     this.lookup = undefined;
@@ -83,8 +88,39 @@ class PageOcrModel {
     );
   };
 
+  edit = () => {
+    if (this.state.status !== 'ready' || !this.state.result.revision) return;
+    const { result } = this.state;
+    this.publish({ status: 'editing', result, draft: result.text, saving: false });
+  };
+
+  changeDraft = (draft: string) => {
+    if (this.state.status !== 'editing' || this.state.saving) return;
+    this.publish({ ...this.state, draft });
+  };
+
+  cancelEdit = () => {
+    if (this.state.status !== 'editing' || this.state.saving) return;
+    const { result, saveError } = this.state;
+    this.publish({ status: 'ready', result });
+    if (saveError === 'conflict') this.checkPage();
+  };
+
+  save = async () => {
+    const { target, state } = this;
+    if (!target || state.status !== 'editing' || state.saving || state.saveError === 'conflict' || !state.result.revision) return;
+    const saving = { ...state, saving: true, saveError: undefined };
+    this.publish(saving);
+    try {
+      const result = await savePageText(target.folder, target.filename, target.page - 1, state.result.revision, state.draft);
+      if (this.state === saving) this.publish({ status: 'ready', result });
+    } catch (error) {
+      if (this.state === saving) this.publish({ ...state, saveError: error instanceof OcrSaveConflictError ? 'conflict' : 'failed' });
+    }
+  };
+
   scanPage = () => {
-    if (!this.target || this.state.status === 'checking' || this.state.status === 'pending') return;
+    if (!this.target || this.state.status === 'checking' || this.state.status === 'pending' || this.state.status === 'editing') return;
     const { folder, filename, page } = this.target;
     const controller = new AbortController();
     const scan = { controller, slowHint: false };

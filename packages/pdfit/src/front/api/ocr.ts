@@ -8,6 +8,8 @@ export interface PageOcrResult {
   pageIndex: number;
   pageCount: number;
   durationMs: number;
+  edited?: true;
+  revision?: string;
 }
 
 /**
@@ -23,6 +25,8 @@ export class OcrUnreachableError extends Error {
     this.status = status;
   }
 }
+
+export class OcrSaveConflictError extends Error {}
 
 /** Backoff between attempts, in ms. Spans ~30 s, which covers a container restart. */
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
@@ -49,6 +53,7 @@ async function requestPageOcr(url: string, init: RequestInit): Promise<Response>
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;
+    if (init.method === 'PUT' && response.status === 409) throw new OcrSaveConflictError(payload?.error);
     // A gateway answer carries no API error field: the request never reached the runtime.
     if (!payload?.error && GATEWAY_STATUSES.has(response.status)) throw new OcrUnreachableError(response.status);
     throw new Error(payload?.error ?? `HTTP ${response.status}`);
@@ -60,6 +65,16 @@ export async function getCachedPageText(folder: string, filename: string, pageIn
   const query = new URLSearchParams({ folder, filename, pageIndex: String(pageIndex) });
   const response = await requestPageOcr(`/api/ocr/page?${query}`, { signal });
   return response.status === 204 ? null : response.json() as Promise<PageOcrResult>;
+}
+
+export async function savePageText(folder: string, filename: string, pageIndex: number, revision: string, text: string): Promise<PageOcrResult> {
+  const response = await requestPageOcr('/api/ocr/page', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder, filename, pageIndex, revision, text }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  return response.json() as Promise<PageOcrResult>;
 }
 
 /**

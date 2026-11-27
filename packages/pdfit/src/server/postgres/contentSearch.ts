@@ -135,7 +135,7 @@ export async function listPageOcrSearchIndexes(
   const { rows } = await db.query<{ page_index: number }>(`
     SELECT page_index FROM book_page_ocr_search
     WHERE folder = $1 AND filename = $2 AND source_size = $3 AND source_modified_at = $4
-      AND btrim(body) <> '' ${pageFilter}
+      ${pageFilter}
     ORDER BY page_index
   `, pageIndex === undefined ? params : [...params, pageIndex]);
   return rows.map((row) => row.page_index);
@@ -146,7 +146,7 @@ export async function savePageOcrSearchText(
 ): Promise<void> {
   const source = parsePageSourceStamp(stamp);
   const body = text.trim().slice(0, 64_000).replaceAll('\u0000', '');
-  if (!body || !source) return;
+  if (!source) return;
   await db.query(`
     INSERT INTO book_page_ocr_search AS ocr (folder, filename, page_index, source_size, source_modified_at, body)
     SELECT b.folder, b.filename, $5, b.size, b.modified_at, $6 FROM books b

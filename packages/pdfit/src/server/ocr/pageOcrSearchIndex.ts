@@ -11,7 +11,10 @@ export interface PageOcrSearchIndex {
 }
 
 /** Reuse the old cache on the scheduler's first plan, without opening any PDFs. */
-export async function restorePageOcrSearchIndex(cacheRoot: string, cacheVersion: string, index: PageOcrSearchIndex) {
+export async function restorePageOcrSearchIndex(
+  cacheRoot: string, cacheVersion: string, index: PageOcrSearchIndex,
+  persist: (write: () => Promise<void>) => Promise<void> = (write) => write(),
+) {
   const files = await fs.readdir(cacheRoot).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return [];
     throw error;
@@ -26,18 +29,20 @@ export async function restorePageOcrSearchIndex(cacheRoot: string, cacheVersion:
     const book = books.get(identity);
     const pageIndex = Number(indexText);
     if (!book || pageIndex >= 2_147_483_647) continue;
-    let record: unknown;
-    try {
-      record = JSON.parse(await fs.readFile(path.join(cacheRoot, name), 'utf8'));
-    } catch (error) {
-      if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      throw error;
-    }
-    if (!record || typeof record !== 'object') continue;
-    const { text, source, pageIndex: recordedIndex, metadataStamp } = record as Record<string, unknown>;
-    if (typeof text === 'string' && recordedIndex === pageIndex && (source === 'text-layer' || source === 'vision')) {
-      const indexStamp = typeof metadataStamp === 'string' ? metadataStamp : stamp;
-      await index.save(book.folder, book.filename, indexStamp, pageIndex, text);
-    }
+    await persist(async () => {
+      let record: unknown;
+      try {
+        record = JSON.parse(await fs.readFile(path.join(cacheRoot, name), 'utf8'));
+      } catch (error) {
+        if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+      if (!record || typeof record !== 'object') return;
+      const { text, source, pageIndex: recordedIndex, metadataStamp, edited } = record as Record<string, unknown>;
+      if (typeof text === 'string' && (edited === true || text.trim()) && recordedIndex === pageIndex && (source === 'text-layer' || source === 'vision')) {
+        const indexStamp = typeof metadataStamp === 'string' ? metadataStamp : stamp;
+        await index.save(book.folder, book.filename, indexStamp, pageIndex, text);
+      }
+    });
   }
 }
