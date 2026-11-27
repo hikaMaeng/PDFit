@@ -87,7 +87,7 @@ async function checkPopup(definition, engine) {
   await goTo('A', engine);
   await open();
   const initial = await bounds(popup);
-  const move = popup.getByTitle(/move .*window|move .*popup/i);
+  const move = popup.getByTitle(/^Move\b/i);
   await drag(move, id === 'bot' || id === 'comments' ? -135 : 80, 40);
   const moved = await bounds(popup);
   assert.ok(Math.abs(moved.x - initial.x) > 40 && Math.abs(moved.y - initial.y) > 25, `${id}: pointer move`);
