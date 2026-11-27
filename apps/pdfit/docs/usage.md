@@ -117,9 +117,9 @@ See [context and storage](../../../packages/pdfit/docs/book-bot.md).
 
 ## Table of contents
 
-The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and closes the dialog.
+The contents button in the viewer toolbar opens the book's table of contents. It uses a usable embedded PDF outline first. If the outline is missing or has only scan-volume labels such as `1` and `2`, PDFit looks for the book on YES24 using a readable ISBN or the filename's exact title. It matches YES24 entries to PDF page labels, printed page numbers, or headings in the PDF text layer. Entries whose destination cannot be verified show **No page**. Clicking a linked entry goes to that page and keeps the dialog open.
 
-Select the save icon beside a page number to jump there and save the reading position immediately. The dialog closes after the save succeeds. If the save fails, select the icon again to retry. In two-page mode, the saved position is the first page of the spread containing the destination.
+In an editable outline, select **Set to current page** beside a row to assign the page shown in the viewer toolbar. This also works for **No page** entries. The reader stays on the same page, and the row updates in the open dialog after the save succeeds. If the save fails, the row keeps its previous destination and the dialog shows an error. Select the icon again to retry.
 
 If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
 

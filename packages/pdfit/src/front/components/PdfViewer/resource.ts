@@ -13,7 +13,6 @@ export enum RSC {
   VIEWER_OUTLINE_ENTRY_LEVEL_LABEL = "viewer.outline.entryLevel.label",
   VIEWER_OUTLINE_INVALID_ALERT = "viewer.outline.invalid.alert",
   VIEWER_OUTLINE_WRITE_FAILED_ALERT = "viewer.outline.writeFailed.alert",
-  VIEWER_OUTLINE_SAVE_PAGE_BUTTON = "viewer.outline.savePage.button",
-  VIEWER_OUTLINE_PAGE_SAVE_FAILED_ALERT = "viewer.outline.pageSaveFailed.alert",
+  VIEWER_OUTLINE_SET_CURRENT_PAGE_BUTTON = "viewer.outline.setCurrentPage.button",
   VIEWER_OUTLINE_MOVE_LABEL = "viewer.outline.move.label",
 }

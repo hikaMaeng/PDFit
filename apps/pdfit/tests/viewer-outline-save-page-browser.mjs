@@ -7,6 +7,7 @@ const origin = process.env.PDFIT_TEST_ORIGIN ?? 'http://127.0.0.1:15233';
 const output = process.env.PDFIT_TEST_OUTPUT ?? 'test/20261127/outline-save-page-headless-browser-test';
 const folder = 'OutlineFixture';
 const stateUrl = (file) => `${origin}/api/viewer-state/${folder}/${file}`;
+const outlineUrl = (file) => `${origin}/api/outlines/${folder}/${file}`;
 const initialState = { page: 1, scale: 2, fitMode: 'none', viewMode: 'single', inverted: false, uiHidden: false, scrollTop: 0 };
 
 await mkdir(output, { recursive: true });
@@ -24,7 +25,9 @@ const outlineTrigger = page.getByTestId('viewer-outline-open');
 const closeButton = dialog.getByRole('button', { name: '닫기', exact: true });
 const resizeHandle = dialog.getByRole('button', { name: '팝업 크기 조절' });
 const row = (title) => dialog.getByRole('listitem').filter({ hasText: title });
-const saveButton = (title, number) => row(title).getByRole('button', { name: `${number}페이지로 이동하고 읽기 위치 저장` });
+const entry = (title) => row(title).getByTestId('pdf-outline-entry');
+const saveButton = (title, number) => row(title).getByRole('button', { name: `현재 페이지로 설정 (${number}페이지)`, exact: true });
+const waitForPage = (number) => pageInput.and(page.locator(`[value="${number}"]`)).waitFor();
 const errors = [];
 const steps = [];
 let failure;
@@ -42,7 +45,14 @@ async function open(file, engine, viewMode) {
   await page.getByTestId(engine === 'gpu' ? 'pdfgpu-scroll-area' : 'pdf-scroll-area').waitFor({ timeout: 45000 });
   await pageInput.waitFor();
   await outlineTrigger.click();
-  await saveButton('Chapter 2', 3).waitFor({ timeout: 45000 });
+  const regenerate = dialog.getByRole('button', { name: '재생성', exact: true });
+  const [response] = await Promise.all([
+    page.waitForResponse((item) => item.url() === outlineUrl(file) && item.request().method() === 'PUT'
+      && item.request().postDataJSON().generated === true),
+    regenerate.click({ timeout: 45000 }),
+  ]);
+  assert.equal(response.status(), 200);
+  await entry('Chapter 2').waitFor();
 }
 
 async function drag(handle, dx, dy) {
@@ -82,13 +92,13 @@ async function verifyPopup() {
   assert.equal(await outlineTrigger.evaluate((element) => document.activeElement === element), true);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await outlineTrigger.click();
-  await saveButton('Chapter 2', 3).waitFor();
+  await entry('Chapter 2').waitFor();
   assert.deepEqual(await dialog.boundingBox(), stored);
   steps.push({ popup: 'moved, limited, resized, and restored', stored });
 
   await pageInput.fill('2');
   await pageInput.press('Enter');
-  assert.equal(await pageInput.inputValue(), '2');
+  await waitForPage(2);
   assert.equal(await dialog.isVisible(), true);
   await closeButton.click();
   await dialog.waitFor({ state: 'hidden' });
@@ -97,58 +107,97 @@ async function verifyPopup() {
   return stored;
 }
 
-async function selectAndVerify(file, title, destination, expectedPage = destination, reject = false) {
-  const url = stateUrl(file);
-  const started = performance.now();
+async function navigate(title, destination, expectedPage = destination) {
+  assert.equal(await entry(title).getAttribute('data-page'), String(destination));
+  await entry(title).click();
+  await waitForPage(expectedPage);
+  assert.equal(await dialog.isVisible(), true);
+  steps.push({ navigate: title, destination, expectedPage, popupOpen: true });
+}
+
+async function storedOutline(url) {
+  const response = await fetch(url);
+  assert.equal(response.status, 200);
+  return (await response.json()).entries;
+}
+
+async function setPageAndVerify(file, title, previous, current, reject = false) {
+  const url = outlineUrl(file);
+  const before = await storedOutline(url);
+  assert.equal(before.find((item) => item.title === title).page, previous);
+  await waitForPage(current);
+  assert.equal(await entry(title).getAttribute('data-page'), previous === null ? '' : String(previous));
+  const expected = before.map((item) => item.title === title ? { ...item, page: current } : item);
   const [result] = await Promise.all([
-    page.waitForResponse((item) => item.url() === url && item.request().method() === 'PUT'
-      && item.request().postDataJSON().page === expectedPage, { timeout: 1200 }),
-    saveButton(title, destination).click(),
+    page.waitForResponse((item) => item.url() === url && item.request().method() === 'PUT'),
+    saveButton(title, current).click(),
   ]);
-  const elapsedMs = Math.round(performance.now() - started);
   assert.equal(result.status(), reject ? 503 : 200);
+  assert.deepEqual(result.request().postDataJSON().entries, expected);
   if (reject) {
-    await dialog.getByRole('alert').filter({ hasText: '읽기 위치를 저장하지 못했습니다.' }).waitFor();
+    await dialog.getByRole('alert').filter({ hasText: '목차 변경사항을 저장하지 못했습니다.' }).waitFor();
+    assert.equal(await entry(title).getAttribute('data-page'), String(previous));
   } else {
-    await dialog.waitFor({ state: 'hidden' });
-    assert.equal((await (await fetch(url)).json()).page, expectedPage);
+    await entry(title).and(dialog.locator(`[data-page="${current}"]`)).waitFor();
+    assert.equal(await dialog.getByRole('alert').count(), 0);
   }
-  assert.equal(await pageInput.inputValue(), String(expectedPage));
-  steps.push({ file, destination, expectedPage, http: result.status(), elapsedMs });
+  assert.deepEqual(await storedOutline(url), reject ? before : expected);
+  assert.equal(await dialog.isVisible(), true);
+  assert.equal(await pageInput.inputValue(), String(current));
+  steps.push({ file, title, previous, page: current, http: result.status(), popupOpen: true });
 }
 
 try {
   await open('original.pdf', 'legacy', 'single');
-  assert.equal(await row('Website').getByRole('button', { name: /읽기 위치 저장/ }).count(), 0);
-  assert.equal(await row('Missing').getByRole('button', { name: /읽기 위치 저장/ }).count(), 0);
-  await page.screenshot({ path: join(output, 'outline-save-icon-desktop.png') });
   const storedGeometry = await verifyPopup();
-  await selectAndVerify('original.pdf', 'Chapter 2', 3);
+  await navigate('Chapter 2', 3);
+  assert.equal(await entry('Chapter 2').getAttribute('aria-current'), 'location');
+  await setPageAndVerify('original.pdf', 'Chapter 1', 1, 3);
+  await page.screenshot({ path: join(output, 'outline-page-updated-desktop.png') });
+
+  await pageInput.fill('1');
+  await pageInput.press('Enter');
+  await waitForPage(1);
+  assert.equal(await dialog.isVisible(), true);
+  await page.route(outlineUrl('original.pdf'), (route) => route.fulfill({ status: 503, body: 'test failure' }), { times: 1 });
+  await setPageAndVerify('original.pdf', 'Chapter 2', 3, 1, true);
+  await page.screenshot({ path: join(output, 'outline-page-save-failure.png') });
+  await setPageAndVerify('original.pdf', 'Chapter 2', 3, 1);
+  assert.equal(await entry('Missing').isEnabled(), false);
+  await setPageAndVerify('original.pdf', 'Missing', null, 1);
+  assert.equal(await entry('Missing').isEnabled(), true);
 
   const fresh = await browser.newContext({ locale: 'ko-KR' });
   try {
     const reopened = await fresh.newPage();
     await reopened.goto(`${origin}/viewer/${folder}/original.pdf`, { waitUntil: 'domcontentloaded' });
-    await reopened.locator('input[aria-label="페이지 번호"][value="3"]').waitFor();
+    await reopened.getByTestId('viewer-outline-open').click();
+    const reopenedList = reopened.getByRole('dialog', { name: '목차' }).getByTestId('pdf-outline-list');
+    for (const [title, number] of [['Chapter 1', 3], ['Chapter 2', 1], ['Missing', 1]]) {
+      const saved = reopenedList.getByTestId('pdf-outline-entry').filter({ hasText: title });
+      assert.equal(await saved.getAttribute('data-page'), String(number));
+    }
   } finally {
     await fresh.close();
   }
-
-  await outlineTrigger.click();
-  const reject = (route) => route.fulfill({ status: 503, body: 'test failure' });
-  await page.route(stateUrl('original.pdf'), reject, { times: 1 });
-  await selectAndVerify('original.pdf', 'Chapter 1', 1, 1, true);
-  await selectAndVerify('original.pdf', 'Chapter 1', 1);
+  steps.push({ file: 'original.pdf', popup: 'stored destinations restored in a fresh browser context' });
 
   await open('spread.pdf', 'legacy', 'double');
   assert.notEqual((await dialog.boundingBox()).width, storedGeometry.width);
-  await selectAndVerify('spread.pdf', 'Section 1.1', 2, 1);
+  await navigate('Chapter 2', 3);
+  await navigate('Section 1.1', 2, 1);
+  await setPageAndVerify('spread.pdf', 'Chapter 2', 3, 1);
 
   await open('scroll.pdf', 'legacy', 'scroll');
-  await selectAndVerify('scroll.pdf', 'Chapter 2', 3);
-  assert.ok((await (await fetch(stateUrl('scroll.pdf'))).json()).scrollTop > 0);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('input[aria-label="페이지 번호"][value="3"]').waitFor();
+  await navigate('Chapter 2', 3);
+  const scrollArea = page.getByTestId('pdf-scroll-area');
+  await page.waitForFunction(() => {
+    const area = document.querySelector('[data-testid="pdf-scroll-area"]');
+    return area && area.scrollTop > 0 && area.scrollHeight - area.clientHeight - area.scrollTop <= 1;
+  });
+  const scrollTop = await scrollArea.evaluate((area) => area.scrollTop);
+  await setPageAndVerify('scroll.pdf', 'Chapter 1', 1, 3);
+  assert.equal(await scrollArea.evaluate((area) => area.scrollTop), scrollTop);
 
   // Each small window leaves space for movement on the unclipped axis.
   for (const { file, viewport, axis, dx, dy } of [
@@ -166,7 +215,7 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await outlineTrigger.click();
-    await saveButton('Chapter 2', 3).waitFor();
+    await entry('Chapter 2').waitFor();
     const restored = await dialog.boundingBox();
     assert.equal(restored.width, 560);
     assert.equal(restored.height, 660);
@@ -176,10 +225,11 @@ try {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await open('gpu.pdf', 'gpu', 'single');
-  await page.screenshot({ path: join(output, 'outline-save-icon-mobile.png') });
-  await selectAndVerify('gpu.pdf', 'Chapter 2', 3);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('input[aria-label="페이지 번호"][value="3"]').waitFor();
+  await navigate('Chapter 2', 3);
+  await setPageAndVerify('gpu.pdf', 'Chapter 1', 1, 3);
+  await page.getByTestId('viewer-load-progress-panel').waitFor({ state: 'hidden' });
+  assert.equal(await pageInput.inputValue(), '3');
+  await page.screenshot({ path: join(output, 'outline-page-updated-mobile.png') });
   assert.equal(await page.getByTestId('pdfgpu-scroll-area').count(), 1);
 
   const rtl = await browser.newContext({ locale: 'ar', viewport: { width: 900, height: 760 } });

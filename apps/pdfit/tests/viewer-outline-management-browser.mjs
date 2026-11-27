@@ -81,10 +81,8 @@ try {
 
   await openViewer(original);
   await entries.filter({ hasText: '수정한 장' }).click();
-  await dialog.waitFor({ state: 'hidden' });
   assert.equal(await page.getByRole('textbox', { name: '페이지 번호' }).inputValue(), '2');
-  await page.getByTestId('viewer-outline-open').click();
-  await entries.filter({ hasText: '수정한 장' }).waitFor();
+  assert.equal(await dialog.isVisible(), true);
   assert.equal(await entries.and(dialog.locator('[aria-current="location"]')).getAttribute('data-page'), '2');
   record('reopen a saved outline and navigate to its edited page');
 

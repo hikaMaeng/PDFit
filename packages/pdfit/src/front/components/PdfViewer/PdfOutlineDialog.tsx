@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import {
   Alert, AlertTitle, Box, Button, CircularProgress, IconButton, LinearProgress,
   List, ListItem, ListItemButton, ListItemText, Paper, TextField, Typography,
@@ -29,13 +29,12 @@ type Props = {
   pageCount: number;
   /** 1-based page of the reader's current position, used to mark the current chapter. */
   currentPage: number;
-  /** Moves the viewer to a 1-based page. The dialog closes itself afterwards. */
+  /** Moves the viewer to a 1-based page. */
   onSelectPage: (page: number) => void;
-  onSavePage?: (page: number) => void | Promise<void>;
   onClose: () => void;
 };
 
-export default function PdfOutlineDialog({ id, bookKey, open, readOutline, storage, pageCount, currentPage, onSelectPage, onSavePage, onClose }: Props) {
+export default function PdfOutlineDialog({ id, bookKey, open, readOutline, storage, pageCount, currentPage, onSelectPage, onClose }: Props) {
   const { t } = usePdfitI18n();
   const editorId = useId();
   const titleId = useId();
@@ -47,8 +46,10 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
   const { result, canSave, draft, error, mode, pending } = model;
   const loading = pending === 'load' || !result;
-  const [pageSave, setPageSave] = useState<'saving' | 'error' | null>(null);
-  const changing = pending === 'change' || pageSave === 'saving';
+  const changing = pending === 'change';
+  const setPageLabel = canSave && currentPage >= 1 && currentPage <= pageCount
+    ? t(RSC.VIEWER_OUTLINE_SET_CURRENT_PAGE_BUTTON, { page: currentPage })
+    : null;
   const messages = {
     empty: 'tocFailedEmpty', read: 'tocFailedError',
     write: RSC.VIEWER_OUTLINE_WRITE_FAILED_ALERT, invalid: RSC.VIEWER_OUTLINE_INVALID_ALERT,
@@ -63,23 +64,11 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
 
   const close = () => {
     if (changing) return;
-    setPageSave(null);
     model.cancel();
     if (document.activeElement === document.body || popupRef.current?.contains(document.activeElement)) {
       document.getElementById(`${id}-trigger`)?.focus({ preventScroll: true });
     }
     onClose();
-  };
-
-  const selectAndSave = async (page: number) => {
-    if (!onSavePage || changing) return;
-    setPageSave('saving');
-    try {
-      await onSavePage(page);
-      close();
-    } catch {
-      setPageSave('error');
-    }
   };
 
   // The current chapter is the last entry that starts at or before the current page.
@@ -118,10 +107,9 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
       </Box>
       <ViewerPopupCloseButton onClose={close} disabled={changing} />
     </Box>
+    {changing && <LinearProgress aria-label={t('tableOfContents')} />}
+    {error && <Alert severity="error" sx={{ m: 2 }}>{t(messages[error])}</Alert>}
     <Box aria-busy={loading || changing} sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      {changing && <LinearProgress aria-label={t('tableOfContents')} />}
-      {error && <Alert severity="error" sx={{ m: 2 }}>{t(messages[error])}</Alert>}
-      {pageSave === 'error' && <Alert severity="error" sx={{ m: 2 }}>{t(RSC.VIEWER_OUTLINE_PAGE_SAVE_FAILED_ALERT)}</Alert>}
       {loading ? (
         <Box role="status" data-testid="pdf-outline-loading" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 5 }}>
           <CircularProgress size={22} />
@@ -178,8 +166,7 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
           {result.entries.map((entry) => {
             const current = entry.key === currentKey;
             const { page } = entry;
-            const saveLabel = onSavePage && page !== null ? t(RSC.VIEWER_OUTLINE_SAVE_PAGE_BUTTON, { page }) : null;
-            return <ListItem key={entry.key} disablePadding sx={{ paddingInlineEnd: saveLabel ? 1 : 0 }}>
+            return <ListItem key={entry.key} disablePadding sx={{ paddingInlineEnd: setPageLabel ? 1 : 0 }}>
               <ListItemButton
                 component="button"
                 type="button"
@@ -189,8 +176,8 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
                 disabled={page === null || changing}
                 selected={current}
                 aria-current={current ? 'location' : undefined}
-                onClick={() => { if (page !== null) { onSelectPage(page); close(); } }}
-                sx={{ minWidth: 0, textAlign: 'start', paddingInlineStart: (theme) => theme.spacing(2 + Math.min(entry.depth, 8) * 2), paddingInlineEnd: saveLabel ? 0.5 : 2, py: 0.5 }}
+                onClick={() => { if (page !== null) onSelectPage(page); }}
+                sx={{ minWidth: 0, textAlign: 'start', paddingInlineStart: (theme) => theme.spacing(2 + Math.min(entry.depth, 8) * 2), paddingInlineEnd: setPageLabel ? 0.5 : 2, py: 0.5 }}
               >
                 <ListItemText
                   primary={entry.title || '—'}
@@ -200,8 +187,9 @@ export default function PdfOutlineDialog({ id, bookKey, open, readOutline, stora
                   {page ?? t('tocNoPage')}
                 </Typography>
               </ListItemButton>
-              {page !== null && saveLabel && (
-                <IconButton type="button" size="small" aria-label={saveLabel} title={saveLabel} disabled={changing} onClick={() => void selectAndSave(page)}>
+              {setPageLabel && (
+                <IconButton type="button" size="small" aria-label={setPageLabel} title={setPageLabel} disabled={changing}
+                  onClick={() => void model.setEntryPage(entry.key, currentPage, pageCount)}>
                   <SaveOutlinedIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               )}

@@ -104,11 +104,11 @@ try {
     // 항목 클릭 → 이동 (현재 페이지와 다른 페이지를 가진 마지막 항목)
     const target = [...expected].reverse().find((row) => row.page !== null && row.page > 1) ?? expected.find((row) => row.page !== null);
     await page.getByTestId('pdf-outline-entry').filter({ hasText: target.title }).first().click();
-    await page.getByRole('dialog', { name: '목차' }).waitFor({ state: 'hidden', timeout: 10000 });
     await page.waitForTimeout(800);
     const pageValue = await page.getByRole('textbox', { name: '페이지 번호' }).inputValue().catch(async () => page.locator('[data-testid="viewer-page-indicator"] input').inputValue());
     const navPass = Number(pageValue) === target.page || Number(pageValue) === target.page - 1;
-    record('clicking an entry moves to its page', navPass, { target, pageInput: pageValue });
+    const popupOpen = await page.getByRole('dialog', { name: '목차' }).isVisible();
+    record('clicking an entry moves to its page and keeps the outline open', navPass && popupOpen, { target, pageInput: pageValue, popupOpen });
     await page.screenshot({ path: fileURLToPath(new URL('2-after-entry-click.png', output)) });
 
     // 새로고침 후 재조회 → DB 저장본

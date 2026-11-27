@@ -201,7 +201,6 @@ export default function PdfGpuViewer({
     const mode = viewerModeFromParts(state.scrollMode, state.viewMode);
     const target = normalizeViewerPage(page, state.pageCount, mode, state.spreadPairing);
     controller?.scrollToPage(target - 1);
-    return target;
   }, [controller, state.pageCount, state.scrollMode, state.spreadPairing, state.viewMode]);
   // A pairing switch lands on the new row containing the current page; switching straight
   // back returns to the page the reader switched from (see spreadPairing.ts).
@@ -298,15 +297,15 @@ export default function PdfGpuViewer({
     if (activePage !== undefined) onPageChange?.(activePage);
   }, [activePage, onPageChange]);
 
-  const reportViewerState = useCallback((page: number, snapshot: PdfGpuViewerState, immediate?: boolean) => {
-    return onStateChange?.({
+  const reportViewerState = useCallback((page: number, snapshot: PdfGpuViewerState) => {
+    onStateChange?.({
       page,
       scale: snapshot.zoom,
       fitMode: snapshot.fitMode === 'page' ? snapshot.viewMode === 'spread' ? 'height' : 'none' : snapshot.fitMode,
       viewMode: toLegacyViewMode(snapshot),
       inverted,
       scrollTop: viewportRef.current?.scrollTop ?? 0,
-    }, immediate);
+    });
   }, [inverted, onStateChange]);
 
   useEffect(() => {
@@ -346,12 +345,6 @@ export default function PdfGpuViewer({
   // Key: the controller instance (one per opened document); set when the active page leaves
   // page 1 before the first apply; cleared when the controller changes.
   const movedBeforeInitialViewRef = useRef<PdfGpuViewerController | null>(null);
-  const goToAndSavePage = (page: number) => {
-    if (!controller) return;
-    movedBeforeInitialViewRef.current = controller;
-    const target = goToPage(page);
-    return reportViewerState(target, controller.getState(), true);
-  };
   useEffect(() => {
     if (!controller || state.loadPhase === 'ready') return;
     if (initialViewAppliedRef.current?.controller === controller) return;
@@ -490,7 +483,7 @@ export default function PdfGpuViewer({
         {floatingPanel?.(goToPage, state.pageCount)}
         <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
           storage={outlineStorage} pageCount={state.pageCount} currentPage={currentPage}
-          onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />
+          onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
       </Box>
       {(bookmark.captureBusy || bookmark.captureNotice) && <Box role={bookmark.captureNotice?.error ? 'alert' : 'status'} sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, px: 1.5, py: 0.75, borderRadius: 1, bgcolor: bookmark.captureNotice?.error ? 'rgba(127,29,29,.95)' : bookmark.captureNotice ? 'rgba(20,83,45,.95)' : 'rgba(30,30,30,.9)', color: 'grey.100', fontSize: 12 }}>{bookmark.captureNotice?.message ?? ui("북마크를 저장하는 중입니다…")}</Box>}
       <BookmarkEditorDialog bookmark={bookmark.editing} draft={bookmark.draft} onDraftChange={bookmark.setDraft} onClose={() => bookmark.setEditing(null)} onSave={() => void bookmark.saveEditor()} />

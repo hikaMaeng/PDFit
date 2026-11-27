@@ -70,10 +70,10 @@ try {
       await page.screenshot({ path: join(output, `${book.key}-viewer.png`) });
 
       await entries.nth(book.clickRow).click();
-      await dialog.waitFor({ state: 'hidden' });
       const target = book.expected[book.clickRow];
       const indicator = page.getByRole('textbox', { name: '페이지 번호' });
       await indicator.and(page.locator(`input[value="${target}"]`)).waitFor();
+      assert.equal(await dialog.isVisible(), true);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await button.click({ timeout: 45_000 });
       await list.waitFor();

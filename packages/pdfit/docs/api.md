@@ -174,6 +174,8 @@ PostgreSQL table `book_outlines` (created by `ensureSchema()`): key `(folder, fi
 
 [`OutlineModel`](../src/front/viewer/outlineModel.ts#OutlineModel) owns dialog operations for both engines. [`loadOutlineWithStorage`](../src/front/viewer/storedOutline.ts#loadOutlineWithStorage) initializes an outline that has at least one destination and reads back current storage on `412`. PostgreSQL treats automatically generated sequences of numeric top-level placeholders as missing. Existing copies with unknown provenance are kept until explicit regeneration. Normal `PUT` writes record a manual edit, and an explicit regeneration sends `generated: true`.
 
+[`PdfOutlineDialog`](../src/front/components/PdfViewer/PdfOutlineDialog.tsx) keeps the dialog open after navigation. Its **Set to current page** action passes the toolbar's page and the row key to [`OutlineModel.setEntryPage`](../src/front/viewer/outlineModel.ts#setEntryPage). The model updates the row only after the manual outline write succeeds.
+
 ## Book file actions and comments
 
 - `PATCH /api/folders/files/rename` takes `{folder, filename, newName, driveFileId?}` and returns the renamed file metadata. It rejects invalid PDF names with `400` and existing destination names with `409`. The Free store relocates path-keyed metadata in one transaction. [Rename protocol](../src/common/protocol/file-rename/index.ts)

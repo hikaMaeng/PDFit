@@ -514,7 +514,7 @@ export default function PdfViewer({
   }, [outlineDocument, outlineLookup]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
-  const goToPage = useCallback((n: number, mode?: ViewMode, behavior: ScrollBehavior = 'smooth') => {
+  const goToPage = useCallback((n: number, mode?: ViewMode) => {
     const m = mode ?? viewModeRef.current;
     const total = totalPagesRef.current;
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: m }).state;
@@ -525,20 +525,9 @@ export default function PdfViewer({
     setCurrentPage(target);
     setPageInput(String(target));
     if (m === 'scroll') {
-      pageRefs.current[target - 1]?.scrollIntoView({ behavior, block: behavior === 'instant' ? 'center' : 'start' });
+      pageRefs.current[target - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    return target;
   }, []);
-
-  const goToAndSavePage = (page: number) => {
-    const target = goToPage(page, undefined, 'instant');
-    stateSnapshotRef.current = {
-      ...stateSnapshotRef.current,
-      page: target,
-      scrollTop: viewModeRef.current === 'scroll' ? containerRef.current?.scrollTop ?? 0 : 0,
-    };
-    return onStateChange?.(stateSnapshotRef.current, true);
-  };
 
   const prevPage = useCallback(() => {
     const m = viewModeRef.current;
@@ -1086,7 +1075,7 @@ export default function PdfViewer({
         {floatingPanel?.(goToPage, totalPages)}
         <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
           storage={outlineStorage} pageCount={totalPages} currentPage={currentPage}
-          onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />
+          onSelectPage={goToPage} onClose={() => setOutlineOpen(false)} />
       </Box>
     </Box>
   );

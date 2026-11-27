@@ -119,6 +119,22 @@ export class OutlineModel {
     this.resetView();
   });
 
+  private async saveEntries(entries: BookOutlineEntry[]) {
+    if (!await this.storage?.save(entries)) throw new Error('Outline write failed');
+    this.result = { status: 'ok', entries, source: 'stored' };
+    this.resetView();
+  }
+
+  setEntryPage(key: string, page: number, pageCount: number) {
+    if (this.pending || !this.canSave || this.mode !== 'view' || this.result?.status !== 'ok') return;
+    if (!Number.isInteger(page) || page < 1 || page > pageCount) return;
+
+    const entry = this.result.entries.find((item) => item.key === key);
+    if (!entry || entry.page === page) return;
+    const entries = this.result.entries.map((item) => item === entry ? { ...item, page } : item);
+    return this.change(() => this.saveEntries(entries));
+  }
+
   save(values: FormData, pageCount: number) {
     return this.change(async () => {
       const rows = this.draft.map(({ id }, index) => {
@@ -135,9 +151,7 @@ export class OutlineModel {
         this.error = 'invalid';
         return;
       }
-      if (!await this.storage?.save(entries)) throw new Error('Outline write failed');
-      this.result = { status: 'ok', entries, source: 'stored' };
-      this.resetView();
+      await this.saveEntries(entries);
     });
   }
 }
