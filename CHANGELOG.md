@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.25] - 2026-11-27
+
+- Open **Background** in the WebGPU viewer toolbar to choose from 20 colors for the space around and between pages. Dark gray is the default. PDFit remembers the selected color in the browser.
+- Keep the paper opaque at the corners of deskewed pages.
+
 ## [0.4.24] - 2026-11-27
 
 - Toggle Deskew in the viewer toolbar to correct scanned pages in the open document. New documents open with Deskew off.
