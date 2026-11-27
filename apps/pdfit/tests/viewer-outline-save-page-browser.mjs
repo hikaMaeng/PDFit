@@ -150,6 +150,30 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('input[aria-label="페이지 번호"][value="3"]').waitFor();
 
+  // Each small window leaves space for movement on the unclipped axis.
+  for (const { file, viewport, axis, dx, dy } of [
+    { file: 'scroll.pdf', viewport: { width: 390, height: 1100 }, axis: 'width', dx: 0, dy: 30 },
+    { file: 'spread.pdf', viewport: { width: 900, height: 500 }, axis: 'height', dx: 30, dy: 0 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await open(file, 'legacy', 'single');
+    const before = await dialog.boundingBox();
+    assert.ok(before[axis] < (axis === 'width' ? 560 : 660));
+    await drag(dialog.getByTitle('목차 창 이동'), dx, dy);
+    const moved = await dialog.boundingBox();
+    assert.equal(moved.x, before.x + dx);
+    assert.equal(moved.y, before.y + dy);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await outlineTrigger.click();
+    await saveButton('Chapter 2', 3).waitFor();
+    const restored = await dialog.boundingBox();
+    assert.equal(restored.width, 560);
+    assert.equal(restored.height, 660);
+    await page.screenshot({ path: join(output, `outline-restored-after-clipped-${axis}.png`) });
+    steps.push({ popup: 'moving preserves its preferred size', clipped: axis, width: restored.width, height: restored.height });
+  }
+
   await page.setViewportSize({ width: 390, height: 844 });
   await open('gpu.pdf', 'gpu', 'single');
   await page.screenshot({ path: join(output, 'outline-save-icon-mobile.png') });

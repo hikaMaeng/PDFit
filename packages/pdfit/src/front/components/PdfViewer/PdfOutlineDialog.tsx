@@ -15,10 +15,9 @@ import type { OutlineReader, PdfOutlineStorage } from '../../viewer/storedOutlin
 import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle.js';
 import { RSC } from './resource.js';
 
-function defaultOutlineRect(bounds: { width: number; height: number }) {
-  const width = Math.min(560, Math.max(1, bounds.width - 24));
-  const height = Math.min(660, Math.max(1, bounds.height - 24));
-  return { x: Math.round((bounds.width - width) / 2), y: 12, width, height };
+function defaultOutlineRect(bounds: { width: number }) {
+  const width = 560;
+  return { x: Math.max(0, Math.round((bounds.width - width) / 2)), y: 12, width, height: 660 };
 }
 
 type Props = {

@@ -121,7 +121,7 @@ The contents button in the viewer toolbar opens the book's table of contents. It
 
 Select the save icon beside a page number to jump there and save the reading position immediately. The dialog closes after the save succeeds. If the save fails, select the icon again to retry. In two-page mode, the saved position is the first page of the spread containing the destination.
 
-You can keep reading while the outline is open. Drag its title to move it and use the bottom-right handle to resize it. The browser remembers the position and size for each book. Close the outline with the top-right X or press Escape while the outline has focus.
+You can keep reading while the outline is open. Drag its title to move it and use the bottom-right handle to resize it. The browser remembers the position and size for each book. When the viewer is small, the outline fits inside it and restores its preferred size when space is available. Close the outline with the top-right X or press Escape while the outline has focus.
 
 If the PDF and YES24 yield no usable outline, the dialog shows **Could not load the table of contents**. You can still create a manual outline.
 
