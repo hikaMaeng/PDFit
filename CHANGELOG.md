@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.22] - 2026-11-27
+
+- Keep Contents open while navigating. Assign the current PDF page to a Contents entry and see its saved destination in the same popup.
+
 ## [0.4.21] - 2026-11-27
 
 - Level mildly skewed scans in the GPU viewer and keep annotations and clips aligned with the corrected pages.
