@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.23] - 2026-11-27
+
+- Restore the GPU viewer's reading position as soon as the page layout is available, so finishing the load cannot shift an in-progress clip.
+
 ## [0.4.22] - 2026-11-27
 
 - Keep Contents open while navigating. Assign the current PDF page to a Contents entry and see its saved destination in the same popup.

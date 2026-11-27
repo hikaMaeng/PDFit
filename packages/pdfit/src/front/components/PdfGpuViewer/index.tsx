@@ -339,25 +339,13 @@ export default function PdfGpuViewer({
     return () => window.removeEventListener('keydown', handleKey);
   }, [controller, currentPage, goToPage, state.pageCount, state.scrollMode, state.spreadPairing, state.viewMode]);
 
-  // The saved page is applied when loading reaches 'ready'. Navigation already works while
-  // previews are still rendering (and @pdfgpu/core 0.1.10 reaches 'ready' later), so a page
-  // turn made before 'ready' must win: re-applying the saved page then yanked the reader back.
-  // Key: the controller instance (one per opened document); set when the active page leaves
-  // page 1 before the first apply; cleared when the controller changes.
-  const movedBeforeInitialViewRef = useRef<PdfGpuViewerController | null>(null);
-  useEffect(() => {
-    if (!controller || state.loadPhase === 'ready') return;
-    if (initialViewAppliedRef.current?.controller === controller) return;
-    if ((state.activePage ?? 1) !== 1) movedBeforeInitialViewRef.current = controller;
-  }, [controller, state.activePage, state.loadPhase]);
-
-  useEffect(() => {
-    if (!controller || state.loadPhase !== 'ready') return;
+  // PDFGPU has built the page layout when rendering starts. Restore the position
+  // before that layout becomes interactive. See apps/pdfit/docs/internals.md#decisions.
+  useLayoutEffect(() => {
+    if (!controller || (state.loadPhase !== 'rendering' && state.loadPhase !== 'ready')) return;
     const applied = initialViewAppliedRef.current;
     if (applied?.controller === controller && applied.page === initialPage && applied.scrollTop === initialScrollTop) return;
-    const firstApply = applied?.controller !== controller;
     initialViewAppliedRef.current = { controller, page: initialPage, scrollTop: initialScrollTop };
-    if (firstApply && movedBeforeInitialViewRef.current === controller) return;
     if (initialPage != null) goToPage(initialPage);
     if (initialScrollTop && initialScrollTop > 0 && viewportRef.current) {
       viewportRef.current.scrollTop = initialScrollTop;

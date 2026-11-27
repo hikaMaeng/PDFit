@@ -18,7 +18,7 @@ Confirm that the PDFGPU viewer levels mildly skewed scan pages and keeps PDF-poi
 1. Open `/viewer/deskew/pages.pdf?driveFileId=deskew&engine=gpu&page=1`. Verify the PDFGPU backend and the correct current page in `viewer status`.
 2. Measure the angle of a colored line on the composited canvas for both scan pages. Check that both lines are level within 0.2°. Check that the upright page stays level. Open the same PDF in the PDF.js viewer and verify that the two original scan angles have opposite signs.
 3. Zoom in until detail tiles display. Measure the angle again and check that the rendered line and saved annotation stay aligned. Draw a line with the **선** tool and check that the saved endpoints match the original PDF coordinates.
-4. Use the **클립** control to capture a rectangle across the line. Decode the captured image and check that the line stays level. Check the saved `rect` in PDF points and the rotation of `bookmark-page-overlay`.
+4. Use the **클립** control to capture a rectangle across the line as soon as the page detail is available. Verify the scroll position stays fixed as loading completes. Decode the captured image and check that the line stays level. Check the saved `rect` in PDF points and the rotation of `bookmark-page-overlay`.
 
 ## Evidence
 
