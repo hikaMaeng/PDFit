@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Checkbox, IconButton, ThemeProvider, Tooltip, Typography, createTheme } from '@mui/material';
+import { Box, Button, IconButton, ThemeProvider, Tooltip, Typography, createTheme } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { usePdfitI18n } from '../i18n/usePdfitI18n.js';
 import { isPendingUploadDriveFileId, openViewer, viewerUrl } from '../viewer/openViewer.js';
@@ -65,7 +65,7 @@ export default function PdfCoverItem(props: LibraryBookProps) {
   const requestInfo = () => setInfoRequested(true);
   const dragPayload = { folder: props.folder, filename: props.filename, driveFileId: props.driveFileId };
 
-  return <Box component="article" data-testid="pdf-cover-card" sx={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', border: '1px solid', borderColor: props.selected ? 'primary.main' : 'divider', borderRadius: 1.5, bgcolor: 'background.paper', boxShadow: props.selected ? '0 0 0 1px #3b82f6' : '0 8px 20px rgba(0,0,0,.10)', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light' } }}>
+  return <Box component="article" data-testid="pdf-cover-card" sx={{ position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(0,0,0,.10)', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light' } }}>
     <Box
       data-testid="pdf-cover-media"
       data-info-open={infoPinned ? 'true' : 'false'}
@@ -111,7 +111,6 @@ export default function PdfCoverItem(props: LibraryBookProps) {
           </Box>
         </ThemeProvider>
         <Box data-testid="pdf-cover-title-row" sx={{ flexShrink: 0, minHeight: TITLE_BAND_MIN_HEIGHT, display: 'flex', alignItems: 'center', gap: .5, px: 1, py: '6px', fontSize: '.85rem', lineHeight: 1.35, bgcolor: 'rgba(0,0,0,.62)', color: '#fff', pointerEvents: 'none' }}>
-          {props.onSelectionChange && <Checkbox size="small" data-testid="pdf-cover-selection" sx={{ p: .25, width: 24, height: 24, flexShrink: 0, color: 'rgba(255,255,255,.8)', pointerEvents: 'auto' }} inputProps={{ 'aria-label': `${t('selectPdf')}: ${props.filename}` }} checked={props.selected} disabled={pending} onChange={(_, checked) => props.onSelectionChange?.(props.folder, props.filename, checked)} />}
           <Typography component="a" href={viewerHref} draggable={false} onClick={(event) => { event.preventDefault(); open(); }} title={props.filename} translate="no" sx={{ minWidth: 0, flex: 1, color: '#fff', fontWeight: 700, fontSize: 'inherit', lineHeight: 'inherit', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere', pointerEvents: 'auto' }}>{props.filename}</Typography>
           <BookClipButton book={props} disabled={pending} />
         </Box>

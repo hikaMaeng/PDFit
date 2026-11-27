@@ -52,6 +52,11 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
   File actions opens a menu. Comments opens a dialog with five complete posts
   per page. Scope each post's edit and delete controls to its article.
   `book-comments-content` scrolls independently of the heading and page controls.
+* Consumers: [folder](../src/front/pages/FolderPage.tsx#FolderPage) and other shared library views.
+  `folder-list-toolbar` contains `folder-document-count` and the named list and
+  cover view buttons. Locate a row by its filename link in a list item, or a cover
+  by the filename link in `pdf-cover-card`. File actions and automatic tagging
+  target one book from either view.
 * Consumers: PDF.js and PDFGPU viewers. [FloatingBookComments](../src/front/components/book-comments/BookCommentsDialog.tsx)
   shares the book comments protocol and board with the cover card. Keep the floating
   window within the viewer body and leave the PDF and toolbar interactive.

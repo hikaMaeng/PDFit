@@ -31,8 +31,6 @@ export function createPdfitServiceApp(extension: PdfitServiceExtension = {}) {
     extraSidebarFooter: extension.extraSidebarFooter,
     navigationGuard: extension.navigationGuard,
     aiAutoTagAccess: extension.aiAutoTagAccess,
-    aiBulkTagLimit: extension.aiBulkTagLimit,
-    onAiTagProcessed: extension.onAiTagProcessed,
     onAiTagRemoved: extension.onAiTagRemoved,
     bookMetadataEnabled: extension.bookMetadataEnabled,
     serverThumbnails: extension.serverThumbnails,

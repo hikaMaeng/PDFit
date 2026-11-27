@@ -12,11 +12,10 @@ interface Props {
   disabled: boolean;
   onInputChange: (value: string) => void;
   onAdd: (tag: string) => void;
-  onSelect?: (tag: string) => void;
   children: ReactNode;
 }
 
-export default function ManualTagInput({ tags, assignedTags, value, disabled, onInputChange, onAdd, onSelect = onAdd, children }: Props) {
+export default function ManualTagInput({ tags, assignedTags, value, disabled, onInputChange, onAdd, children }: Props) {
   const { t } = usePdfitI18n();
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const [popupWidth, setPopupWidth] = useState<number>();
@@ -47,7 +46,7 @@ export default function ManualTagInput({ tags, assignedTags, value, disabled, on
           onInputChange={(_event, input, reason) => {
             if (reason === 'input' || reason === 'clear') onInputChange(input);
           }}
-          onChange={(_event, tag) => { if (tag) onSelect(tag); }}
+          onChange={(_event, tag) => { if (tag) onAdd(tag); }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter') return;
             const muiEvent = event as typeof event & { defaultMuiPrevented?: boolean };

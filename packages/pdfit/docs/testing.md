@@ -72,11 +72,11 @@ Verify the destination along with the tag index, untagged, favorites, clips,
 and AI settings routes. The AI settings link and standalone feature copy
 depend on the app registering `/settings`.
 
-Folder selection layout coverage verifies that each row checkbox is horizontally
-after the row delete button and that toggling it still updates the selected-delete
-count without overlapping the filename or action controls.
-The row action group must also center the tag, move, delete, and selection
-controls on one vertical axis across multiple visible rows.
+The [library browser scenario](../../../apps/pdfit/tests/plans/library-list-mode-20261125.md)
+checks the document count and two view buttons in `folder-list-toolbar`. It
+checks the absence of book checkboxes in list items and `pdf-cover-card`.
+The named AI button in each view submits one request for the book identified by
+its filename link. Earlier selection and bulk tagging scenarios predate this change.
 
 `npm run sync:pdfgpu` builds the sibling `@pdfgpu/core`, packs it, verifies its
 source commit and SHA-256 manifest, and relinks the local PDFit dependency.

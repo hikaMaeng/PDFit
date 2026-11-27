@@ -43,7 +43,7 @@ const baseTheme = {
           opacity: 0.58,
           pointerEvents: 'auto',
         },
-        '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal, .pdfit-pdf-row[data-selected="true"] .pdfit-row-selection': {
+        '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal': {
           opacity: 1,
           pointerEvents: 'auto',
         },
@@ -116,8 +116,6 @@ export function createPdfitFrontApp(extension: PdfitFrontExtension = {}) {
     extraRoutes: extension.extraRoutes ?? [],
     extraSidebarItems: extension.extraSidebarItems ?? [],
     aiAutoTagAccess: extension.aiAutoTagAccess,
-    aiBulkTagLimit: extension.aiBulkTagLimit,
-    onAiTagProcessed: extension.onAiTagProcessed,
     onAiTagRemoved: extension.onAiTagRemoved,
     bookMetadataEnabled: extension.bookMetadataEnabled,
     serverThumbnails: extension.serverThumbnails,
@@ -146,7 +144,7 @@ export function createPdfitFrontApp(extension: PdfitFrontExtension = {}) {
                 opacity: 0.58,
                 pointerEvents: 'auto',
               },
-              '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal, .pdfit-pdf-row[data-selected="true"] .pdfit-row-selection': {
+              '.pdfit-pdf-row:hover .pdfit-row-reveal, .pdfit-pdf-row:focus-within .pdfit-row-reveal': {
                 opacity: 1,
                 pointerEvents: 'auto',
               },

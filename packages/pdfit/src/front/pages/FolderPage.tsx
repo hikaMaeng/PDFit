@@ -1,11 +1,9 @@
 import type { TagIconName } from '../../shared/tagDetails.js';
-import BulkManualTagDialog from '../components/BulkManualTagDialog';
 import { compareUnicode } from '../../shared/unicodeOrder.js';
 import FolderDestinationPicker from '../components/FolderDestinationPicker';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Typography, IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, FormControl, InputLabel, Chip, Checkbox, ToggleButton, ToggleButtonGroup, TextField, useTheme, InputAdornment, } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { Box, Typography, IconButton, Tooltip, Button, CircularProgress, Alert, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, ToggleButton, ToggleButtonGroup, TextField, useTheme, InputAdornment, } from '@mui/material';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -15,7 +13,6 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import ClearIcon from '@mui/icons-material/Clear';
 import SearchIcon from '@mui/icons-material/Search';
 import FindInPageOutlinedIcon from '@mui/icons-material/FindInPageOutlined';
@@ -45,7 +42,6 @@ import TagChip from '../components/TagChip';
 import HashTagIcon from '../components/HashTagIcon';
 import { useTagMutationLocks } from '../components/useTagMutationLocks';
 import { synchronizeLibraryMetadata } from '../model/libraryMetadataSync.js';
-import SelectedDocumentActions from '../components/SelectedDocumentActions';
 function normalizePdfSearch(value: string): string { return value.normalize('NFC').toLocaleLowerCase().replace(/\s+/g, ' ').trim(); }
 function DisplayText({ value }: {
     value: string;
@@ -58,17 +54,13 @@ interface TagDialogState {
 function FolderPage({ folderName: requestedFolderName }: {
     folderName?: string;
 }) {
-    const { language, t, ui } = usePdfitI18n();
+    const { t, ui } = usePdfitI18n();
     const theme = useTheme();
     const aiAccentColor = theme.palette.mode === 'light' ? '#b7791f' : '#f59e0b';
     const aiAccentHover = theme.palette.mode === 'light' ? '#956318' : '#fbbf24';
     const aiAccentContrast = theme.palette.mode === 'light' ? '#ffffff' : '#251703';
-    const { aiAutoTagAccess, aiBulkTagLimit, onAiTagProcessed, onAiTagRemoved, bookMetadataEnabled, bookResearchAccess, serverThumbnails } = usePdfitFrontConfig();
+    const { aiAutoTagAccess, onAiTagRemoved, bookMetadataEnabled, bookResearchAccess, serverThumbnails } = usePdfitFrontConfig();
     const canUseAiAutoTag = aiAutoTagAccess?.() ?? true;
-    const bulkTagLimit = aiBulkTagLimit?.() ?? null;
-    const canUseAiBulkTag = canUseAiAutoTag || (bulkTagLimit !== null && bulkTagLimit > 0);
-    const aiTrialExhausted = !canUseAiAutoTag && bulkTagLimit === 0;
-    const bulkTagActionLabel = canUseAiAutoTag ? t("aiAutoTagAll") : aiTrialExhausted ? ui("유료 이용권 안내") : ui("AI 자동태그 사용해보기");
     const { name } = useParams<{
         name: string;
     }>();
@@ -78,13 +70,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     const folderName = requestedFolderName ?? decodeURIComponent(name ?? '');
     const [error, setError] = useState<string | null>(null);
     const folderModel = folderLibraryModel.get(folderName);
-    const { files, fileTags, isRootFolder, loading, tagsLoaded, error: loadError } = useFolderLibrary(folderName);
-    const autoTagTargets = files.filter((file) => {
-        if (isPendingUploadDriveFileId(file.driveFileId))
-            return false;
-        const tags = fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? [];
-        return tags.length === 0;
-    });
+    const { files, fileTags, isRootFolder, loading, error: loadError } = useFolderLibrary(folderName);
     // 업로드
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -102,7 +88,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     const [tagInput, setTagInput] = useState('');
     const [tagInputColor, setTagInputColor] = useState(lastTagInputColor);
     const [tagLoading, setTagLoading] = useState(false);
-    // 폴더 전체를 바꾸는 작업(일괄 AI 태그, 폴더 태그 비우기)만 화면을 잠근다.
+    // 폴더 전체 태그를 비우는 동안 문서별 태그 편집을 잠근다.
     const [folderMutation, setFolderMutation] = useState<string | null>(null);
     // 책 하나에 대한 작업은 그 책만 잠근다.
     const locks = useTagMutationLocks();
@@ -111,16 +97,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     const dialogBusy = dialogBookKey !== null && locks.isBookBusy(dialogBookKey);
     const dialogAutoTagging = dialogBookKey !== null && locks.isAutoTagging(dialogBookKey);
     const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
-    const [confirmAutoTagAll, setConfirmAutoTagAll] = useState(false);
     const [confirmClearFolderTags, setConfirmClearFolderTags] = useState(false);
-    const [bulkAutoTagProgress, setBulkAutoTagProgress] = useState<{
-        completed: number;
-        total: number;
-    } | null>(null);
-    const [bulkAutoTagCancelling, setBulkAutoTagCancelling] = useState(false);
-    const bulkAutoTagCancellationRef = useRef<{
-        cancelled: boolean;
-    } | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [tagColors, setTagColors] = useState<Record<string, string>>({});
     const [tagIcons, setTagIcons] = useState<Record<string, TagIconName | undefined>>({});
@@ -131,48 +108,27 @@ function FolderPage({ folderName: requestedFolderName }: {
     } | {
         kind: 'folder';
         name: string;
-    } | {
-        kind: 'selection';
-        files: Array<{
-            name: string;
-            driveFileId?: string;
-            selectionKey: string;
-        }>;
     } | null>(null);
-    const [bulkManualDocuments, setBulkManualDocuments] = useState<{
-        folder: string;
-        filename: string;
-        driveFileId?: string;
-    }[] | null>(null);
-    const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
     const [pdfSearch, setPdfSearch] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
     const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => window.localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
-    const [deletingSelection, setDeletingSelection] = useState(false);
     const [metadataTarget, setMetadataTarget] = useState<BookMetadataTarget | null>(null);
     const [coverVersions, setCoverVersions] = useState<Record<string, number>>({});
-    const selectionKeys = new Map<PdfInfo, string>();
+    const rowKeys = new Map<PdfInfo, string>();
     const identityOccurrences = new Map<string, number>();
     for (const file of files) {
         const identity = fileIdentity(file.name, file.driveFileId);
         const occurrence = identityOccurrences.get(identity) ?? 0;
         identityOccurrences.set(identity, occurrence + 1);
-        selectionKeys.set(file, `${identity}\u0000${occurrence}`);
+        rowKeys.set(file, `${identity}\u0000${occurrence}`);
     }
-    const selectionKey = (file: PdfInfo) => selectionKeys.get(file) ?? fileIdentity(file.name, file.driveFileId);
-    const bulkAutoTagTargets = canUseAiAutoTag ? autoTagTargets : files.filter(file => selectedFiles.has(selectionKey(file)) && !isPendingUploadDriveFileId(file.driveFileId));
-    const aiSelectionOverLimit = !canUseAiAutoTag && bulkTagLimit !== null && bulkAutoTagTargets.length > bulkTagLimit;
+    const rowKey = (file: PdfInfo) => rowKeys.get(file) ?? fileIdentity(file.name, file.driveFileId);
     const normalizedPdfSearch = normalizePdfSearch(pdfSearch);
     const searchTerms = normalizedPdfSearch.split(' ').filter(Boolean);
     const visibleFiles = (normalizedPdfSearch ? files.filter((file) => { const identity = fileIdentity(file.name, file.driveFileId); const tags = fileTags[identity] ?? fileTags[file.name] ?? []; const searchable = normalizePdfSearch(`${file.name} ${tags.join(' ')}`); return searchTerms.every((term) => searchable.includes(term)); }) : files).slice().sort((a, b) => compareUnicode(a.name, b.name));
     // 큰 폴더는 한 번에 다 그리지 않고 위에서부터 조금씩 붙인다(메인 스레드 블로킹 방지).
     const { rendered: renderedFiles, done: listFullyMounted, sentinelRef: listSentinelRef } = useProgressiveItems(visibleFiles, `${folderName}\u0000${libraryView}\u0000${normalizedPdfSearch}`);
-    useEffect(() => { setSelectedFiles(new Set()); setPdfSearch(''); setSearchOpen(false); }, [folderName]);
-    useEffect(() => () => {
-        if (bulkAutoTagCancellationRef.current)
-            bulkAutoTagCancellationRef.current.cancelled = true;
-    }, [folderName]);
-    useEffect(() => { const available = new Set(files.map(selectionKey)); setSelectedFiles((current) => { const next = new Set([...current].filter((identity) => available.has(identity))); return next.size === current.size ? current : next; }); }, [files]);
+    useEffect(() => { setPdfSearch(''); setSearchOpen(false); }, [folderName]);
     useEffect(() => {
         let active = true;
         let request = 0;
@@ -311,38 +267,9 @@ function FolderPage({ folderName: requestedFolderName }: {
         const target = confirmDelete;
         setConfirmDelete(null);
         try {
-            if (target.kind === 'selection') {
-                setDeletingSelection(true);
-                const failed: Array<{
-                    name: string;
-                    driveFileId?: string;
-                    selectionKey: string;
-                }> = [];
-                for (const file of target.files) {
-                    try {
-                        await foldersApi.deleteFile(folderName, file.name, file.driveFileId);
-                        folderModel.removeFile(file.name, file.driveFileId);
-                    }
-                    catch {
-                        failed.push(file);
-                    }
-                }
-                setSelectedFiles(new Set(failed.map((file) => file.selectionKey)));
-                if (failed.length > 0) {
-                    throw new Error(ui("{p0}개를 삭제했고, {p1}개는 삭제하지 못했습니다.", { p0: target.files.length - failed.length, p1: failed.length }));
-                }
-            }
-            else if (target.kind === 'file') {
+            if (target.kind === 'file') {
                 await foldersApi.deleteFile(folderName, target.name, target.driveFileId);
                 folderModel.removeFile(target.name, target.driveFileId);
-                setSelectedFiles((current) => {
-                    const next = new Set(current);
-                    for (const file of files) {
-                        if (fileIdentity(file.name, file.driveFileId) === fileIdentity(target.name, target.driveFileId))
-                            next.delete(selectionKey(file));
-                    }
-                    return next;
-                });
             }
             else {
                 await foldersApi.delete(target.name);
@@ -354,27 +281,6 @@ function FolderPage({ folderName: requestedFolderName }: {
         catch (e) {
             setError(e instanceof Error ? e.message : ui("삭제 실패"));
         }
-        finally {
-            setDeletingSelection(false);
-        }
-    };
-    const handleSelectionChange = useCallback((identity: string, selected: boolean) => {
-        setSelectedFiles((current) => {
-            const next = new Set(current);
-            if (selected)
-                next.add(identity);
-            else
-                next.delete(identity);
-            return next;
-        });
-    }, []);
-    const selectableFileIds = visibleFiles.filter((file) => !isPendingUploadDriveFileId(file.driveFileId)).map(selectionKey);
-    const allFilesSelected = selectableFileIds.length > 0 && selectableFileIds.every((identity) => selectedFiles.has(identity));
-    const handleSelectAll = () => { setSelectedFiles((current) => { const currentlyAllSelected = selectableFileIds.length > 0 && selectableFileIds.every((identity) => current.has(identity)); return currentlyAllSelected ? new Set() : new Set(selectableFileIds); }); };
-    const handleDeleteSelection = () => {
-        if (selectedFiles.size === 0)
-            return;
-        setConfirmDelete({ kind: 'selection', files: files.filter((file) => selectedFiles.has(selectionKey(file))).map((file) => ({ name: file.name, driveFileId: file.driveFileId, selectionKey: selectionKey(file) })), });
     };
     const openMoveDialog = useCallback(async (_rowFolder: string, filename: string, driveFileId?: string) => { const folders = await foldersApi.list(); setAllFolders(folders.filter((f) => f.name !== folderName)); setMoveTarget(''); setMoveDialog({ file: filename, driveFileId }); }, [folderName]);
     const handleMove = async () => {
@@ -540,85 +446,6 @@ function FolderPage({ folderName: requestedFolderName }: {
             locks.end('ai', bookKey);
         }
     };
-    const handleAutoTagAll = async () => {
-        let successful = 0;
-        let successfulDocuments: Array<{
-            folder: string;
-            filename: string;
-            driveFileId?: string;
-            assignedTag?: string;
-        }> = [];
-        if (folderMutation || locks.anyBusy || files.length === 0)
-            return;
-        if (!canUseAiBulkTag) {
-            setConfirmAutoTagAll(false);
-            setTagNotice({ message: t('aiAutoTagPaidOnly'), severity: 'error' });
-            return;
-        }
-        if (aiSelectionOverLimit) { setTagNotice({ message: ui("현재 {p0}개 문서를 추가할 수 있습니다. 선택을 줄여주세요.", { p0: String(bulkTagLimit) }), severity: "info" }); return; }
-        const targets = bulkAutoTagTargets;
-        if (targets.length === 0)
-            return;
-        const cancellation = { cancelled: false };
-        bulkAutoTagCancellationRef.current = cancellation;
-        setBulkAutoTagCancelling(false);
-        setFolderMutation('__ai_auto_tag_all__');
-        setBulkAutoTagProgress({ completed: 0, total: targets.length });
-        setTagNotice(null);
-        try {
-            const result = await tagsApi.autoTagFolder(folderName, targets.map((target) => ({ filename: target.name, driveFileId: target.driveFileId })), (completed, total) => setBulkAutoTagProgress({ completed, total }), () => cancellation.cancelled);
-            successful = result.processed;
-            successfulDocuments = result.books.map(book => ({ ...book, folder: folderName, driveFileId: book.driveFileId ?? undefined }));
-            const appliedTags = (book: typeof result.books[number]) => book.assignedTags ?? (book.assignedTag ? [book.assignedTag] : book.addedTags.slice(0, 1));
-            for (const book of result.books)
-                for (const tag of appliedTags(book))
-                    folderModel.addTag(book.filename, tag, book.driveFileId);
-            for (const book of result.books)
-                for (const tag of book.removedTags)
-                    folderModel.removeTag(book.filename, tag, book.driveFileId);
-            setAllTags((previous) => [...new Set([...previous, ...result.books.flatMap(appliedTags)])].sort());
-            const removedTags = new Set(result.books.flatMap((book) => book.removedTags));
-            if (removedTags.size > 0)
-                setAllTags((previous) => previous.filter((tag) => !removedTags.has(tag)));
-            setBulkAutoTagProgress({ completed: result.processed + result.failed, total: targets.length });
-            window.dispatchEvent(new Event('tags-changed'));
-            const completed = result.processed + result.failed;
-            if (result.cancelled && completed < targets.length) {
-                setTagNotice({ message: t('aiTagsAllCancelled', { completed, total: targets.length }), severity: 'info', });
-            }
-            else if (result.failed > 0) {
-                const failedBooks = result.errors.slice(0, 3).map((item) => item.filename).join(', ');
-                const remaining = Math.max(0, result.errors.length - 3);
-                const message = t('aiTagsAllPartial', { completed: result.processed, failed: result.failed, books: failedBooks, remaining: remaining > 0 ? ` +${remaining}` : '', });
-                setTagNotice({ message, severity: 'error' });
-            }
-            else if (result.addedTags === 0) {
-                setTagNotice({ message: t('aiTagsAllNoChanges', { completed: result.processed }), severity: 'success' });
-            }
-            else {
-                setTagNotice({ message: t('aiTagsAllComplete', { completed: result.processed, added: result.addedTags }), severity: 'success' });
-            }
-        }
-        catch (cause) {
-            const message = cause instanceof Error ? cause.message : t('aiTaggingFailed');
-            setTagNotice({ message: `${t('aiTaggingFailed')} ${message}`, severity: 'error' });
-        }
-        finally {
-            await onAiTagProcessed?.(successful, successfulDocuments);
-            if (bulkAutoTagCancellationRef.current === cancellation)
-                bulkAutoTagCancellationRef.current = null;
-            setBulkAutoTagCancelling(false);
-            setFolderMutation(null);
-            setBulkAutoTagProgress(null);
-        }
-    };
-    const handleCancelAutoTagAll = () => {
-        const cancellation = bulkAutoTagCancellationRef.current;
-        if (!cancellation || cancellation.cancelled)
-            return;
-        cancellation.cancelled = true;
-        setBulkAutoTagCancelling(true);
-    };
     const folderTagRelations = files.flatMap((file) => (fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? []).map((tag) => ({ filename: file.name, driveFileId: file.driveFileId, tag, })));
     const taggedBookCount = new Set(folderTagRelations.map((relation) => fileIdentity(relation.filename, relation.driveFileId))).size;
     const handleClearFolderTags = async () => {
@@ -690,12 +517,11 @@ function FolderPage({ folderName: requestedFolderName }: {
                 if (event.key === 'Escape') {
                     setPdfSearch('');
                     setSearchOpen(false);
-                    setSelectedFiles(new Set());
                 }
-            }} value={pdfSearch} onChange={(event) => { setPdfSearch(event.target.value); setSelectedFiles(new Set()); }} placeholder={t('searchPdfs')} size="small" inputProps={{ 'aria-label': t('searchPdfs'), 'data-testid': 'pdf-search-input' }} InputProps={{ startAdornment: (<InputAdornment position="start">
+            }} value={pdfSearch} onChange={(event) => setPdfSearch(event.target.value)} placeholder={t('searchPdfs')} size="small" inputProps={{ 'aria-label': t('searchPdfs'), 'data-testid': 'pdf-search-input' }} InputProps={{ startAdornment: (<InputAdornment position="start">
             <SearchIcon sx={{ fontSize: 19, color: 'text.secondary' }}/>
             </InputAdornment>), endAdornment: (<InputAdornment position="end" sx={{ gap: 0.25 }}>
-            <IconButton aria-label={t('closeSearch')} size="small" onClick={() => { setPdfSearch(''); setSearchOpen(false); setSelectedFiles(new Set()); }} edge="end">
+            <IconButton aria-label={t('closeSearch')} size="small" onClick={() => { setPdfSearch(''); setSearchOpen(false); }} edge="end">
             <ClearIcon sx={{ fontSize: 17 }}/>
             </IconButton>
             </InputAdornment>), }} sx={{ flex: '1 1 240px', width: { xs: '100%', sm: 'auto' }, minWidth: { sm: 210 }, maxWidth: { xs: 'none', sm: 360 }, '& .MuiOutlinedInput-root': { height: 32, bgcolor: 'background.paper' }, }}/> : <Button data-testid="pdf-search-button" size="small" startIcon={<SearchIcon />} onClick={() => setSearchOpen(true)} sx={{ flexShrink: 0 }}>{t('searchPdfs')}</Button>}
@@ -706,7 +532,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     <Button data-testid="refresh-folder" variant="outlined" size="small" startIcon={refreshing ? <CircularProgress size={16} color="inherit"/> : <RefreshIcon />} onClick={() => void handleRefresh()} disabled={refreshing || loading} sx={{ transition: 'background-color 160ms ease', '&:hover': { bgcolor: theme.palette.mode === 'light' ? '#edf4ff' : 'rgba(59,130,246,.18)', borderColor: 'primary.main' } }}>
     {t('refresh')}
     </Button>
-    <Button data-testid="clear-folder-tags" sx={theme.palette.mode === 'light' ? { color: 'text.secondary', borderColor: '#ccd3dd', '&:hover': { borderColor: '#9298a2', bgcolor: 'action.hover' } } : undefined} variant="outlined" size="small" startIcon={folderMutation === '__clear_folder_tags__' ? <CircularProgress size={16} color="inherit"/> : <LocalOfferIcon />} disabled={folderTagRelations.length === 0 || folderMutation !== null || locks.anyBusy || deletingSelection} onClick={() => setConfirmClearFolderTags(true)}>
+    <Button data-testid="clear-folder-tags" sx={theme.palette.mode === 'light' ? { color: 'text.secondary', borderColor: '#ccd3dd', '&:hover': { borderColor: '#9298a2', bgcolor: 'action.hover' } } : undefined} variant="outlined" size="small" startIcon={folderMutation === '__clear_folder_tags__' ? <CircularProgress size={16} color="inherit"/> : <LocalOfferIcon />} disabled={folderTagRelations.length === 0 || folderMutation !== null || locks.anyBusy} onClick={() => setConfirmClearFolderTags(true)}>
     {t('clearAllFolderTags')}
     </Button>
     </Box>
@@ -714,43 +540,7 @@ function FolderPage({ folderName: requestedFolderName }: {
     </Box>
     <LibraryFixedControls>
         {files.length > 0 && (<Box data-testid="folder-list-toolbar" role="toolbar" aria-label={t('bookList')} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, mt: 2, px: 0.5, py: 0.5, minHeight: 44, borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider', }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
-        <Tooltip title={allFilesSelected ? t('clearSelection') : t('selectAll')} arrow>
-        <Box component="label" sx={{ display: 'flex', alignItems: 'center', cursor: deletingSelection ? 'default' : 'pointer', userSelect: 'none' }}>
-        <Checkbox data-testid="pdf-select-all" inputProps={{ 'aria-label': allFilesSelected ? t('clearSelection') : t('selectAll') }} checked={allFilesSelected} onChange={handleSelectAll} disabled={deletingSelection} size="small"/>
         <Typography data-testid="folder-document-count" variant="body2" color="text.secondary" sx={{ mx: 0.75, whiteSpace: 'nowrap' }}>{t('pdfCount', { count: files.length })}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ pr: 0.5, whiteSpace: 'nowrap' }}>
-        {allFilesSelected ? t('clearSelection') : t('selectAll')}
-        </Typography>
-        </Box>
-        </Tooltip>
-        {selectedFiles.size > 0 && (<Typography data-testid="selected-document-count" variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', mx: .5 }}>{t('selectedCount', { count: selectedFiles.size })}</Typography>)}
-        {allFilesSelected && <Button data-testid="bulk-manual-tag-management" size="small" disabled={folderMutation !== null || locks.anyBusy || deletingSelection || moving} onClick={() => setBulkManualDocuments(files.filter(file => selectedFiles.has(selectionKey(file))).map(file => ({ folder: folderName, filename: file.name, driveFileId: file.driveFileId })))} sx={{ textDecoration: 'underline', textUnderlineOffset: '3px' }}>{t('manageTags')}</Button>}
-        <SelectedDocumentActions documents={files.filter((file) => selectedFiles.has(selectionKey(file))).map((file) => ({ folder: folderName, filename: file.name, driveFileId: file.driveFileId }))} disabled={deletingSelection || moving} onDelete={handleDeleteSelection} onError={setError} onMoved={(moved) => setSelectedFiles((current) => new Set([...current].filter((key) => !files.some((file) => selectionKey(file) === key && moved.some((document) => fileIdentity(document.filename, document.driveFileId) === fileIdentity(file.name, file.driveFileId))))))}/>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5, flexWrap: 'wrap', ml: 'auto' }}>
-        <Box data-testid="ai-tag-toolbar" sx={{ display: 'flex', flexDirection: { xs: 'column-reverse', sm: 'row' }, alignItems: { xs: 'flex-end', sm: 'center' }, gap: { xs: .5, sm: 1.5 } }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: .25 }}>
-        {!canUseAiAutoTag && bulkTagLimit !== null && <Typography data-testid="ai-trial-remaining" variant="caption" color="text.secondary" aria-live="polite" sx={{ whiteSpace: 'nowrap' }}>{aiTrialExhausted ? ui('무료 AI 태그 문서 10/10개 · 추가 가능 0개') : ui('무료 AI 태그 문서 {p0}/10개 · {p1}개 추가 가능', { p0: String(10 - bulkTagLimit), p1: String(bulkTagLimit) })}</Typography>}
-        {!canUseAiAutoTag && aiTrialExhausted && <Typography data-testid="ai-slots-release-guide" variant="caption" color="text.secondary">{ui("AI 태그를 제거하면 다른 문서에 적용할 수 있습니다.")}</Typography>}
-        </Box>
-        {aiSelectionOverLimit && !aiTrialExhausted && <Typography data-testid="ai-selection-limit" variant="caption" color="error" role="status">{ui('현재 {p0}개 문서를 추가할 수 있습니다. 선택을 줄여주세요.', { p0: String(bulkTagLimit) })}</Typography>}
-        <Button data-testid="ai-auto-tag-all" variant="outlined" size="small" startIcon={bulkAutoTagProgress ? (bulkAutoTagCancelling ? <CircularProgress color="inherit" size={16}/> : <CancelOutlinedIcon />) : <AutoAwesomeIcon />} disabled={bulkAutoTagProgress ? bulkAutoTagCancelling : !aiTrialExhausted && (!canUseAiBulkTag || !tagsLoaded || (canUseAiAutoTag && bulkAutoTagTargets.length === 0) || aiSelectionOverLimit || folderMutation !== null || locks.anyBusy || deletingSelection)} title={bulkAutoTagProgress ? t('aiCancelTagging') : !canUseAiAutoTag && !aiTrialExhausted && bulkAutoTagTargets.length === 0 ? ui("AI 태그를 적용할 문서를 선택하세요.") : bulkTagActionLabel} onClick={async () => {
-                if (bulkAutoTagProgress)
-                    handleCancelAutoTagAll();
-                else if (aiTrialExhausted)
-                    navigate('/pricing');
-                else if (!canUseAiAutoTag && bulkAutoTagTargets.length === 0) {
-                    setTagNotice({ message: ui('AI 태그를 적용할 문서를 선택해 주세요.'), severity: 'info' });
-                }
-                else {
-                    await onAiTagProcessed?.(0);
-                    setConfirmAutoTagAll(true);
-                }
-            }} sx={{ minHeight: 32, color: aiAccentColor, borderColor: aiAccentColor, fontWeight: 700, '&:hover': { color: aiAccentContrast, bgcolor: aiAccentColor, borderColor: aiAccentColor }, '&.Mui-disabled': { color: 'text.disabled', borderColor: 'divider' }, }}>
-        {bulkAutoTagProgress ? t(bulkAutoTagCancelling ? 'aiCancellingTagging' : 'aiCancelTagging') : bulkTagActionLabel}
-        </Button>
-        </Box>
         <ToggleButtonGroup exclusive size="small" value={libraryView} onChange={(_, value: 'list' | 'covers' | null) => {
                 if (!value)
                     return;
@@ -764,15 +554,7 @@ function FolderPage({ folderName: requestedFolderName }: {
         <Tooltip title={t('coverView')} arrow><Box component="span" sx={{ display: 'flex' }}><GridViewIcon fontSize="small"/></Box></Tooltip>
         </ToggleButton>
         </ToggleButtonGroup>
-        </Box>
         </Box>)}
-    {bulkAutoTagProgress && (<Box data-testid="ai-bulk-tag-status" role="status" aria-live="polite" sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 1, px: 1.5, py: 1.15, border: '1px solid', borderColor: aiAccentColor, borderRadius: 1, bgcolor: 'action.hover', color: 'text.primary', }}>
-    <AutoAwesomeIcon sx={{ color: aiAccentColor, fontSize: 20, flexShrink: 0 }}/>
-    <Typography variant="body2" fontWeight={650} sx={{ minWidth: 0 }}>
-    {bulkAutoTagCancelling ? t('aiTaggingCancellationPending') : t('aiTaggingAllInProgress', { total: bulkAutoTagProgress.total })}
-    </Typography>
-    <LinearProgress sx={{ width: { xs: 72, sm: 160 }, height: 4, ml: 'auto', flexShrink: 0, borderRadius: 99, bgcolor: 'action.selected', '& .MuiLinearProgress-bar': { bgcolor: aiAccentColor }, }}/>
-    </Box>)}
     {uploading && (<Box sx={{ mt: 2 }}>
     <LinearProgress variant="determinate" value={uploadProgress}/>
     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
@@ -802,7 +584,7 @@ function FolderPage({ folderName: requestedFolderName }: {
         </Box>) : (<>
         <LibraryBookCollection view={libraryView}>
             {renderedFiles.map((file) => {
-                const identity = selectionKey(file);
+                const identity = rowKey(file);
                 const actionKey = file.driveFileId ?? file.name;
                 const autoTagging = locks.isAutoTagging(actionKey);
                 return <LibraryBookItem key={identity} view={libraryView}
@@ -810,8 +592,6 @@ function FolderPage({ folderName: requestedFolderName }: {
                     size={file.size} modifiedAt={file.modifiedAt} clipCount={file.clipCount} clipCountRevision={file.clipCountRevision}
                     serverCover={serverThumbnails} coverVersion={file.driveFileId ? coverVersions[file.driveFileId] : undefined}
                     tags={fileTags[fileIdentity(file.name, file.driveFileId)] ?? fileTags[file.name] ?? []} tagColors={tagColors} tagIcons={tagIcons}
-                    selected={selectedFiles.has(identity)}
-                    onSelectionChange={(_folder, _filename, selected) => handleSelectionChange(identity, selected)}
                     onTagDelete={(folder, filename, tag) => handleInlineRemoveTag(folder, filename, tag, file.driveFileId)}
                     onManageTags={(folder, filename) => openTagDialog(folder, filename, file.driveFileId)}
                     onAutoTag={canUseAiAutoTag ? (_folder, filename) => void handleAutoTag(filename, file.driveFileId) : undefined}
@@ -851,37 +631,12 @@ function FolderPage({ folderName: requestedFolderName }: {
     <DialogTitle>{t('deleteConfirmation')}</DialogTitle>
     <DialogContent>
     <Typography>
-    {confirmDelete?.kind === 'folder' ? t('deleteFolderQuestion', { name: confirmDelete.name }) : confirmDelete?.kind === 'selection' ? t('deleteSelectedPdfsQuestion', { count: confirmDelete.files.length }) : t('deletePdfQuestion', { name: confirmDelete?.name ?? '' })}
+    {confirmDelete?.kind === 'folder' ? t('deleteFolderQuestion', { name: confirmDelete.name }) : t('deletePdfQuestion', { name: confirmDelete?.name ?? '' })}
     </Typography>
     </DialogContent>
     <DialogActions>
     <Button color="error" onClick={() => setConfirmDelete(null)}>{t('cancel')}</Button>
     <Button color="error" variant="contained" sx={{ bgcolor: "error.dark", "&:hover": { bgcolor: "error.main" } }} onClick={() => void confirmDeleteItem()}>{t('delete')}</Button>
-    </DialogActions>
-    </Dialog>
-    <Dialog open={canUseAiBulkTag && confirmAutoTagAll} onClose={() => setConfirmAutoTagAll(false)} maxWidth="sm" fullWidth>
-    <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-    <AutoAwesomeIcon sx={{ color: aiAccentColor }}/>
-    {bulkTagActionLabel}
-    </DialogTitle>
-    <DialogContent>
-    <Typography sx={language === 'ko' ? { whiteSpace: { sm: 'nowrap' } } : undefined}>
-    {canUseAiAutoTag ? t('aiAutoTagAllQuestion', { count: bulkAutoTagTargets.length }) : ui('선택한 문서 {p0}개에 AI 태그를 적용할까요?', { p0: String(bulkAutoTagTargets.length) })}
-    </Typography>
-    {!canUseAiAutoTag && bulkTagLimit !== null && <Box sx={{ mt: 1 }}>
-    <Typography data-testid="ai-trial-current" variant="body2" color="text.secondary">{ui('현재 AI 태그 문서 {p0}/10개', { p0: String(10 - bulkTagLimit) })}</Typography>
-    <Typography data-testid="ai-trial-after-run" variant="caption" color="text.secondary">{ui('무료 AI 태그는 최대 10개 문서에 적용할 수 있습니다.')}<br />{ui('AI 태그를 제거하면 다른 문서에 사용할 수 있습니다.')}</Typography>
-    </Box>}
-    {!canUseAiAutoTag && (<Box data-testid="ai-auto-tag-upgrade-guide" sx={{ mt: 2, px: 1.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1, borderRadius: 1, bgcolor: theme.palette.mode === 'light' ? '#edf4ff' : '#203149', color: theme.palette.mode === 'light' ? '#2457a6' : '#b8d5ff', borderLeft: '3px solid #3b82f6' }}>
-    <AutoAwesomeIcon sx={{ fontSize: 18, flexShrink: 0 }}/>
-    <Typography variant="body2" sx={{ fontSize: 13, lineHeight: 1.5 }}>{ui('무료 AI 태그 문서 최대 10개 · 유료 이용권은 더 많은 문서를 처리할 수 있습니다.')}</Typography>
-    </Box>)}
-    </DialogContent>
-    <DialogActions>
-    <Button onClick={() => setConfirmAutoTagAll(false)}>{t('cancel')}</Button>
-    <Button variant="contained" startIcon={<AutoAwesomeIcon />} onClick={() => { setConfirmAutoTagAll(false); void handleAutoTagAll(); }} sx={{ color: aiAccentContrast, bgcolor: aiAccentColor, '&:hover': { bgcolor: aiAccentHover } }}>
-    {bulkTagActionLabel}
-    </Button>
     </DialogActions>
     </Dialog>
     <Dialog open={confirmClearFolderTags} onClose={() => setConfirmClearFolderTags(false)} maxWidth="sm" fullWidth>
@@ -942,11 +697,6 @@ function FolderPage({ folderName: requestedFolderName }: {
     <Button disabled={dialogBusy} onClick={() => void handleCloseTagDialog()}>{t('close')}</Button>
     </DialogActions>
     </TagManagementDialog>
-    <BulkManualTagDialog documents={bulkManualDocuments} onClose={() => setBulkManualDocuments(null)} onAdded={(document, tag, color) => {
-            folderModel.addTag(document.filename, tag, document.driveFileId);
-            if (color)
-                setTagColors(current => ({ ...current, [tag]: color }));
-        }}/>
     <TagNoticeSnackbar notice={tagNotice} onClose={() => setTagNotice(null)}/>
     </Box>);
 }

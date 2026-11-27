@@ -13,12 +13,9 @@ Open a folder and either select one or more PDFs with the upload button or drag
 the files onto the folder content area. A drop overlay confirms the target, and
 non-PDF files are ignored with an error message.
 
-Each PDF row has a selection checkbox. Select individual rows or use **전체 선택**
-in the list control bar, then choose **선택 삭제** to review the count and delete
-the selected PDFs together. The same bar keeps selection actions on the left,
-aligned with row checkboxes, and list/cover view controls on the right. Folder
-actions such as AI tagging, refresh, and upload remain in the title row. If only
-part of the request succeeds, failed rows stay selected so the user can retry them.
+The folder toolbar shows the PDF count and switches between list and cover views.
+Open an individual row's controls or the cover card's **File actions** menu to
+move or delete that PDF.
 
 The Docker runtime accepts files up to 2048 MB each by default. Set
 `PDFIT_MAX_UPLOAD_MB` in the root `.env` to an integer from 1 through 10240 to
@@ -66,7 +63,7 @@ its tags). A runtime whose metadata store has no favorites (`501`) shows neither
 
 ## Manage tags
 
-[TagManagementDialog](../src/front/components/TagManagementDialog.tsx#TagManagementDialog) is up to 720px wide and fits within narrow viewports. The [autocomplete popup](../src/front/components/ManualTagInput.tsx#ManualTagInput) uses the dialog body width and shows four options per row, ordered left to right. Long option labels wrap to two lines. The popup leaves the recent-tag buttons accessible. Selecting a recent tag submits the same add action as typing a tag and pressing Enter. In bulk mode, choosing an autocomplete option fills the input, and choosing a recent tag applies it to the selected files.
+[TagManagementDialog](../src/front/components/TagManagementDialog.tsx#TagManagementDialog) is up to 720px wide and fits within narrow viewports. The [autocomplete popup](../src/front/components/ManualTagInput.tsx#ManualTagInput) uses the dialog body width and shows four options per row, ordered left to right. Long option labels wrap to two lines. The popup leaves the recent-tag buttons accessible. Selecting a recent tag submits the same add action as typing a tag and pressing Enter.
 
 [Tag history](../src/front/model/recentTags.ts#recentTagsForScope) saves up to three distinct names after successful manual additions. It is stored per browser origin and library account. The input offers only names present in the available tag list, so a removed name becomes unavailable the next time the list is loaded.
 
@@ -136,9 +133,9 @@ pages you were on. Both viewers remember the choice in this browser.
 
 ## Automatic PDF classification
 
-Choose the gold sparkle action on a PDF row or **PDF 일괄 태그** in the folder toolbar. PDFit checks explicit document-format suffixes first. For example, `AI교육 제안서.pdf` receives `제안서`, not the bookstore subject `인공지능`. Other controlled document tags include `보고서`, `기획서`, `논문`, `매뉴얼`, and `발표자료`. `문서` itself is not added as a tag. Ambiguous filenames continue through the book-category path. Re-running automatic classification on one file replaces its previous controlled category while preserving user-defined tags; existing files are not silently reclassified.
+Choose **AI auto tagging** on a PDF row, in its cover info overlay, or in its **Manage tags** dialog where available. PDFit checks explicit document-format suffixes first. For example, `AI교육 제안서.pdf` receives `제안서`. Other controlled document tags include `보고서`, `기획서`, `논문`, `매뉴얼`, and `발표자료`. Ambiguous filenames continue through the book-category path. Re-running automatic classification on one file replaces its previous controlled category and preserves user-defined tags.
 
-Classifying one book takes tens of seconds to minutes, so a run locks only that book: the other rows keep their sparkle action, and tags can still be added or removed elsewhere on the page. Up to `AUTO_TAG_CONCURRENCY` (4) books classify at once, and only when that limit is reached do the remaining sparkle actions grey out. The folder-wide actions (bulk tagging, clearing a folder's tags) are the ones that lock the page, and they wait until no single-book run is in flight.
+Classifying one book takes tens of seconds to minutes and locks that book's tag controls. Up to `AUTO_TAG_CONCURRENCY` (4) books classify at once. At that limit, the remaining sparkle actions grey out. Clearing a folder's tags waits for active book tag operations to finish.
 
 For titles without a document-format suffix, the zero-configuration path first uses deterministic high-signal title rules. Unknown titles are checked against public YES24 product categories with an exact-enough title match. Set `YES24_API_KEY` to use the official YES24 Goods API instead. If no book record can be matched, PDFit checks up to three informative title terms against exact Wikidata entity labels or aliases and maps an unambiguous subject description to an existing category. It never treats a merely related entity or a search-result title as proof. There is no Kyobo integration. When no source provides reliable evidence, classification fails instead of assigning a generic or fabricated tag.
 

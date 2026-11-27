@@ -21,10 +21,6 @@ export interface PdfitFrontExtension {
   navigationGuard?: (path: string) => string;
   /** Whether the current account owns the paid AI metadata feature. */
   aiAutoTagAccess?: () => boolean;
-  /** Maximum PDFs available to the current account in one bulk-tag action; null means unlimited. */
-  aiBulkTagLimit?: () => number | null;
-  /** AI 처리 후 서버 사용량을 새로 읽는다. 로컬 UI 미리보기는 별도 체험 카운터를 사용한다. */
-  onAiTagProcessed?: (successful: number, documents?: Array<{ folder: string; filename: string; driveFileId?: string | null; assignedTag?: string }>) => Promise<void>;
   /** 실제 제거된 AI 태그 문서 자리를 반환한 뒤 사용량을 갱신한다. */
   onAiTagRemoved?: (removal: { folder?: string; filename?: string; driveFileId?: string | null; tag?: string }) => Promise<void>;
   /** Enables account-scoped book research and manual metadata editing. */
@@ -58,8 +54,6 @@ export interface PdfitFrontRuntimeConfig {
   extraSidebarFooter?: ReactNode;
   navigationGuard?: (path: string) => string;
   aiAutoTagAccess?: PdfitFrontExtension['aiAutoTagAccess'];
-  aiBulkTagLimit?: PdfitFrontExtension['aiBulkTagLimit'];
-  onAiTagProcessed?: PdfitFrontExtension['onAiTagProcessed'];
   onAiTagRemoved?: PdfitFrontExtension['onAiTagRemoved'];
   bookMetadataEnabled?: boolean;
   serverThumbnails?: boolean;

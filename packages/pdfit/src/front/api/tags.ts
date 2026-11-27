@@ -17,16 +17,6 @@ export interface AutomaticTagResult {
   addedTags: string[];
   removedTags: string[];
 }
-export interface AutomaticFolderTagResult {
-  processed: number;
-  failed: number;
-  addedTags: number;
-  cancelled?: boolean;
-  /** assignedTag is the bookstore category; assignedTags is every tag the run applied, category first. */
-  books: Array<{ filename: string; driveFileId?: string; assignedTag?: string; assignedTags?: string[]; addedTags: string[]; removedTags: string[] }>;
-  /** `retryable: false`는 다시 분류해도 같은 결과가 나올 실패라 단건 재시도를 건너뛴다. */
-  errors: Array<{ filename: string; driveFileId?: string; error: string; retryable?: boolean }>;
-}
 import { deleteAllCachedTags, deleteCachedFolderTags, deleteCachedTag, listCachedBooksByTag, listCachedTagIndex, listCachedUntaggedBooks, listCachedBookTags, listCachedFolderTags, listCachedTagSummaries, mutateCachedTag, pdfitMetadataScope, restoreCachedTag, updateCachedTagColor } from '../cache/metadataCache.js';
 import { requestWithMetadataOutbox } from '../cache/metadataOutbox.js';
 import { recentTagsForScope } from '../model/recentTags.js';
@@ -138,109 +128,6 @@ export const tagsApi = {
     await Promise.all(result.addedTags.map((tag) => mutateCachedTag(folder, filename, tag, false, driveFileId)));
     await Promise.all(result.removedTags.map((tag) => mutateCachedTag(folder, filename, tag, true, driveFileId)));
     return result;
-  },
-
-  /** 폴더의 PDF 제목을 분류하고 태그 관계를 서버에서 한 번에 저장 */
-  autoTagFolder: async (
-    folder: string,
-    books: Array<{ filename: string; driveFileId?: string | null }>,
-    onProgress?: (completed: number, total: number) => void,
-    isCancelled: () => boolean = () => false,
-  ) => {
-    const keyFor = (book: { filename: string; driveFileId?: string | null }) => `${book.driveFileId ?? ''}\0${book.filename}`;
-    const resultBooks = new Map<string, AutomaticFolderTagResult['books'][number]>();
-    const failures = new Map<string, AutomaticFolderTagResult['errors'][number]>();
-    const batchSize = 6;
-    let completed = 0;
-
-    const classify = async (batch: typeof books, countProgress: boolean) => {
-      try {
-        const result = await request<AutomaticFolderTagResult>(
-          `/tags/folder/${encodeURIComponent(folder)}/auto`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ books: batch.map((book) => ({ filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}) })) }),
-          },
-        );
-        for (const book of result.books) {
-          const key = keyFor(book);
-          resultBooks.set(key, book);
-          failures.delete(key);
-          const assignedTags = book.assignedTags ?? (book.assignedTag ? [book.assignedTag] : book.addedTags.slice(0, 1));
-          await Promise.all(assignedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, false, book.driveFileId)));
-          await Promise.all(book.removedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, true, book.driveFileId)));
-        }
-        for (const error of result.errors) failures.set(keyFor(error), error);
-      } catch (cause) {
-        const error = cause instanceof Error ? cause.message : uiText("일괄 태그 요청 실패");
-        for (const book of batch) failures.set(keyFor(book), { filename: book.filename, ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}), error });
-      } finally {
-        if (countProgress) { completed += batch.length; onProgress?.(Math.min(completed, books.length), books.length); }
-      }
-    };
-
-    for (let index = 0; index < books.length; index += batchSize) {
-      if (isCancelled()) break;
-      await classify(books.slice(index, index + batchSize), true);
-    }
-    const retryTargets = [...failures.entries()]
-      // A book the server rejected on tag quality classifies the same way again, and one
-      // classification costs tens of seconds, so it is reported instead of retried.
-      .filter(([, failure]) => failure.retryable !== false)
-      .map(([key]) => books.find((book) => keyFor(book) === key))
-      .filter((book): book is typeof books[number] => Boolean(book));
-    // A failed item is retried through the single-book route instead of being
-    // placed in another batch. This isolates title classification, metadata
-    // repair, persistence, and cache reconciliation from every other PDF.
-    for (const book of retryTargets) {
-      if (isCancelled()) break;
-      const key = keyFor(book);
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        if (isCancelled()) break;
-        try {
-          const result = await request<AutomaticTagResult>(
-            `/tags/book/${encodeURIComponent(folder)}/${encodeURIComponent(book.filename)}/auto`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(book.driveFileId ? { driveFileId: book.driveFileId } : {}),
-            },
-          );
-          const assignedTag = result.suggestedTags[0] ?? result.addedTags[0];
-          if (!assignedTag) throw new Error(uiText("신뢰할 수 있는 도서 분류를 결정하지 못했습니다."));
-          const assignedTags = result.suggestedTags.length > 0 ? result.suggestedTags : [assignedTag];
-          await Promise.all(assignedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, false, book.driveFileId)));
-          await Promise.all(result.removedTags.map((tag) => mutateCachedTag(folder, book.filename, tag, true, book.driveFileId)));
-          resultBooks.set(key, {
-            filename: book.filename,
-            ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}),
-            assignedTag,
-            assignedTags,
-            addedTags: result.addedTags,
-            removedTags: result.removedTags,
-          });
-          failures.delete(key);
-          break;
-        } catch (cause) {
-          failures.set(key, {
-            filename: book.filename,
-            ...(book.driveFileId ? { driveFileId: book.driveFileId } : {}),
-            error: cause instanceof Error ? cause.message : uiText("개별 태그 재시도 실패 ({p0}/3)", { p0: attempt }),
-          });
-        }
-      }
-    }
-
-    const resolved = [...resultBooks.values()];
-    return {
-      processed: resolved.length,
-      failed: failures.size,
-      addedTags: resolved.reduce((total, book) => total + book.addedTags.length, 0),
-      cancelled: isCancelled(),
-      books: resolved,
-      errors: [...failures.values()],
-    } satisfies AutomaticFolderTagResult;
   },
 
   clearFolderTags: async (folder: string) => {

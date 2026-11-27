@@ -1,4 +1,4 @@
-import { Box, Checkbox, useTheme } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useNavigate } from 'react-router-dom';
 import { DEFAULT_TAG_ICON } from '../../shared/tagDetails.js';
@@ -38,14 +38,14 @@ export default function PdfListItem(props: LibraryBookProps) {
   const { t } = usePdfitI18n();
   const theme = useTheme();
   const navigate = useNavigate();
-  const { folder, filename, driveFileId, tags, tagColors, tagIcons, onSelectionChange, onOpenFolder } = props;
+  const { folder, filename, driveFileId, tags, tagColors, tagIcons, onOpenFolder } = props;
   const book = { folder, filename, driveFileId };
   const pending = isPendingUploadDriveFileId(driveFileId);
   const hasFileActions = !props.hideFileActions && Boolean(props.onMove || props.onDelete);
   const showComments = hasFileActions || Boolean(props.onManageTags);
   const canReplaceCover = hasLocalServerCover(props) && !pending && Boolean(props.onManageTags);
 
-  return <Box component="li" className="pdfit-pdf-row" data-selected={props.selected || undefined} sx={{
+  return <Box component="li" className="pdfit-pdf-row" sx={{
     ...PDF_LIST_GRID_SX, position: 'relative', boxSizing: 'border-box', minHeight: 62, py: .5, rowGap: .25,
     borderBottom: '1px solid', borderColor: 'divider', contentVisibility: 'auto', containIntrinsicSize: 'auto 62px',
   }}>
@@ -53,12 +53,6 @@ export default function PdfListItem(props: LibraryBookProps) {
       <Box sx={{ position: 'absolute', inset: 0 }}>
         <BookThumbnail book={props} pending={pending} compact />
       </Box>
-      {onSelectionChange && <Checkbox size="small" checked={Boolean(props.selected)} disabled={pending}
-        onChange={(_, selected) => onSelectionChange(folder, filename, selected)}
-        inputProps={{ 'aria-label': `${t('selectPdf')}: ${filename}`, 'data-testid': 'pdf-selection-checkbox',
-          className: 'pdfit-row-selection' } as React.InputHTMLAttributes<HTMLInputElement>}
-        sx={{ position: 'absolute', top: 1, insetInlineStart: 1, width: 24, height: 24, p: 0, borderRadius: .5,
-          color: 'common.white', bgcolor: 'rgba(0,0,0,.63)', '&:hover': { bgcolor: 'rgba(0,0,0,.8)' } }} />}
     </Box>
     <Box sx={{ gridArea: 'name', minWidth: 0 }}>
       <Box data-testid="pdf-filename-line" sx={{ display: 'flex', alignItems: 'center', gap: .5, minWidth: 0 }}>

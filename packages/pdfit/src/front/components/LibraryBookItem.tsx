@@ -15,11 +15,9 @@ export type LibraryBookProps = BookThumbnailProps & Partial<BookClipCount> & {
   tags: string[];
   tagColors: Record<string, string>;
   tagIcons: Record<string, TagIconName | undefined>;
-  selected?: boolean;
   hideFileActions?: boolean;
   autoTagging?: boolean;
   autoTagDisabled?: boolean;
-  onSelectionChange?: (folder: string, filename: string, selected: boolean) => void;
   onTagDelete?: (folder: string, filename: string, tag: string) => void;
   onManageTags?: (folder: string, filename: string) => void;
   onAutoTag?: (folder: string, filename: string) => void;

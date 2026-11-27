@@ -9,7 +9,7 @@ import { UNTAGGED_CHANGED_EVENT } from '../model/untagged.js';
 import { RECENT_BOOKS_CHANGED_EVENT } from '../model/recentBooks.js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Checkbox, ToggleButton, ToggleButtonGroup,
+  Box, Typography, ToggleButton, ToggleButtonGroup,
   CircularProgress, Alert, Chip, IconButton, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   MenuItem, Select, FormControl, InputLabel, Autocomplete,
@@ -42,7 +42,6 @@ import { usePdfitI18n } from '../i18n/usePdfitI18n';
 import { publishTagSummaryOptimistic } from '../model/tagSummaryEvents';
 import { subscribeTagDetailsChanges, tagNameFromPath } from '../model/tagDetailsEvents.js';
 import TagNoticeSnackbar, { type TagNotice } from '../components/TagNoticeSnackbar';
-import SelectedDocumentActions, { type SelectedDocument } from '../components/SelectedDocumentActions';
 import BookMetadataDialog, { type BookMetadataTarget } from '../components/BookMetadataDialog';
 import { usePdfitFrontConfig } from '../context';
 import { isPendingUploadDriveFileId } from '../viewer/openViewer';
@@ -74,7 +73,6 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
   const [libraryView, setLibraryView] = useState<'list' | 'covers'>(() => localStorage.getItem('pdfit.library.view') === 'covers' ? 'covers' : 'list');
   const [refreshing, setRefreshing] = useState(false);
   const [books, setBooks] = useState<BookRef[]>([]);
-  const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tagColor, setTagColor] = useState('#22c55e');
@@ -93,8 +91,7 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
   const [allFolders, setAllFolders] = useState<FolderInfo[]>([]);
   const [moveTarget, setMoveTarget] = useState('');
   const [moving, setMoving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ folder: string; filename: string; driveFileId?: string; files?: SelectedDocument[] } | null>(null);
-  const [deletingSelection, setDeletingSelection] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ folder: string; filename: string; driveFileId?: string } | null>(null);
 
   // ─── 태그 다이얼로그 ──────────────────────────────────────
   const [tagDialog, setTagDialog] = useState<TagDialogState | null>(null);
@@ -109,15 +106,15 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
   const [tagNotice, setTagNotice] = useState<TagNotice | null>(null);
   const [metadataTarget, setMetadataTarget] = useState<BookMetadataTarget | null>(null);
 
-  const selectionKeys = new Map<BookRef, string>();
+  const rowKeys = new Map<BookRef, string>();
   const identityOccurrences = new Map<string, number>();
   for (const book of books) {
     const identity = bookIdentity(book);
     const occurrence = identityOccurrences.get(identity) ?? 0;
     identityOccurrences.set(identity, occurrence + 1);
-    selectionKeys.set(book, `${identity}\u0000${occurrence}`);
+    rowKeys.set(book, `${identity}\u0000${occurrence}`);
   }
-  const selectionKey = (book: BookRef) => selectionKeys.get(book) ?? bookIdentity(book);
+  const rowKey = (book: BookRef) => rowKeys.get(book) ?? bookIdentity(book);
 
   const openDocumentMetadata = async (book: BookRef) => {
     if (isPendingUploadDriveFileId(book.driveFileId)) { setTagNotice({ message: t('pdfStillUploading'), severity: 'info' }); return; }
@@ -192,7 +189,6 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
     setAllTags((current) => current.map((tag) => tag === previousName ? name : tag));
   }), [loadBooks, tagName]);
 
-  useEffect(() => { setSelectedBooks(new Set()); }, [tagName, untagged, favorites]);
 
   // 즐겨찾기 보기: 별을 꺼서 즐겨찾기가 아니게 된 책은 바로 목록에서 뺀다. 모델이 서버에서 한 번 받아오기 전에는
   // 모든 책이 '꺼짐'으로 보이므로 그때는 건드리지 않는다.
@@ -223,14 +219,6 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
       window.removeEventListener(RECENT_BOOKS_CHANGED_EVENT, reload);
     };
   }, [recent, loadBooks]);
-
-  useEffect(() => {
-    setSelectedBooks((current) => {
-      const visibleKeys = new Set(books.map(selectionKey));
-      const retained = new Set([...current].filter((key) => visibleKeys.has(key)));
-      return retained.size === current.size ? current : retained;
-    });
-  }, [books]);
 
   useEffect(() => {
     const reload = () => void loadBooks(true);
@@ -275,22 +263,15 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
     if (!confirmDelete) return;
     const target = confirmDelete;
     setConfirmDelete(null);
-    setDeletingSelection(true);
     try {
-      const failed: SelectedDocument[] = [];
-      for (const document of target.files ?? [target]) {
-        try {
-          await foldersApi.deleteFile(document.folder, document.filename, document.driveFileId);
-          const targetIdentity = bookIdentity(document);
-          setBooks((prev) => prev.filter((book) => bookIdentity(book) !== targetIdentity));
-          folderLibraryModel.get(document.folder).removeFile(document.filename, document.driveFileId);
-        } catch { failed.push(document); }
-      }
+      await foldersApi.deleteFile(target.folder, target.filename, target.driveFileId);
+      const targetIdentity = bookIdentity(target);
+      setBooks((previous) => previous.filter((book) => bookIdentity(book) !== targetIdentity));
+      folderLibraryModel.get(target.folder).removeFile(target.filename, target.driveFileId);
       window.dispatchEvent(new Event('folders-changed'));
-      if (failed.length) throw new Error(t('deleteSelectedPartial', { failed: failed.length }));
     } catch (e) {
       setError(e instanceof Error ? e.message : ui("삭제 실패"));
-    } finally { setDeletingSelection(false); }
+    }
   };
 
   // ─── 이동 ─────────────────────────────────────────────────
@@ -547,7 +528,7 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
             {renderedBooks.map((book) => {
               const identity = bookIdentity(book);
               const autoTagging = locks.isAutoTagging(identity);
-              return <LibraryBookItem key={selectionKey(book)} view={libraryView}
+              return <LibraryBookItem key={rowKey(book)} view={libraryView}
                 folder={book.folder} filename={book.filename} driveFileId={book.driveFileId}
                 size={book.size} modifiedAt={book.modified_at} clipCount={book.clipCount} clipCountRevision={book.clipCountRevision}
                 serverCover={serverThumbnails} tags={bookTags[identity] ?? []} tagColors={tagColors} tagIcons={tagIcons}
@@ -595,7 +576,7 @@ export default function TagPage({ untagged = false, favorites = false, recent = 
 
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('deleteConfirmation')}</DialogTitle>
-        <DialogContent><Typography translate="no">{confirmDelete?.files ? t('deleteSelectedPdfsQuestion', { count: confirmDelete.files.length }) : t('deletePdfQuestion', { name: confirmDelete?.filename ?? '' })}</Typography></DialogContent>
+        <DialogContent><Typography translate="no">{t('deletePdfQuestion', { name: confirmDelete?.filename ?? '' })}</Typography></DialogContent>
         <DialogActions>
           <Button color="error" onClick={() => setConfirmDelete(null)}>{t('cancel')}</Button>
           <Button color="error" variant="contained" sx={{ bgcolor: "error.dark", "&:hover": { bgcolor: "error.main" } }} onClick={() => void confirmDeleteBook()}>{t('delete')}</Button>

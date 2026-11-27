@@ -15,6 +15,7 @@ const renamed = `List feature renamed ${randomUUID().slice(0, 8)}.pdf`;
 const longFilename = 'Reference volume with a deliberately long filename for desktop and mobile.pdf';
 const tag = 'Library list tag';
 const aiTag = 'Library AI tag';
+const coverAiTag = 'Library cover AI tag';
 const comment = `리스트에서 남긴 코멘트 ${randomUUID()}`;
 const bookRoute = `/api/tags/book/${folder}/${encodeURIComponent(filename)}`;
 const actionsLabel = 'PDF 작업';
@@ -40,7 +41,7 @@ await desktop.tracing.start({ screenshots: true, snapshots: true });
 
 const openButton = (scope, name) => scope.getByRole('button', { name, exact: true });
 const row = (tab, name = filename) => tab.getByRole('listitem').filter({ has: tab.getByRole('link', { name, exact: true }) });
-const card = (name = filename) => page.getByTestId('pdf-cover-card').filter({ has: page.getByRole('link', { name, exact: true }) });
+const card = (tab, name = filename) => tab.getByTestId('pdf-cover-card').filter({ has: tab.getByRole('link', { name, exact: true }) });
 const dialog = () => page.getByRole('dialog');
 const toggle = (name) => openButton(page, name).click();
 const screenshot = (tab, name) => tab.screenshot({ path: path.join(artifacts, `${name}.png`), animations: 'disabled' });
@@ -54,7 +55,36 @@ async function request(route, method = 'GET', data) {
 async function thumbnail(container) {
   const image = container.locator('[data-testid="pdf-cover-thumbnail"][data-cover-state="ready"] img');
   await image.waitFor({ state: 'visible', timeout: 30_000 });
-  return image.evaluate(async (element) => { await element.decode(); return element.currentSrc; });
+  return image.evaluate(async (element) => {
+    await element.decode();
+    const source = new URL(element.currentSrc);
+    source.searchParams.delete('r'); // A transport retry uses the same cover version.
+    return source.href;
+  });
+}
+
+async function thumbnailAfterFileChange(folderName, file) {
+  const url = `/api/folders/${encodeURIComponent(folderName)}/files/${encodeURIComponent(file)}/thumbnail`;
+  // The file operation completes asynchronously after the library row changes.
+  await page.waitForFunction(async (url) => {
+    const response = await fetch(url, { cache: 'no-store' });
+    return response.status === 200 && response.headers.get('content-type')?.startsWith('image/');
+  }, url, { polling: 500, timeout: 30_000 });
+  const book = row(page, file);
+  const retry = book.getByTestId('retry-cover');
+  const image = book.locator('[data-testid="pdf-cover-thumbnail"][data-cover-state="ready"] img');
+  await retry.or(image).waitFor();
+  if (await retry.isVisible()) await retry.click();
+  await thumbnail(book);
+}
+
+async function verifyIndividualActions(tab, books) {
+  const toolbar = tab.getByTestId('folder-list-toolbar');
+  await toolbar.getByTestId('folder-document-count').waitFor();
+  assert.equal(await toolbar.getByRole('button').count(), 2);
+  assert.equal(await toolbar.getByRole('checkbox').count(), 0);
+  assert.equal(await toolbar.getByRole('button', { name: /AI 자동 태그/ }).count(), 0);
+  assert.equal(await books.getByRole('checkbox', { includeHidden: true }).count(), 0);
 }
 
 async function verifyList(tab, compact) {
@@ -95,16 +125,19 @@ try {
 
   await page.goto(`/folder/${folder}`);
   await verifyList(page, false);
+  await verifyIndividualActions(page, page.getByRole('listitem').filter({ has: page.getByRole('link', { name: /\.pdf$/ }) }));
   const originalThumbnail = await thumbnail(row(page));
   await screenshot(page, '01-folder-desktop');
-  await row(page).getByTestId('pdf-selection-checkbox').check();
-  assert.equal(await row(page).getByTestId('pdf-selection-checkbox').isChecked(), true);
-  await row(page).getByTestId('pdf-selection-checkbox').uncheck();
 
   await mobile.goto(`/folder/${folder}`);
   await verifyList(mobile, true);
   await row(mobile, longFilename).getByRole('link', { name: longFilename, exact: true }).waitFor();
+  await verifyIndividualActions(mobile, row(mobile).or(row(mobile, longFilename)));
   await screenshot(mobile, '02-folder-phone');
+  await openButton(mobile, '표지 보기').click();
+  await card(mobile).waitFor();
+  await verifyIndividualActions(mobile, mobile.getByTestId('pdf-cover-card'));
+  await screenshot(mobile, '06-folder-phone-covers');
 
   const addFavorite = openButton(row(page), '즐겨찾기에 추가');
   if (await addFavorite.isVisible()) await addFavorite.click();
@@ -119,18 +152,26 @@ try {
   await openButton(dialog(), '닫기').click();
   await openButton(row(page), '태그관리').click();
   await dialog().getByText(tag, { exact: false }).last().waitFor();
+  const manualTag = 'Individual book tag';
+  await dialog().getByRole('combobox').fill(manualTag);
+  await dialog().getByTestId('add-tag-button').click();
+  await dialog().getByText(manualTag, { exact: false }).last().waitFor();
   await openButton(dialog(), '닫기').click();
   await dialog().waitFor({ state: 'hidden' });
+  assert.deepEqual((await (await request(bookRoute)).json()).sort(), [tag, manualTag].sort());
+  const otherBookRoute = `/api/tags/book/${folder}/${encodeURIComponent(longFilename)}`;
+  assert.deepEqual(await (await request(otherBookRoute)).json(), []);
 
   let aiRequests = 0;
   await page.route(`**${bookRoute}/auto`, async (route) => {
     assert.equal(route.request().method(), 'POST');
     aiRequests += 1;
-    await route.fulfill({ json: { addedTags: [aiTag], removedTags: [] } });
+    await route.fulfill({ json: { addedTags: [aiRequests === 1 ? aiTag : coverAiTag], removedTags: [] } });
   });
   await openButton(row(page), 'AI 자동 태그').click();
   await row(page).getByTestId('pdf-tag-chip').filter({ hasText: aiTag }).waitFor();
   assert.equal(aiRequests, 1);
+  assert.equal(await row(page, longFilename).getByText(aiTag, { exact: true }).count(), 0);
 
   await page.route('**/api/covers/candidates?*', (route) => route.fulfill({ json: { candidates: [], failedSources: [] } }));
   await openButton(row(page), expectedActions[2]).click();
@@ -139,15 +180,23 @@ try {
   await openButton(dialog(), '닫기').click();
 
   await toggle('표지 보기');
-  assert.equal(await thumbnail(card()), originalThumbnail);
-  await openButton(card(), '즐겨찾기에서 제거').waitFor();
-  await openButton(card(), '코멘트').click();
+  const cover = card(page);
+  assert.equal(await thumbnail(cover), originalThumbnail);
+  await verifyIndividualActions(page, page.getByTestId('pdf-cover-card'));
+  await openButton(cover, '즐겨찾기에서 제거').waitFor();
+  await openButton(cover, '코멘트').click();
   await dialog().getByText(comment, { exact: true }).waitFor();
   await openButton(dialog(), '닫기').click();
-  await openButton(card(), expectedActions[2]).click();
+  await openButton(cover, expectedActions[2]).click();
   assert.equal(await dialog().getByRole('textbox').inputValue(), 'List feature specimen');
   await openButton(dialog(), '닫기').click();
   await screenshot(page, '03-folder-covers');
+  await cover.getByTestId('pdf-cover-info-toggle').click();
+  await openButton(cover, 'AI 자동 태그').click();
+  await cover.getByTestId('pdf-tag-chip').filter({ hasText: coverAiTag }).waitFor();
+  assert.equal(aiRequests, 2);
+  assert.equal(await card(page, longFilename).getByTestId('pdf-tag-chip').filter({ hasText: coverAiTag }).count(), 0);
+  await screenshot(page, '07-cover-book-ai-tag');
   await toggle('목록 보기');
 
   await page.goto(`/tag/${encodeURIComponent(tag)}`);
@@ -162,18 +211,18 @@ try {
   await openButton(row(page), '파일 이름 바꾸기').click();
   await dialog().getByRole('textbox', { name: '파일 이름' }).fill(renamed);
   await openButton(dialog(), '저장').click();
-  await thumbnail(row(page, renamed));
+  await thumbnailAfterFileChange(folder, renamed);
   await openButton(row(page, renamed), expectedActions[3]).click();
   await dialog().getByRole('radio', { name: 'Destination', exact: true }).click();
   await openButton(dialog(), '이동').click();
   await row(page, renamed).waitFor({ state: 'hidden' });
   await page.goto('/folder/Destination');
-  await thumbnail(row(page, renamed));
+  await thumbnailAfterFileChange('Destination', renamed);
   await openButton(row(page, renamed), expectedActions[4]).click();
   await openButton(dialog(), '삭제').click();
   await row(page, renamed).waitFor({ state: 'hidden' });
   assert.deepEqual(errors, []);
-  console.log('List layout, shared controls, and fixture rename, move, and delete passed.');
+  console.log('List and cover views have no selection or bulk AI controls. Individual tagging, rename, move, and delete passed.');
 } catch (error) {
   await screenshot(page, 'failure-desktop').catch(() => undefined);
   throw error;
