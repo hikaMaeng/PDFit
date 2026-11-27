@@ -19,7 +19,11 @@ import { ViewerPopupResizeHandle } from '../viewer-popup/ViewerPopupResizeHandle
 type BoardProps = { book: CommentBook; onClose: () => void };
 
 function BookCommentContent({ book, comment }: { book: CommentBook; comment: BookComment }) {
+  const { t } = usePdfitI18n();
   return <>
+    {Boolean(comment.referencePages?.length) && <Typography variant="body2" color="text.secondary" sx={{ mb: .5, overflowWrap: 'anywhere' }}>
+      {t(COMMENT.REFERENCE_PAGES)} · {comment.referencePages?.join(', ')}
+    </Typography>}
     {comment.body.trim() && <BookCommentMarkdown body={comment.body} />}
     {comment.images?.map(({ id, name }) => <Box component="img" key={id} alt={name}
       src={bookCommentImageUrl(book, comment.id, id)} loading="lazy"
@@ -37,7 +41,7 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
   const content = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
-  const { loading, saving, error, mode, page, selectedId, draftImages, imageError } = model;
+  const { loading, saving, error, mode, page, selectedId, draftImages, draftReferencePages, imageError, referencePagesError, filter } = model;
   const comment = page?.comments.find((entry) => entry.id === selectedId);
   const pageCount = bookCommentPageCount(page?.total ?? 0);
   const composing = mode === 'create' || mode === 'edit';
@@ -47,7 +51,7 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
   useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [mode, page?.page]);
 
   return <>
-    <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', direction: 'ltr', alignItems: dragHandle ? 'center' : 'start', gap: 1,
+    <DialogTitle id={`${titleId}-heading`} sx={{ display: 'flex', direction: 'ltr', alignItems: 'center', gap: .5,
       pl: { xs: 2, sm: 3 }, paddingRight: VIEWER_POPUP_CLOSE_INSET,
       py: dragHandle ? { xs: 1, sm: 1.5 } : { xs: 1.5, sm: 2 } }}>
       <Box {...dragHandle} tabIndex={dragHandle ? 0 : undefined} title={dragHandle ? t(COMMENT.MOVE) : undefined}
@@ -56,11 +60,14 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
         sx={{ display: 'flex', alignItems: 'center', gap: .75, flex: 1, minWidth: 0, touchAction: dragHandle ? 'none' : undefined,
           cursor: dragHandle ? 'grab' : undefined, userSelect: dragHandle ? 'none' : undefined, '&:active': { cursor: dragHandle ? 'grabbing' : undefined } }}>
         {dragHandle && <DragIndicatorIcon color="action" fontSize="small" />}
-        <Box dir="auto" sx={{ minWidth: 0 }}>
-          <Box component="span" id={titleId}>{t(COMMENT.BUTTON)}</Box>
-          <Typography component="div" variant="body2" color="text.secondary" noWrap title={book.filename}>{book.filename}</Typography>
-        </Box>
+        <Typography noWrap dir="auto" component="span" variant="h6" id={titleId}>{t(COMMENT.BUTTON)}</Typography>
       </Box>
+      {dragHandle && <>
+        <Button size="small" variant={filter === 'latest' ? 'outlined' : 'text'} aria-pressed={filter === 'latest'}
+          disabled={!reading} onClick={() => model.setFilter('latest')} sx={{ minWidth: 0, flexShrink: 0 }}>{t(COMMENT.LATEST)}</Button>
+        <Button size="small" variant={filter === 'current' ? 'outlined' : 'text'} aria-pressed={filter === 'current'}
+          disabled={!reading} onClick={() => model.setFilter('current')} sx={{ minWidth: 0, flexShrink: 0 }}>{t(COMMENT.CURRENT_PAGE)}</Button>
+      </>}
       <ViewerPopupCloseButton size="medium" onClose={onClose} disabled={saving} />
     </DialogTitle>
     <DialogContent ref={content} dividers tabIndex={0} data-testid="book-comments-content" aria-busy={loading || saving}
@@ -70,12 +77,18 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
       {loading && <Box role="status" aria-label={t('loading')} sx={{ display: 'grid', placeItems: 'center', py: 4 }}><CircularProgress size={24} /></Box>}
       {composing && <Box component="form" id={formId} onSubmit={(event) => {
         event.preventDefault();
-        const body = new FormData(event.currentTarget).get('body');
-        if (typeof body === 'string') void model.save(body);
+        const form = new FormData(event.currentTarget);
+        const body = form.get('body');
+        const pages = form.get('referencePages');
+        if (typeof body === 'string' && typeof pages === 'string') void model.save(body, pages);
       }}>
         <TextField autoFocus fullWidth multiline required={!draftImages.length} minRows={5} maxRows={12} name="body"
           label={t(COMMENT.BODY)} defaultValue={mode === 'edit' ? comment?.body : ''}
           inputProps={{ maxLength: BOOK_COMMENT_LIMIT, readOnly: saving }} />
+        <TextField fullWidth name="referencePages" label={t(COMMENT.REFERENCE_PAGES)}
+          defaultValue={draftReferencePages} error={referencePagesError} onChange={model.clearReferencePagesError}
+          helperText={t(referencePagesError ? COMMENT.REFERENCE_PAGES_ERROR : COMMENT.REFERENCE_PAGES_HINT)}
+          inputProps={{ readOnly: saving, dir: 'ltr' }} sx={{ mt: 2 }} />
         <Button startIcon={<AttachFileIcon />} disabled={saving || draftImages.length >= BOOK_COMMENT_IMAGE_LIMIT}
           onClick={() => imageInput.current?.click()} sx={{ mt: 1 }}>{t(COMMENT.ATTACH_IMAGES)}</Button>
         <input ref={imageInput} type="file" hidden multiple aria-label={t(COMMENT.ATTACH_IMAGES)}
@@ -94,7 +107,8 @@ function BookCommentsBoard({ book, onClose, titleId, model, dragHandle }: BoardP
           </Stack>)}
         </Stack>}
       </Box>}
-      {!loading && !error && page?.total === 0 && reading && <Typography color="text.secondary">{t(COMMENT.EMPTY)}</Typography>}
+      {!loading && !error && page?.total === 0 && reading &&
+        <Typography color="text.secondary">{t(filter === 'current' ? COMMENT.CURRENT_PAGE_EMPTY : COMMENT.EMPTY)}</Typography>}
       {!loading && reading && page?.comments.map((entry) => <Box component="article" key={entry.id} sx={{
         py: 1.5,
         '&:first-of-type': { pt: 0 },
@@ -148,8 +162,9 @@ export default function BookCommentsDialog(props: BoardProps) {
   </Dialog>;
 }
 
-export function FloatingBookComments({ id, ...props }: BoardProps & { id: string }) {
+export function FloatingBookComments({ id, currentPage, ...props }: BoardProps & { id: string; currentPage: number }) {
   const titleId = useId();
+  useLayoutEffect(() => { viewerBookCommentsModel.setViewerPage(currentPage); }, [currentPage]);
   const { popupRef, rect, moveHandleProps, resizeHandleProps } = useViewerPopupGeometry({
     kind: 'comments', bookKey: viewerPopupBookKey(props.book), open: true,
     defaultRect: ({ width }) => ({ x: width - 480 - 8, y: 12, width: 480, height: 620 }),

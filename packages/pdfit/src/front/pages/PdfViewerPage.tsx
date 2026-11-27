@@ -331,8 +331,8 @@ export default function PdfViewerPage() {
   const bot = bookBotEnabled && localOcr && stateLoaded ? {
     model: getBookBotModel(commentsBook), buttonId: botButtonId, panelId: botPanelId,
   } : null;
-  const floatingPanel = commentsOpen || bot || localOcr ? (onPage: (page: number) => void, pageCount: number) => <>
-    {commentsOpen && <FloatingBookComments id={commentsPanelId} book={commentsBook} onClose={closeComments} />}
+  const floatingPanel = commentsOpen || bot || localOcr ? (onPage: (page: number) => void, pageCount: number, currentPage: number) => <>
+    {commentsOpen && <FloatingBookComments id={commentsPanelId} book={commentsBook} currentPage={currentPage} onClose={closeComments} />}
     {bot && <BookBotPanel {...bot} documentUrl={pdfUrl} pageCount={pageCount} onPage={onPage} />}
     {localOcr && <PageOcrDialog folder={folderName} filename={fileName} onPage={onPage} />}
   </> : undefined;

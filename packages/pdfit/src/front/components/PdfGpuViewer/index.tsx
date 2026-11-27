@@ -65,7 +65,7 @@ type Props = {
   onUnavailable?: () => void;
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
-  floatingPanel?: (onPage: (page: number) => void, pageCount: number) => ReactNode;
+  floatingPanel?: (onPage: (page: number) => void, pageCount: number, currentPage: number) => ReactNode;
   scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
@@ -418,7 +418,7 @@ export default function PdfGpuViewer({
     return <>
       {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Alert severity="warning">{ui("고성능 PDF 렌더러를 사용할 수 없습니다. 기본 뷰어로 전환합니다. (")}{initError})</Alert>
-      {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel(goToPage, state.pageCount)}</Box>}
+      {floatingPanel && <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>{floatingPanel(goToPage, state.pageCount, currentPage)}</Box>}
     </>;
   }
 
@@ -479,7 +479,7 @@ export default function PdfGpuViewer({
         </Box>
         {!uiHidden && <AnnotationControls tool={annotation.tool} clipPanelOpen={annotation.clipPanelOpen} clipPanelId={clipPanelId} style={annotation.displayedStyle} saveState={annotation.saveState} canUndo={annotation.canUndo} canRedo={annotation.canRedo} canRetry={annotation.canRetry} onToolChange={annotation.selectTool} onStyleChange={annotation.updateStyle} onUndo={annotation.undo} onRedo={annotation.redo} onRetry={annotation.retry} />}
         {annotation.clipPanelOpen && <BookmarkSidebar id={clipPanelId} armed={clipArmed} onClose={annotation.closeClipPanel} bookmarks={bookmarks} recentId={bookmark.recentId} deletingId={bookmark.deletingId} onEdit={bookmark.openEditor} onDelete={(id) => void bookmark.deleteItem(id)} onGoToPage={goToPage} />}
-        {floatingPanel?.(goToPage, state.pageCount)}
+        {floatingPanel?.(goToPage, state.pageCount, currentPage)}
         <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
           storage={outlineStorage} pageCount={state.pageCount} currentPage={currentPage}
           onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />

@@ -59,7 +59,15 @@ function markdownPost(page) {
   return panel(page).getByRole('article').filter({ has: page.getByRole('heading', { name: noteTitle, exact: true }) });
 }
 function editor(page) { return panel(page).getByRole('textbox', { name: '코멘트 본문' }); }
+function referencePages(page) { return panel(page).getByRole('textbox', { name: '참고 페이지' }); }
 function resizeHandle(page) { return panel(page).getByRole('button', { name: /크기 조절/ }); }
+function commentAction(page, name) { return panel(page).getByRole('button', { name, exact: true }); }
+async function assertCloseInset(close) {
+  assert.deepEqual(await close.evaluate((button) => {
+    const header = button.parentElement;
+    return [getComputedStyle(header).paddingRight, header.getBoundingClientRect().right - button.getBoundingClientRect().right];
+  }), ['5px', 5]);
+}
 async function drag(page, handle, x, y) {
   const box = await handle.boundingBox();
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -122,6 +130,106 @@ async function watch(context) {
   const page = await context.newPage();
   page.on('pageerror', (error) => errors.push(error.message));
   return page;
+}
+
+async function checkReferencePages(page) {
+  const otherPath = `/api/book-comments?${new URLSearchParams({ folder: 'Other', filename: 'Second book.pdf' })}`;
+  const seeded = [];
+  try {
+    for (let index = 1; index <= 6; index++) {
+      const id = randomUUID();
+      const response = await desktop.request.post(`${otherPath}&id=${id}`, {
+        data: { body: `Reference note ${index}`, referencePages: index === 6 ? [2, 3] : [2] },
+      });
+      assert.equal(response.status(), 201, await response.text());
+      seeded.push(id);
+    }
+    const legacyId = randomUUID();
+    assert.equal((await desktop.request.post(`${otherPath}&id=${legacyId}`, { data: { body: 'Legacy note' } })).status(), 201);
+    seeded.push(legacyId);
+    assert.equal((await desktop.request.get(`${otherPath}&referencePage=2.5`)).status(), 400);
+    assert.equal((await desktop.request.patch(`${otherPath}&id=${legacyId}`, {
+      data: { body: 'Legacy note', referencePages: [0, '2'] },
+    })).status(), 400);
+    for (const engine of ['pdfjs', 'gpu']) {
+      await page.goto(`${otherBookPath}?page=2${engine === 'gpu' ? '&engine=gpu' : ''}`);
+      await page.getByTestId(engine === 'gpu' ? 'pdfgpu-scroll-area' : 'pdf-scroll-area').waitFor();
+      if (engine === 'gpu') {
+        await page.getByRole('status', { name: 'viewer status' }).filter({ hasText: /Pages: 2 \/ 3.*100%/ }).waitFor();
+      }
+      const viewerPage = controls(page).getByRole('textbox', { name: '페이지 번호' });
+      const goTo = async (number) => {
+        await viewerPage.fill(String(number));
+        await viewerPage.press('Enter');
+      };
+      await toggle(page).click();
+      await panelText(page, 'Legacy note').waitFor();
+      assert.equal(await panelText(page, 'Second book.pdf').count(), 0);
+      await assertCloseInset(commentAction(page, '닫기'));
+      assert.equal(await commentAction(page, '최신순').getAttribute('aria-pressed'), 'true');
+      await commentAction(page, '현재페이지').click();
+      await panelText(page, 'Legacy note').waitFor({ state: 'hidden' });
+      await commentAction(page, '다음 페이지').click();
+      await panelText(page, 'Reference note 1').waitFor();
+      await panelText(page, '2 / 2').waitFor();
+      const pageChange = page.waitForResponse((response) =>
+        response.url().includes('referencePage=3') && new URL(response.url()).searchParams.get('page') === '1');
+      await goTo(3);
+      assert.equal((await pageChange).status(), 200);
+      await panelText(page, 'Reference note 6').waitFor();
+      await panelText(page, '1 / 1').waitFor();
+      assert.equal(await panel(page).getByRole('article').count(), 1);
+      await page.screenshot({ path: path.join(artifacts, `${engine}-reference-filter.png`), animations: 'disabled' });
+
+      await commentAction(page, '새 코멘트').click();
+      assert.equal(await referencePages(page).inputValue(), '3');
+      await editor(page).fill('Draft reference note');
+      await goTo(2);
+      assert.equal(await referencePages(page).inputValue(), '3');
+      assert.equal(await editor(page).inputValue(), 'Draft reference note');
+      if (engine === 'pdfjs') {
+        await referencePages(page).fill('2, 0');
+        await commentAction(page, '저장').click();
+        await panelText(page, '1 이상의 올바른 페이지 번호를 입력하세요.').waitFor();
+        await referencePages(page).fill('3, 2 1，3');
+        await page.screenshot({ path: path.join(artifacts, 'reference-pages-edit.png'), animations: 'disabled' });
+        const created = page.waitForResponse((response) => response.url().includes('/api/book-comments?') &&
+          response.request().method() === 'POST' && response.status() === 201);
+        await commentAction(page, '저장').click();
+        const saved = await (await created).json();
+        seeded.push(saved.id);
+        assert.deepEqual(saved.referencePages, [1, 2, 3]);
+        const post = panel(page).getByRole('article').filter({ hasText: saved.body });
+        await post.getByText('참고 페이지 · 1, 2, 3', { exact: true }).waitFor();
+        await post.getByRole('button', { name: '수정', exact: true }).click();
+        assert.equal(await referencePages(page).inputValue(), '1, 2, 3');
+        await referencePages(page).fill('');
+        const updated = page.waitForResponse((response) => response.url().includes(`id=${saved.id}`) && response.request().method() === 'PATCH');
+        await commentAction(page, '저장').click();
+        const response = await updated;
+        assert.equal(response.status(), 200);
+        assert.deepEqual((await response.json()).referencePages, []);
+        await post.waitFor({ state: 'hidden' });
+        await panelText(page, 'Reference note 6').waitFor();
+        await commentAction(page, '최신순').click();
+        await post.waitFor();
+        await post.getByRole('button', { name: '수정', exact: true }).click();
+        assert.equal(await referencePages(page).inputValue(), '');
+        await commentAction(page, '취소').click();
+        assert.equal((await desktop.request.delete(`${otherPath}&id=${saved.id}`)).status(), 204);
+      } else {
+        await commentAction(page, '취소').click();
+        await panelText(page, '1 / 2').waitFor();
+        await goTo(1);
+        await panelText(page, '현재 페이지를 참고하는 코멘트가 없습니다.').waitFor();
+        assert.equal(await panel(page).getByRole('article').count(), 0);
+      }
+      await commentAction(page, '최신순').click();
+      await panelText(page, 'Legacy note').waitFor();
+    }
+  } finally {
+    for (const id of seeded) await desktop.request.delete(`${otherPath}&id=${id}`);
+  }
 }
 
 try {
@@ -262,6 +370,8 @@ try {
   await page.getByTestId('pdf-cover-card').getByRole('button', { name: '코멘트', exact: true }).click();
   await assertMarkdown(page, 'Quoted passage');
   assert.equal(await panel(page).getAttribute('aria-modal'), 'true');
+  assert.equal(await panelText(page, filename).count(), 0);
+  await assertCloseInset(commentAction(page, '닫기'));
   await markdownPost(page).getByRole('button', { name: '수정', exact: true }).click();
   assert.equal(await editor(page).inputValue(), viewerNote);
   await editor(page).fill(editedNote);
@@ -327,6 +437,7 @@ try {
   const rtlPanel = rtlPage.getByRole('dialog', { name: 'التعليقات', exact: true });
   const rtlClose = rtlPanel.getByRole('button', { name: 'إغلاق', exact: true });
   assert.equal(await rtlClose.count(), 1);
+  await assertCloseInset(rtlClose);
   const rtlFrame = await rtlPanel.boundingBox();
   const rtlCloseBox = await rtlClose.boundingBox();
   const rtlResize = await rtlPanel.getByRole('button', { name: 'تغيير حجم النافذة المنبثقة' }).boundingBox();
@@ -352,8 +463,9 @@ try {
   await panel(page).getByRole('button', { name: '저장', exact: true }).click();
   await assertMarkdown(page, 'Edited passage');
   assert.equal((await desktop.request.get(imageUrl)).status(), 404);
+  await checkReferencePages(page);
   assert.deepEqual(errors, []);
-  console.log('PASS PDF.js, PDFGPU, cover and list Markdown; comment images, width, validation and removal; paging, move, minimum resize and per-book restore');
+  console.log('PASS PDF.js and PDFGPU reference pages, live filters and paging reset; shared comments, images and popup geometry');
 } finally {
   await desktop.tracing.stop({ path: path.join(artifacts, 'trace.zip') }).catch(() => undefined);
   await browser.close();

@@ -126,7 +126,7 @@ interface Props {
   /** 상위(PdfViewerPage)에서 스페이스바로 토글된 UI 숨김 상태 */
   uiHidden?: boolean;
   documentActions?: RenderViewerDocumentActions;
-  floatingPanel?: (onPage: (page: number) => void, pageCount: number) => React.ReactNode;
+  floatingPanel?: (onPage: (page: number) => void, pageCount: number, currentPage: number) => React.ReactNode;
   scanBook?: import('../../api/ocr.js').OcrScanBook;
   bookmarks?: BookmarkRecord[];
   onBookmarkCaptured?: (capture: PdfGpuCaptureResult) => Promise<BookmarkRecord | void>;
@@ -877,7 +877,7 @@ export default function PdfViewer({
         <Box sx={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <PdfLoadingProgress progress={loadProgress} determinate={loadProgressDeterminate && !rangeLoading && !waitingForPdf}
             label={waitingForPdf ? t(RSC.VIEWER_PDF_OPEN_RETRYING_STATUS) : rangeLoading ? ui('첫 페이지를 준비하고 있습니다…') : undefined} />
-          {floatingPanel?.(goToPage, totalPages)}
+          {floatingPanel?.(goToPage, totalPages, currentPage)}
         </Box>
       </>
     );
@@ -888,7 +888,7 @@ export default function PdfViewer({
       {!uiHidden && documentActions && <ViewerToolbarFrame>{documentActions()}</ViewerToolbarFrame>}
       <Box sx={{ p: 4, position: 'relative', flex: 1, minHeight: 0 }}><Alert severity="error" action={error.kind === 'temporary' && <Button color="inherit" size="small" onClick={() => setLoadRevision((value) => value + 1)}>{t('retry')}</Button>}>
         {error.kind === 'temporary' ? t(RSC.VIEWER_PDF_OPEN_UNAVAILABLE_ALERT) : error.kind === 'missing' ? t('documentUnavailable') : error.message}
-      </Alert>{floatingPanel?.(goToPage, totalPages)}</Box>
+      </Alert>{floatingPanel?.(goToPage, totalPages, currentPage)}</Box>
     </>;
   }
 
@@ -1084,7 +1084,7 @@ export default function PdfViewer({
       )}
 
       </Box>
-        {floatingPanel?.(goToPage, totalPages)}
+        {floatingPanel?.(goToPage, totalPages, currentPage)}
         <PdfOutlineDialog id={outlineId} bookKey={url} open={outlineOpen} readOutline={readOutline}
           storage={outlineStorage} pageCount={totalPages} currentPage={currentPage}
           onSelectPage={goToPage} onSavePage={onStateChange ? goToAndSavePage : undefined} onClose={() => setOutlineOpen(false)} />

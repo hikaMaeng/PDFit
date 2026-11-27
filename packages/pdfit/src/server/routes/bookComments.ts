@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import {
   BOOK_COMMENT_COUNTS_LIMIT, BOOK_COMMENT_COUNTS_PATH, BOOK_COMMENT_ID, BOOK_COMMENT_LIMIT,
   BOOK_COMMENT_IMAGE_BYTES, BOOK_COMMENT_IMAGE_LIMIT, BOOK_COMMENT_IMAGE_PATH,
-  isBookCommentImageType, parseBookCommentImage, parseCommentBook,
+  isBookCommentImageType, isBookCommentReferencePage, parseBookCommentImage, parseBookCommentReferencePages, parseCommentBook,
   type BookComment, type BookCommentPage, type WriteBookCommentImage,
 } from '../../common/protocol/book-comments/index.js';
 import { resolveMetadataStore, type MetadataStoreResolver } from './metadataStoreResolver.js';
@@ -83,7 +83,7 @@ export function createBookCommentsRouter(resolver: MetadataStoreResolver): Route
   });
 
   router.all('/', async (req, res) => {
-    const { folder, filename, driveFileId, page = '1', id } = req.query;
+    const { folder, filename, driveFileId, page = '1', referencePage, id } = req.query;
     const book = parseCommentBook({ folder, filename, driveFileId });
     if (!book) { res.status(400).end(); return; }
     try {
@@ -94,18 +94,24 @@ export function createBookCommentsRouter(resolver: MetadataStoreResolver): Route
         case 'GET': {
           const offset = Number(page);
           if (typeof page !== 'string' || !Number.isSafeInteger(offset) || offset < 1) { res.status(400).end(); return; }
-          res.json(await store.listBookComments(book, offset) satisfies BookCommentPage);
+          const filter = referencePage === undefined ? undefined : Number(referencePage);
+          if (referencePage !== undefined && (typeof referencePage !== 'string' ||
+            !/^\d+$/.test(referencePage) || !isBookCommentReferencePage(filter))) { res.status(400).end(); return; }
+          res.json(await store.listBookComments(book, offset, filter) satisfies BookCommentPage);
           return;
         }
         case 'POST':
         case 'PATCH': {
           const body: unknown = req.body?.body;
           const imageInput: unknown = req.body?.images;
+          const pagesInput: unknown = req.body?.referencePages;
           if (typeof id !== 'string' || !BOOK_COMMENT_ID.test(id) || typeof body !== 'string' ||
             body.length > BOOK_COMMENT_LIMIT || body.includes('\0')) { res.status(400).end(); return; }
+          const referencePages = pagesInput === undefined ? undefined : parseBookCommentReferencePages(pagesInput);
+          if (referencePages === null) { res.status(400).end(); return; }
           const images = imageInput === undefined ? undefined : await parseImages(imageInput, req.method === 'POST');
           if (images === null || (!body.trim() && !images?.length)) { res.status(400).end(); return; }
-          const input = { id: id.toLowerCase(), body, images };
+          const input = { id: id.toLowerCase(), body, images, referencePages };
           const saved = req.method === 'POST' ? await store.createBookComment(book, input) : await store.updateBookComment(book, input);
           if (!saved) { res.status(404).end(); return; }
           res.status(req.method === 'POST' ? 201 : 200).json(saved satisfies BookComment);

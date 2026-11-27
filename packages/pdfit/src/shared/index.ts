@@ -20,7 +20,8 @@ export type { BookmarkRecord, BookmarkRect, CreateBookmarkRequest, UpdateBookmar
 export type { Annotation, CreateAnnotationRequest, UpdateAnnotationRequest } from '../common/protocol/annotations/index.js';
 export type { BookOutlineEntry, BookOutlinePayload } from '../common/protocol/outlines/index.js';
 export type { BookComment, BookCommentImage, BookCommentStore, WriteBookCommentImage } from '../common/protocol/book-comments/index.js';
-export { BOOK_COMMENT_IMAGE_BYTES, BOOK_COMMENT_PAGE_SIZE, bookCommentPageCount, isBookCommentImageType, parseBookCommentImage } from '../common/protocol/book-comments/index.js';
+export { BOOK_COMMENT_IMAGE_BYTES, BOOK_COMMENT_PAGE_SIZE, bookCommentPageCount, isBookCommentImageType,
+  parseBookCommentImage, parseBookCommentReferencePages } from '../common/protocol/book-comments/index.js';
 
 export interface TagSummary {
   name: string;

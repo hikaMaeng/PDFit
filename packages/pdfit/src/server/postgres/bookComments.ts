@@ -16,6 +16,7 @@ export const bookCommentsSchema = `
   );
   CREATE INDEX IF NOT EXISTS idx_book_comments_page ON book_comments (folder, filename, created_at DESC, id DESC);
   ALTER TABLE book_comments ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ALTER TABLE book_comments ADD COLUMN IF NOT EXISTS reference_pages INTEGER[];
 
   DO $$
   BEGIN
@@ -35,8 +36,8 @@ export const bookCommentsSchema = `
   END $$;
 `;
 
-type CommentRow = { id: string; body: string; created_at: Date; updated_at: Date; images: BookCommentImage[] | null };
-const commentColumns = `id, body, created_at, updated_at,
+type CommentRow = { id: string; body: string; created_at: Date; updated_at: Date; images: BookCommentImage[] | null; reference_pages: number[] | null };
+const commentColumns = `id, body, created_at, updated_at, reference_pages,
   (SELECT jsonb_agg(jsonb_build_object('id', image->>'id', 'name', image->>'name') ORDER BY position)
    FROM jsonb_array_elements(images) WITH ORDINALITY AS attachment(image, position)) AS images`;
 
@@ -49,7 +50,8 @@ function serializeImages(images: WriteBookCommentImage[] | undefined): string | 
 function fromRow(row?: CommentRow | null): BookComment | null {
   if (!row?.id) return null;
   return { id: row.id, body: row.body, createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
-    ...(row.images?.length ? { images: row.images } : {}) };
+    ...(row.images?.length ? { images: row.images } : {}),
+    ...(row.reference_pages ? { referencePages: row.reference_pages } : {}) };
 }
 
 export function createPostgresBookComments(db: Pool): BookCommentStore {
@@ -63,39 +65,41 @@ export function createPostgresBookComments(db: Pool): BookCommentStore {
       `, [books.map((book) => book.folder), books.map((book) => book.filename)]);
       return rows.map((row) => row.total);
     },
-    async listBookComments({ folder, filename }, page) {
+    async listBookComments({ folder, filename }, page, referencePage) {
+      const scope = '(folder, filename) = ($1, $2) AND ($5::int IS NULL OR reference_pages @> ARRAY[$5::int])';
       const result = await db.query<CommentRow & { total: number; page: number }>(`
         WITH tally AS (
-          SELECT COUNT(*)::int AS total FROM book_comments WHERE (folder, filename) = ($1, $2)
+          SELECT COUNT(*)::int AS total FROM book_comments WHERE ${scope}
         ), position AS (
           SELECT total, LEAST(GREATEST(1, (total - 1) / $4::int + 1), $3::bigint)::int AS page FROM tally
         )
         SELECT position.*, item.* FROM position
         LEFT JOIN LATERAL (
-          SELECT ${commentColumns} FROM book_comments WHERE (folder, filename) = ($1, $2)
+          SELECT ${commentColumns} FROM book_comments WHERE ${scope}
           ORDER BY created_at DESC, id DESC
           OFFSET ((position.page - 1)::bigint * $4::int) LIMIT $4::int
         ) item ON true
         ORDER BY item.created_at DESC, item.id DESC
-      `, [folder, filename, page, BOOK_COMMENT_PAGE_SIZE]);
+      `, [folder, filename, page, BOOK_COMMENT_PAGE_SIZE, referencePage ?? null]);
       const row = result.rows[0];
       const comments = result.rows.map(fromRow).filter((comment) => comment !== null);
       return { page: row.page, total: row.total, comments };
     },
-    async createBookComment({ folder, filename }, { id, body, images }) {
+    async createBookComment({ folder, filename }, { id, body, images, referencePages }) {
       const result = await db.query<CommentRow>(`
-        INSERT INTO book_comments (id, folder, filename, body, images)
-        SELECT $3, folder, filename, $4, COALESCE($5::jsonb, '[]'::jsonb)
+        INSERT INTO book_comments (id, folder, filename, body, images, reference_pages)
+        SELECT $3, folder, filename, $4, COALESCE($5::jsonb, '[]'::jsonb), $6::int[]
         FROM books WHERE (folder, filename) = ($1, $2)
         ON CONFLICT (id) DO UPDATE SET body = book_comments.body
           WHERE (book_comments.folder, book_comments.filename) = (EXCLUDED.folder, EXCLUDED.filename)
         RETURNING ${commentColumns}
-      `, [folder, filename, id, body, serializeImages(images)]);
+      `, [folder, filename, id, body, serializeImages(images), referencePages ?? null]);
       return fromRow(result.rows[0]);
     },
-    async updateBookComment({ folder, filename }, { id, body, images }) {
+    async updateBookComment({ folder, filename }, { id, body, images, referencePages }) {
       const result = await db.query<CommentRow>(`
         UPDATE book_comments SET body = $4, updated_at = NOW(),
+          reference_pages = COALESCE($6::int[], reference_pages),
           images = CASE WHEN $5::jsonb IS NULL THEN images ELSE COALESCE((
             SELECT jsonb_agg(COALESCE(stored.image, incoming.image) ORDER BY incoming.position)
             FROM jsonb_array_elements($5::jsonb) WITH ORDINALITY AS incoming(image, position)
@@ -111,7 +115,7 @@ export function createPostgresBookComments(db: Pool): BookCommentStore {
             )
           )
         RETURNING ${commentColumns}
-      `, [folder, filename, id, body, serializeImages(images)]);
+      `, [folder, filename, id, body, serializeImages(images), referencePages ?? null]);
       return fromRow(result.rows[0]);
     },
     async deleteBookComment({ folder, filename }, id) {

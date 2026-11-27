@@ -10,6 +10,7 @@ export interface BookComment {
   createdAt: string;
   updatedAt: string;
   images?: BookCommentImage[];
+  referencePages?: number[];
 }
 
 export interface BookCommentImage {
@@ -44,11 +45,12 @@ export interface WriteBookComment {
   id: string;
   body: string;
   images?: WriteBookCommentImage[];
+  referencePages?: number[];
 }
 
 export interface BookCommentStore {
   listBookCommentCounts(books: readonly CommentBook[]): Promise<number[]>;
-  listBookComments(book: CommentBook, page: number): Promise<BookCommentPage>;
+  listBookComments(book: CommentBook, page: number, referencePage?: number): Promise<BookCommentPage>;
   createBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   updateBookComment(book: CommentBook, input: WriteBookComment): Promise<BookComment | null>;
   deleteBookComment(book: CommentBook, id: string): Promise<void>;
@@ -92,13 +94,27 @@ export function parseCommentBook(value: unknown): CommentBook | null {
   return { folder, filename, driveFileId };
 }
 
+export function isBookCommentReferencePage(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 2_147_483_647;
+}
+
+export function parseBookCommentReferencePages(value: unknown): number[] | null {
+  if (!Array.isArray(value) || !value.every(isBookCommentReferencePage)) return null;
+  return [...new Set<number>(value)].sort((left, right) => left - right);
+}
+
 export function parseBookComment(value: unknown): BookComment | null {
   if (!value || typeof value !== 'object' || !('id' in value) || !('body' in value) ||
     !('createdAt' in value) || !('updatedAt' in value) ||
     typeof value.id !== 'string' || typeof value.body !== 'string' ||
     typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string' ||
     !Number.isFinite(Date.parse(value.createdAt)) || !Number.isFinite(Date.parse(value.updatedAt))) return null;
-  const comment = { id: value.id, body: value.body, createdAt: value.createdAt, updatedAt: value.updatedAt };
+  const comment: BookComment = { id: value.id, body: value.body, createdAt: value.createdAt, updatedAt: value.updatedAt };
+  if ('referencePages' in value && value.referencePages !== undefined) {
+    const pages = parseBookCommentReferencePages(value.referencePages);
+    if (!pages) return null;
+    comment.referencePages = pages;
+  }
   if (!('images' in value) || value.images === undefined) return comment;
   if (!Array.isArray(value.images) || value.images.length > BOOK_COMMENT_IMAGE_LIMIT) return null;
   const images = value.images.map(parseBookCommentImage);

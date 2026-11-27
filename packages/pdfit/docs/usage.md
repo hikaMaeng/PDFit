@@ -89,6 +89,16 @@ Open **Comments** from a cover card, a library list row, or the PDF.js or PDFGPU
 viewer toolbar. Enter Markdown in the comment text area. Saving stores the
 source text and reopening the editor returns that text.
 
+Enter one or more PDF page numbers in **Reference pages**, separated by commas
+or spaces. The viewer fills this field with the PDF page active when you open a
+new comment. Editing a comment with saved references keeps those values. Clear
+the field to save a comment without page references.
+
+In the viewer, **Latest** shows all posts in newest-first order. **Current page**
+shows posts that reference the active PDF page. Changing PDF pages refreshes
+that list from its first page. An open draft keeps its text and page numbers
+until you save or cancel it.
+
 Choose **Attach images** while creating or editing a post. Add up to four PNG,
 JPEG, WebP or GIF files of up to 3 MiB each. You can save an image-only post.
 Uploaded images fill the post width and keep their proportions.
