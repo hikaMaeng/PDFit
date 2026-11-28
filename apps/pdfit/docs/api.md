@@ -34,9 +34,11 @@
 * `GET /api/ocr/scan`, `POST /api/ocr/scan`, `POST /api/ocr/scan/cancel`, `GET /api/ocr/scan/pages` — [local document scan](../../../packages/pdfit/docs/api.md#document-scan)
 * `POST /api/bookmarks/:id/ocr` — read a clip's text again; clips are read automatically after they are saved (contract in `packages/pdfit/docs/api.md`, "OCR")
 * `/api/settings/ai-servers` — AI server CRUD. `ocrConcurrency` is an optional positive PostgreSQL integer on create or update. List responses include the configured value. Existing entries and creates that omit it use 1.
-* `POST /api/settings/translations` — display-name translation through the first AI server that has an `llm` model. The server collects the streamed completion under the 20-minute model deadline and returns validated translations as JSON.
+* `POST /api/settings/translations` returns validated display-name translations as JSON. It uses the default LLM and the deadline of its AI server.
 
 AI server records accept `botContextTokens` on create and update. An integer from 16,384 to 2,097,152 sets the Bot window for that record. `null` returns to automatic chunking. See [Bot context preparation](../../../packages/pdfit/docs/book-bot.md#answer-context).
+
+AI server records also accept `requestTimeoutMinutes` on create and update. List responses return the saved whole-minute value. Create requests that omit it and existing records default to 20 minutes. An update that omits it keeps the saved value. Fractional, nonnumeric, or out-of-range values return HTTP 400. The valid range is 1 to 35,791. [Settings routes](../src/server/routes/settings.ts#createSettingsRouter)
 
 The shared route factories are exported by `@pdfit/pdfit/server`; app-owned settings are wired in `src/server/index.ts`.
 

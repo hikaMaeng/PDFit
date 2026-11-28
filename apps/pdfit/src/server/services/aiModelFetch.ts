@@ -1,10 +1,9 @@
-import { AI_MODEL_REQUEST_TIMEOUT_MS } from '@pdfit/pdfit/server';
 import { Agent, fetch as undiciFetch } from 'undici';
 
-// See packages/pdfit/docs/api.md#ai-model-requests.
+// streamAiCompletion supplies one deadline for the headers and the full response body.
 const dispatcher = new Agent({
-  headersTimeout: AI_MODEL_REQUEST_TIMEOUT_MS,
-  bodyTimeout: AI_MODEL_REQUEST_TIMEOUT_MS,
+  headersTimeout: 0,
+  bodyTimeout: 0,
 });
 
 // The Fetch types differ between Node and the pinned Undici release. AI callers use URL strings and JSON bodies.

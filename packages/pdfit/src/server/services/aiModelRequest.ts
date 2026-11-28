@@ -1,7 +1,7 @@
 import { readServerSentData } from '../../common/protocol/server-sent-data.js';
-import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
+import { aiModelTimeoutMs, type AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
-export const AI_MODEL_REQUEST_TIMEOUT_MS = 20 * 60_000;
+export const AI_MODEL_REQUEST_TIMEOUT_MS = aiModelTimeoutMs();
 export const AI_MODEL_PRIORITY = { background: 0, interactive: 1, foreground: 2 } as const;
 const MAX_COMPLETION_LENGTH = 256 * 1024;
 

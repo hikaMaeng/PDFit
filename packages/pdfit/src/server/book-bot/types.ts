@@ -33,5 +33,6 @@ export interface BookBotModelConfig {
   model: string;
   headers?: Record<string, string>;
   ocrConcurrency?: number;
+  timeoutMs?: number;
   contextTokens?: number | null;
 }

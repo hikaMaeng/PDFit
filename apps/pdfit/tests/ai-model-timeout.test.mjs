@@ -26,15 +26,17 @@ const modelReply = (...pieces) => async (_url, init) => {
   return streamReply(...pieces);
 };
 
-test('each Free AI feature uses the 20-minute deadline', async (t) => {
+test('Free AI features use the selected server deadline and fall back to 20 minutes', async (t) => {
   const defaultTimeout = AbortSignal.timeout;
   const deadlines = [];
   t.mock.method(AbortSignal, 'timeout', (ms) => {
     deadlines.push(ms);
     return defaultTimeout(ms);
   });
-  const server = { baseUrl: 'http://127.0.0.1/v1', model: 'fixture' };
-  const readText = await recognizeImageText(server, { bytes: Buffer.from('image'), type: 'image/jpeg' }, modelReply('OCR ', 'text'));
+  const timeoutMs = 45 * 60_000;
+  const server = { baseUrl: 'http://127.0.0.1/v1', model: 'fixture', timeoutMs };
+  const image = { bytes: Buffer.from('image'), type: 'image/jpeg' };
+  const readText = await recognizeImageText(server, image, modelReply('OCR ', 'text'));
   assert.equal(readText, 'OCR text');
 
   const visible = [];
@@ -61,7 +63,7 @@ test('each Free AI feature uses the 20-minute deadline', async (t) => {
   await once(translator, 'listening');
   try {
     const url = `http://127.0.0.1:${translator.address().port}/v1`;
-    assert.deepEqual(await translateDisplayTexts({ url, models: { llm: server.model } }, ['Example'], 'en'), ['Translated']);
+    assert.deepEqual(await translateDisplayTexts({ url, models: { llm: server.model }, requestTimeoutMinutes: 45 }, ['Example'], 'en'), ['Translated']);
   } finally {
     translator.closeAllConnections();
     await new Promise((resolve) => translator.close(resolve));
@@ -74,9 +76,11 @@ test('each Free AI feature uses the 20-minute deadline', async (t) => {
     });
     assert.deepEqual(await suggest({ title: 'Fixture', availableTags: [], currentTags: [] }), ['프로그래밍']);
   }
+  assert.equal(await recognizeImageText({ ...server, timeoutMs: undefined }, image, modelReply('Default')), 'Default');
   const modelDeadlines = deadlines.filter((ms) => ms > 10_000);
-  assert.equal(modelDeadlines.length, 6);
-  assert.ok(modelDeadlines.every((ms) => ms > 1_199_000 && ms <= 1_200_000));
+  assert.deepEqual(modelDeadlines.map((ms) => Math.ceil(ms / 1_000)), [2700, 2700, 2700, 2700, 1200, 2700, 1200]);
+  assert.equal(modelDeadlines[0], timeoutMs);
+  assert.ok(modelDeadlines[2] <= modelDeadlines[1], 'Bot calls share the server deadline');
 });
 
 test('stream decoder handles split UTF-8 and rejects incomplete or filtered completions', async () => {
@@ -431,6 +435,11 @@ test('the AI transport waits for delayed headers and body and respects cancellat
     const response = await fetchAiModel(url);
     assert.equal(await response.text(), 'slow reply');
     await assert.rejects(fetchAiModel(url, { signal: AbortSignal.timeout(40) }), { name: 'TimeoutError' });
+    const abort = new AbortController();
+    const partial = await fetchAiModel(url, { signal: abort.signal });
+    const body = partial.text();
+    abort.abort(new DOMException('Test deadline elapsed.', 'TimeoutError'));
+    await assert.rejects(body, { name: 'TimeoutError' });
   } finally {
     await short.close();
     server.closeAllConnections();

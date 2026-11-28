@@ -153,7 +153,12 @@ async function verifyScan() {
     }, 201);
     activeServerId = server.id;
     assert.equal((await api(settingsUrl))[0].ocrConcurrency, 1);
+    assert.equal((await api(settingsUrl))[0].requestTimeoutMinutes, 20);
     await api(`${settingsUrl}/${activeServerId}`, 'PATCH', { ocrConcurrency: 0 }, 400);
+    for (const value of [0, 1.5, 35_792, '45', null]) {
+      await api(`${settingsUrl}/${activeServerId}`, 'PATCH', { requestTimeoutMinutes: value }, 400);
+    }
+    await api(settingsUrl, 'POST', { name: 'Invalid timeout', url: origin, requestTimeoutMinutes: 0 }, 400);
 
     browser = await chromium.launch({ channel: process.env.PDFIT_TEST_CHANNEL ?? 'chrome', headless: true });
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'ko-KR' });
@@ -169,9 +174,23 @@ async function verifyScan() {
     assert.equal(await limit.inputValue(), '1');
     await limit.fill('2');
     await shot(settings, 'ocr-concurrency.png');
-    await button(settings, '저장').click();
+    const dialog = settings.getByRole('dialog');
+    const timeout = dialog.getByRole('spinbutton', { name: 'AI 요청 제한 시간(분)' });
+    const save = button(dialog, '저장');
+    assert.equal(await timeout.inputValue(), '20');
+    await timeout.fill('0');
+    assert.equal(await save.isDisabled(), true);
+    await timeout.fill('45');
+    await save.click();
     await until(() => api(settingsUrl), (servers) => servers[0]?.ocrConcurrency === 2, 'OCR concurrency persisted');
+    assert.equal((await api(settingsUrl))[0].requestTimeoutMinutes, 45);
+    await dialog.waitFor({ state: 'hidden' });
+    await edit.click();
+    assert.equal(await timeout.inputValue(), '45');
+    await shot(settings, 'ai-request-timeout.png');
+    await button(dialog, '취소').click();
     steps.push('Settings default 1, rejects 0, saved 2 from the UI');
+    steps.push('AI request timeout defaults to 20 minutes, rejects invalid inputs, and persists 45 minutes after reopening');
 
     const initialRead = await api('/api/ocr/page', 'POST', { folder: 'Scan', filename: 'Mixed.pdf', pageIndex: 1 });
     assert.equal(initialRead.text, 'Seed text');

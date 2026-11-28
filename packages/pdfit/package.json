@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./common/protocol/ai-model": {
+      "types": "./dist/common/protocol/ai-model/index.d.ts",
+      "default": "./dist/common/protocol/ai-model/index.js"
+    },
     "./common/protocol/embedding-search": {
       "types": "./dist/common/protocol/embedding-search/index.d.ts",
       "default": "./dist/common/protocol/embedding-search/index.js"

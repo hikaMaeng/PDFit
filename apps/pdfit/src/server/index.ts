@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createPdfitServer, createTagSuggestionProviderFromEnvironment, EmbeddingService, EmbeddingStore, readPdfitTaskSchedulerEnvironment } from '@pdfit/pdfit/server';
 import { createPostgresMetadataStore, migrateSqliteMetadata } from '@pdfit/pdfit/server/postgres';
+import { aiModelTimeoutMs } from '@pdfit/pdfit/common/protocol/ai-model';
 import { createSettingsRouter } from './routes/settings.js';
 import { fetchAiModel } from './services/aiModelFetch.js';
 import { aiServerConcurrency, PostgresSettingsStore } from './services/settingsStore.js';
@@ -68,6 +69,7 @@ const resolveChatModel = async () => {
   return server?.models.llm ? {
     baseUrl: server.url, model: server.models.llm, headers: server.headers,
     ocrConcurrency: aiServerConcurrency(servers, server.url), contextTokens: server.botContextTokens,
+    timeoutMs: aiModelTimeoutMs(server.requestTimeoutMinutes),
   } : null;
 };
 // OCR can use a multimodal LLM when no vision model is set.
@@ -77,6 +79,7 @@ const resolveVisionModel = async () => {
   const model = server?.models.vision || server?.models.llm;
   return server && model ? {
     baseUrl: server.url, model, headers: server.headers, ocrConcurrency: aiServerConcurrency(servers, server.url),
+    timeoutMs: aiModelTimeoutMs(server.requestTimeoutMinutes),
   } : null;
 };
 const suggestBookTags = createTagSuggestionProviderFromEnvironment(process.env, fetch, {

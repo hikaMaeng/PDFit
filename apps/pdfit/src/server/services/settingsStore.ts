@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { aiModelQueueKey, chatCompletionsUrl, type EmbeddingEndpoint } from '@pdfit/pdfit/server';
+import { AI_MODEL_DEFAULT_TIMEOUT_MINUTES, AI_MODEL_MAX_TIMEOUT_MINUTES } from '@pdfit/pdfit/common/protocol/ai-model';
 import type { DefaultAiModels, EmbeddingModel, LanguageModelCandidate, ModelChoice } from '@pdfit/pdfit/common/protocol/embedding-search';
 
 export type AiServerType = 'lm-studio' | 'openai-compat';
@@ -19,6 +20,7 @@ export interface AiServer {
   headers: Record<string, string>;
   models: AiServerModels;
   ocrConcurrency: number;
+  requestTimeoutMinutes: number;
   botContextTokens: number | null;
   llmCandidates: LanguageModelCandidate[];
   embeddingCandidates: EmbeddingModel[];
@@ -34,6 +36,7 @@ export interface AiServerInput {
   headers?: Record<string, string>;
   models?: AiServerModels;
   ocrConcurrency?: number;
+  requestTimeoutMinutes?: number;
   botContextTokens?: number | null;
   llmCandidates?: LanguageModelCandidate[];
   embeddingCandidates?: EmbeddingModel[];
@@ -78,6 +81,10 @@ export class PostgresSettingsStore {
         CHECK (ocr_concurrency > 0)
     `);
     await this.pool.query('ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS bot_context_tokens INTEGER');
+    await this.pool.query(`
+      ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS request_timeout_minutes INTEGER NOT NULL DEFAULT ${AI_MODEL_DEFAULT_TIMEOUT_MINUTES}
+        CHECK (request_timeout_minutes BETWEEN 1 AND ${AI_MODEL_MAX_TIMEOUT_MINUTES})
+    `);
     await this.pool.query(`ALTER TABLE ai_servers ADD COLUMN IF NOT EXISTS llm_candidates JSONB,
       ADD COLUMN IF NOT EXISTS embedding_candidates JSONB NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS connection_version UUID NOT NULL DEFAULT gen_random_uuid()`);
@@ -125,6 +132,7 @@ export class PostgresSettingsStore {
       embeddingCandidates: row.embedding_candidates,
       connectionVersion: row.connection_version,
       ocrConcurrency: row.ocr_concurrency,
+      requestTimeoutMinutes: row.request_timeout_minutes,
       botContextTokens: row.bot_context_tokens,
       created_at: Number(row.created_at),
       updated_at: Number(row.updated_at),
@@ -137,11 +145,12 @@ export class PostgresSettingsStore {
       await client.query('BEGIN');
       const inserted = await client.query(
         `
-          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency, bot_context_tokens, llm_candidates, embedding_candidates)
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+          INSERT INTO ai_servers (name, type, url, headers, ocr_concurrency, request_timeout_minutes, bot_context_tokens, llm_candidates, embedding_candidates)
+          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
           RETURNING id
         `,
-        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1, input.botContextTokens ?? null,
+        [input.name, input.type, input.url, JSON.stringify(input.headers ?? {}), input.ocrConcurrency ?? 1,
+          input.requestTimeoutMinutes ?? AI_MODEL_DEFAULT_TIMEOUT_MINUTES, input.botContextTokens ?? null,
           input.llmCandidates ? candidatesWithIds(input.llmCandidates) : null, candidatesWithIds(input.embeddingCandidates)],
       );
       const id = Number(inserted.rows[0].id);
@@ -202,6 +211,10 @@ export class PostgresSettingsStore {
       if (input.ocrConcurrency !== undefined) {
         fields.push(`ocr_concurrency = $${fields.length + 1}`);
         values.push(input.ocrConcurrency);
+      }
+      if (input.requestTimeoutMinutes !== undefined) {
+        fields.push(`request_timeout_minutes = $${fields.length + 1}`);
+        values.push(input.requestTimeoutMinutes);
       }
       if (input.botContextTokens !== undefined) {
         fields.push(`bot_context_tokens = $${fields.length + 1}`);

@@ -18,6 +18,7 @@ The shared [sidebar](../src/front/layout/LNB.tsx) consumes the server’s folder
 * Do not let common server bootstrap import app-owned settings storage.
 * Keep app composition on `client/service`, `client/viewer`, `client/shared`, `server`, and `server/postgres`.
 * The Free AI Settings form and API consume `common/protocol/book-bot` for identical token-window validation. The viewer and router share its progress frame contract.
+* The Free AI Settings form and API use [`common/protocol/ai-model`](../src/common/protocol/ai-model/index.ts#isAiModelTimeoutMinutes) to validate the whole-minute model deadline. The storage default and the deadline for calls without an override both use the same 20-minute value.
 * Free Settings와 검색 화면은 `common/protocol/embedding-search`의 후보 설정과 검색 결과 형식을 공유한다. `semantic-search-results`는 **의미 검색** 패널의 결과 목록이다. **검색 출처** 콤보박스와 **코멘트 열기** 버튼은 접근 가능한 이름으로 찾아야 한다. [의미 검색](content-search.md#의미-검색)
 * Hosted variants must use `createPdfitServer`,
   `createPdfitMetadataRouterMounts`, and `createPdfitRemoteFoldersRouter`.

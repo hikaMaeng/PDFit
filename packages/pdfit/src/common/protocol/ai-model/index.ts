@@ -2,6 +2,16 @@ export type AiModelProgress = 'queued' | 'running';
 
 export const AI_MODEL_PROGRESS_MEDIA_TYPE = 'application/vnd.pdfit.ai-progress+event-stream';
 export const AI_MODEL_EVENT_STREAM = 'text/event-stream';
+export const AI_MODEL_DEFAULT_TIMEOUT_MINUTES = 20;
+export const AI_MODEL_MAX_TIMEOUT_MINUTES = Math.floor(2_147_483_647 / 60_000);
+
+export function isAiModelTimeoutMinutes(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= AI_MODEL_MAX_TIMEOUT_MINUTES;
+}
+
+export function aiModelTimeoutMs(minutes = AI_MODEL_DEFAULT_TIMEOUT_MINUTES): number {
+  return minutes * 60_000;
+}
 
 export type AiModelEvent =
   | { type: 'progress'; phase: AiModelProgress; item?: number }

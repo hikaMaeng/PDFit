@@ -1,4 +1,5 @@
 import { AI_MODEL_PRIORITY, chatCompletionsUrl, streamAiCompletion, type AiModelProgress } from '@pdfit/pdfit/server';
+import { aiModelTimeoutMs } from '@pdfit/pdfit/common/protocol/ai-model';
 import { fetchAiModel } from './aiModelFetch.js';
 import type { AiServer } from './settingsStore.js';
 
@@ -37,7 +38,8 @@ export async function translateDisplayTexts(server: AiServer, texts: string[], l
   }, {
     headers: server.headers,
     request: fetchAiModel,
-    concurrency: server.ocrConcurrency, priority: AI_MODEL_PRIORITY.background, onProgress,
+    concurrency: server.ocrConcurrency, timeoutMs: aiModelTimeoutMs(server.requestTimeoutMinutes),
+    priority: AI_MODEL_PRIORITY.background, onProgress,
   });
   if (!content) throw new Error('AI server returned an empty translation response.');
   return parseTranslationResult(content, texts.length);

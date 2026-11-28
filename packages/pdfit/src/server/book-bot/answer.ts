@@ -47,7 +47,7 @@ export async function answerBookQuestion({
   model, book, source, store, searchBook, question, turns, historySummary, pageText, request, onAnswerDelta, onProgress,
 }: AnswerOptions) {
   // Both stages share the turn deadline. Only time spent in a model worker counts.
-  let remainingMs = AI_MODEL_REQUEST_TIMEOUT_MS;
+  let remainingMs = model.timeoutMs ?? AI_MODEL_REQUEST_TIMEOUT_MS;
   const complete = async (
     messages: BotPromptMessage[], maxTokens: number, progress: BookBotProgress,
     onDelta?: (text: string) => void, onReasoning?: () => void,

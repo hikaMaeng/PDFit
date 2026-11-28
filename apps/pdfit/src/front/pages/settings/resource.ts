@@ -1,5 +1,6 @@
 export const settingsKeys = {
   ocrConcurrency: 'ocrConcurrency',
+  requestTimeoutMinutes: 'aiRequestTimeoutMinutes',
   botContextTokens: 'bookBotContextTokens',
   openaiCompatible: 'aiServerOpenAiCompatible',
   lmStudio: 'aiServerLmStudio',

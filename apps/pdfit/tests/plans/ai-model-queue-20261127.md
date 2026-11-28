@@ -12,7 +12,10 @@ Use an isolated Free Docker deployment with a fresh PostgreSQL directory and the
 2. Set `PDFIT_TEST_ORIGIN` and `PDFIT_TEST_OUTPUT` to the fixture URL and an evidence directory. Run `node apps/pdfit/tests/viewer-scan-browser.mjs`. With two model workers held by a scan, start a second book, send a Bot question, and trigger automatic tagging. Confirm that both actions show queue wait and that each advances when a worker completes.
 3. Request display-name translation while the model workers remain occupied. Check its queued, running, and result frames. Release the fixture responses and verify that both book scans save their pages. Collect peak concurrent requests, browser page errors, Docker health, the mounted fixture count, and `[ocr] scan` events. The peak must be two, and background model calls must follow chat and tagging.
 4. Inventory model routes, configured providers, worker scripts, and outbound transports in Free, Pro, and the shared packages. Trace each model-bound request to `streamAiCompletion` and check the compiled runtime for any additional transport call sites.
+5. Check that a new server with no timeout starts at 20 minutes. Submit zero, a fraction, a value past the timer limit, a string, and null to the settings API. Each should return HTTP 400. In the browser set 45 minutes and reopen the AI server dialog. The value must be 45 in the input and the API. Confirm `timeoutMs: 2700000` in the fixture's OCR dispatch log. The model tests exercise the longer deadline for Bot, OCR, translation, and Settings-based tagging, and cancellation after response headers arrive.
 
 ## Browser locators
 
 Locate **Bot** by button and dialog roles, **Question** and **Send question** within it, and the queue and generation messages within the dialog's status region. Scope the automatic-tag button to the article containing the fixture book link. Its progress bar's accessible name identifies the queue and running phases. Use the scan toolbar and named **Pages in progress** dialog for page admissions.
+
+In Korean Settings, locate **수정** in the **Scan fixture** row. The dialog exposes **AI 요청 제한 시간(분)** as a spinbutton and **저장** as a button.

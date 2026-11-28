@@ -18,6 +18,7 @@ export interface AiServer {
   headers: Record<string, string>;
   models: AiServerModels;
   ocrConcurrency: number;
+  requestTimeoutMinutes: number;
   botContextTokens: number | null;
   llmCandidates: LanguageModelCandidate[];
   embeddingCandidates: EmbeddingModel[];
@@ -32,6 +33,7 @@ export interface AiServerInput {
   headers?: Record<string, string>;
   models?: AiServerModels;
   ocrConcurrency?: number;
+  requestTimeoutMinutes?: number;
   botContextTokens?: number | null;
   llmCandidates?: LanguageModelCandidate[];
   embeddingCandidates?: EmbeddingModel[];

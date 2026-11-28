@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { AI_MODEL_DEFAULT_TIMEOUT_MINUTES, AI_MODEL_MAX_TIMEOUT_MINUTES, isAiModelTimeoutMinutes } from '@pdfit/pdfit/common/protocol/ai-model';
 import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 import {
   Box,
@@ -118,6 +119,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
   const { t } = usePdfitI18n();
   const [form, setForm] = useState<AiServerInput>(EMPTY_INPUT);
   const [ocrConcurrency, setOcrConcurrency] = useState('1');
+  const [requestTimeout, setRequestTimeout] = useState(String(AI_MODEL_DEFAULT_TIMEOUT_MINUTES));
   const [botContext, setBotContext] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -145,6 +147,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
           },
     );
     setOcrConcurrency(String(initial?.ocrConcurrency ?? 1));
+    setRequestTimeout(String(initial?.requestTimeoutMinutes ?? AI_MODEL_DEFAULT_TIMEOUT_MINUTES));
     setBotContext(initial?.botContextTokens == null ? '' : String(initial.botContextTokens));
     candidates.reset(initial);
     setError('');
@@ -175,7 +178,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
     setError('');
     try {
       await onSave({ ...form, llmCandidates: candidates.llm, embeddingCandidates: candidates.embedding,
-        ocrConcurrency: Number(ocrConcurrency), botContextTokens: contextTokens }, initial?.id);
+        ocrConcurrency: limit, requestTimeoutMinutes, botContextTokens: contextTokens }, initial?.id);
       onClose();
     } catch (caught) {
       setError(String(caught));
@@ -186,6 +189,8 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
 
   const limit = Number(ocrConcurrency);
   const validLimit = Number.isInteger(limit) && limit >= 1 && limit <= 2_147_483_647;
+  const requestTimeoutMinutes = Number(requestTimeout);
+  const validRequestTimeout = isAiModelTimeoutMinutes(requestTimeoutMinutes);
   const contextTokens = botContext.trim() ? Number(botContext) : null;
   const validContext = contextTokens === null || isBookBotContextTokens(contextTokens);
 
@@ -245,6 +250,16 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
             size="small"
           />
           <TextField
+            label={t(settingsKeys.requestTimeoutMinutes)}
+            type="number"
+            value={requestTimeout}
+            onChange={(event) => setRequestTimeout(event.target.value)}
+            inputProps={{ min: 1, max: AI_MODEL_MAX_TIMEOUT_MINUTES, step: 1 }}
+            error={!validRequestTimeout}
+            fullWidth
+            size="small"
+          />
+          <TextField
             label={t(settingsKeys.botContextTokens)}
             type="number"
             value={botContext}
@@ -267,7 +282,7 @@ function ServerDialog({ open, initial, onClose, onSave }: ServerDialogProps) {
         <Button onClick={onClose} disabled={saving}>
           {t('cancel')}
         </Button>
-        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit || !validContext || !candidates.valid}>
+        <Button onClick={() => void handleSave()} variant="contained" disabled={saving || !validLimit || !validRequestTimeout || !validContext || !candidates.valid}>
           {saving ? t('saving') : t('save')}
         </Button>
       </DialogActions>

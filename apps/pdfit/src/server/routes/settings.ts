@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { ActiveModelConflict, aiServerConcurrency, type AiServerInput, type PostgresSettingsStore } from '../services/settingsStore.js';
 import { createAiProgressResponse, type EmbeddingService } from '@pdfit/pdfit/server';
+import { AI_MODEL_MAX_TIMEOUT_MINUTES, isAiModelTimeoutMinutes } from '@pdfit/pdfit/common/protocol/ai-model';
 import { translateDisplayTexts, type DisplayTranslationLanguage } from '../services/displayTranslation.js';
 import { BOOK_BOT_MAX_CONTEXT_TOKENS, BOOK_BOT_MIN_CONTEXT_TOKENS, isBookBotContextTokens } from '@pdfit/pdfit/common/protocol/book-bot';
 import { isEmbeddingModel, type ModelChoice } from '@pdfit/pdfit/common/protocol/embedding-search';
@@ -17,6 +18,7 @@ function validBotContextTokens(value: unknown) {
 }
 
 const contextTokensError = `botContextTokens must be null or an integer from ${BOOK_BOT_MIN_CONTEXT_TOKENS} to ${BOOK_BOT_MAX_CONTEXT_TOKENS}.`;
+const requestTimeoutError = `requestTimeoutMinutes must be an integer from 1 to ${AI_MODEL_MAX_TIMEOUT_MINUTES}.`;
 
 function validCandidates(input: Partial<AiServerInput>): boolean {
   return ([input.llmCandidates, input.embeddingCandidates] as const).every((list) => list === undefined || (
@@ -92,7 +94,7 @@ export function createSettingsRouter(store: PostgresSettingsStore, embedding: Em
 
   router.post('/ai-servers', async (req: Request, res: Response) => {
     const input = (req.body ?? {}) as Partial<AiServerInput>;
-    const { name, type, url, headers = {}, models = {}, ocrConcurrency, botContextTokens } = input;
+    const { name, type, url, headers = {}, models = {}, ocrConcurrency, requestTimeoutMinutes, botContextTokens } = input;
 
     if (!name || !url) {
       res.status(400).json({ error: 'name and url are required.' });
@@ -100,6 +102,10 @@ export function createSettingsRouter(store: PostgresSettingsStore, embedding: Em
     }
     if (!validOcrConcurrency(ocrConcurrency)) {
       res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
+      return;
+    }
+    if (requestTimeoutMinutes !== undefined && !isAiModelTimeoutMinutes(requestTimeoutMinutes)) {
+      res.status(400).json({ error: requestTimeoutError });
       return;
     }
     if (!validBotContextTokens(botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
@@ -113,6 +119,7 @@ export function createSettingsRouter(store: PostgresSettingsStore, embedding: Em
         headers,
         models,
         ocrConcurrency,
+        requestTimeoutMinutes,
         botContextTokens,
         llmCandidates: input.llmCandidates,
         embeddingCandidates: input.embeddingCandidates,
@@ -133,6 +140,10 @@ export function createSettingsRouter(store: PostgresSettingsStore, embedding: Em
     const patch = req.body ?? {};
     if (!validOcrConcurrency(patch.ocrConcurrency)) {
       res.status(400).json({ error: 'ocrConcurrency must be a positive integer.' });
+      return;
+    }
+    if (patch.requestTimeoutMinutes !== undefined && !isAiModelTimeoutMinutes(patch.requestTimeoutMinutes)) {
+      res.status(400).json({ error: requestTimeoutError });
       return;
     }
     if (!validBotContextTokens(patch.botContextTokens)) { res.status(400).json({ error: contextTokensError }); return; }
