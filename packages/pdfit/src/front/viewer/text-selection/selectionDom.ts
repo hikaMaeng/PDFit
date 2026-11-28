@@ -9,6 +9,27 @@ export function isPdfTextRun(target: EventTarget | null) {
   return target instanceof Element && target.closest(TEXT_RUN) !== null;
 }
 
+export function pdfTextCaretAt(x: number, y: number) {
+  const caret = document.caretRangeFromPoint?.(x, y);
+  const node = caret?.startContainer;
+  if (!(node instanceof Text)) return null;
+  const layer = node.parentElement?.closest(TEXT_RUN)?.closest(TEXT_LAYER);
+  return layer && caret ? { layer, node, offset: caret.startOffset } : null;
+}
+
+const TEXT_DRAG_MARGIN = 6;
+
+export function nearbyPdfTextCaret(x: number, y: number) {
+  for (let distance = 1; distance <= TEXT_DRAG_MARGIN; distance++) {
+    for (const probeX of [x - distance, x + distance]) {
+      if (!isPdfTextRun(document.elementFromPoint(probeX, y))) continue;
+      const caret = pdfTextCaretAt(probeX, y);
+      if (caret) return caret;
+    }
+  }
+  return null;
+}
+
 export function activePdfTextSelection() {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) return null;

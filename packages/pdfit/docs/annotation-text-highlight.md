@@ -3,7 +3,8 @@
 The viewer shares the left toolbar's `select` state with the annotation
 tools. In that state, a [`DocumentTextLayer`][layer] lets the browser select
 text over the open page. Pressing an annotation or clip tool takes the layer
-out of the viewport. A drag on blank space still pans the page.
+out of the viewport. A mouse drag that starts just beside a letter also
+selects text. Drag farther into the blank space to pan the page.
 
 [PageTextSource][source] reads the embedded text with PDF.js. It checks the
 text rendering mode when the shared hidden-layer quality check flags the

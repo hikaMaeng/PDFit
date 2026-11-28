@@ -107,10 +107,10 @@ try {
   const open = (file) => page.goto(`${origin}/viewer/${folder}/${encodeURIComponent(file)}?page=1`);
   const selectable = (source) => page.getByTestId('pdf-selectable-page').and(page.locator(`[data-text-source="${source}"]`));
   const screenshot = (name) => page.screenshot({ path: path.join(output, `${name}.png`) });
-  async function dragCopy(first, last, expected) {
+  async function dragCopy(first, last, expected, startOffset = 1) {
     const [a, b] = await Promise.all([first.boundingBox(), last.boundingBox()]);
     assert.ok(a && b);
-    await page.mouse.move(a.x + 1, a.y + a.height / 2);
+    await page.mouse.move(a.x + startOffset, a.y + a.height / 2);
     await page.mouse.down();
     await page.mouse.move(b.x + b.width - 1, b.y + b.height / 2, { steps: 12 });
     await page.mouse.up();
@@ -128,6 +128,7 @@ try {
   const nativeText = selectable('pdf').getByText(nativeLine, { exact: true });
   await nativeText.waitFor({ timeout: 12000 });
   const nativeBox = await dragCopy(nativeText, nativeText, nativeLine);
+  await dragCopy(nativeText, nativeText, nativeLine, -5);
   assert.deepEqual(result.ocrAssets, []);
   await screenshot('native-selection');
   result.steps.push('Default native selection and copy with no OCR download');
@@ -159,6 +160,8 @@ try {
   const last = ocrPage.getByText('text', { exact: true });
   await first.waitFor({ timeout: 30000 });
   await dragCopy(first, last, scanLine);
+  await dragCopy(first, last, scanLine, -5);
+  result.steps.push('A mouse drag starting five pixels before PDF or OCR text selects and copies the line.');
   await screenshot('scan-line-selection');
   const korean = ocrPage.getByText('한글', { exact: true });
   await dragCopy(first, korean, scanLine + '\n한글');

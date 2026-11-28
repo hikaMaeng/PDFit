@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.27] - 2026-11-28
+
+- Start mouse text selection up to six pixels beside PDF or OCR text.
+- Give Book Bot and automatic tagging priority over background scans. Feed scan pages into the queue as slots open, show queue wait separately from model execution, and start request deadlines at dispatch.
+- Search OCR and comments by meaning. Book Bot retrieves evidence from the open book and answers the original question.
+
 ## [0.4.26] - 2026-11-27
 
 - Select and copy text directly on the page. The viewer uses embedded PDF text or reads scanned Korean and English pages in the browser.

@@ -19,6 +19,8 @@ workspace root.
 - Open the raster-only PDF. Copy an English line, a range across lines, and
   a Korean word from the page. Inspect request URLs for same-origin models
   and record page errors.
+- Start the mouse drag five screen pixels before the first letter in each
+  fixture. Copy the line and compare it with the drag that starts on the letter.
 - Emulate a Chromium touch pointer. Hold the Korean word and use **Copy
   text** to verify the clipboard.
 
