@@ -5,11 +5,12 @@ import {
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
 import { openEventStream } from '../services/eventStream.js';
-import type { BookBotModelConfig, BookBotStore, BookBotStoredSession } from './types.js';
+import type { BookBotModelConfig, BookBotStore, BookBotStoredSession, BookBotVectorSearch } from './types.js';
 
 export interface BookBotOptions {
   store: BookBotStore;
   resolveModel: () => Promise<BookBotModelConfig | null>;
+  searchBook?: BookBotVectorSearch;
   getCachedPageText?: (book: BookBotBook, page: number) => Promise<string | null>;
   request?: typeof fetch;
 }
@@ -107,6 +108,7 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       const result = await answerBookQuestion({
         model, book, source: { ...source, outline: source.outline ?? input.embeddedOutline ?? null },
         store, question, turns: existing?.turns ?? [], historySummary: existing?.historySummary ?? null, request,
+        searchBook: options.searchBook,
         pageText: (page) => options.getCachedPageText?.(book, page) ?? Promise.resolve(null),
         onAnswerDelta: stream && ((text) => stream?.write({ type: 'delta', text })),
         onProgress: stream && reportProgress,

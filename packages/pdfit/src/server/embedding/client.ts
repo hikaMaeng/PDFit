@@ -1,4 +1,5 @@
 import type { EmbeddingModel } from '../../common/protocol/embedding-search/index.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
 
 export interface EmbeddingEndpoint {
   model: EmbeddingModel;
@@ -39,26 +40,31 @@ export class EmbeddingClient {
 
   constructor(private readonly request: typeof fetch = fetch) {}
 
-  embed(endpoint: EmbeddingEndpoint, input: string[], background = false, signal?: AbortSignal): Promise<number[][]> {
+  embed(endpoint: EmbeddingEndpoint, input: string[], background = false, signal?: AbortSignal,
+    onProgress?: (phase: AiModelProgress) => void): Promise<number[][]> {
     const body = JSON.stringify({ model: endpoint.model.name, input });
     if (!input.length || input.length > embeddingBatchWidth(endpoint.model) || Buffer.byteLength(body) > EMBEDDING_REQUEST_BYTES) {
       return Promise.reject(new EmbeddingUpstreamError(400));
     }
     if (this.pending.length >= 32) return Promise.reject(new EmbeddingUpstreamError(429));
-    const bounded = AbortSignal.any([AbortSignal.timeout(background ? 30_000 : 20_000), ...(signal ? [signal] : [])]);
     return new Promise((resolve, reject) => {
       const item = { priority: background ? 0 : 1, start: async () => {
-        bounded.removeEventListener('abort', abort);
-        try { resolve(await this.send(endpoint, input.length, body, bounded)); }
+        signal?.removeEventListener('abort', abort);
+        try {
+          const deadline = AbortSignal.timeout(background ? 30_000 : 20_000);
+          onProgress?.('running');
+          resolve(await this.send(endpoint, input.length, body, signal ? AbortSignal.any([deadline, signal]) : deadline));
+        }
         catch (error) { reject(error); }
       } };
       const abort = () => {
         const position = this.pending.indexOf(item);
         if (position >= 0) this.pending.splice(position, 1);
-        reject(bounded.reason);
+        reject(signal?.reason);
       };
-      if (bounded.aborted) { abort(); return; }
-      bounded.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) { abort(); return; }
+      if (this.running) onProgress?.('queued');
+      signal?.addEventListener('abort', abort, { once: true });
       this.pending.push(item);
       this.pump();
     });

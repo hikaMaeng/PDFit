@@ -5,6 +5,7 @@ import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { answerBookQuestion } from '../../../packages/pdfit/dist/server/book-bot/answer.js';
+import { EmbeddingClient } from '../../../packages/pdfit/dist/server/embedding/client.js';
 import { bookBotPromptTokenCounter } from '../../../packages/pdfit/dist/server/book-bot/promptTokens.js';
 import { recognizeImageText } from '../../../packages/pdfit/dist/server/ocr/visionOcr.js';
 import { createOpenAiCompatibleTagSuggestionProvider, createTagSuggestionProviderFromEnvironment } from '../../../packages/pdfit/dist/server/services/tagSuggestion.js';
@@ -108,6 +109,87 @@ const botOutline = [
   { key: '1.0', title: '4.1 설명', depth: 1, page: null },
   { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
 ];
+
+test('Bot vector evidence uses the current book and skips legacy page loading', async () => {
+  const phases = [];
+  const calls = [];
+  const turns = [{ id: 'old', question: 'Summarize chapter four', answer: 'Earlier answer',
+    outlineKeys: ['1'], addedPages: [{ page: 128, tokens: 145_000 }] }];
+  const result = await answerBookQuestion({
+    model: { baseUrl: 'http://vector.test/v1', model: 'fixture', contextTokens: 150_000 },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Why did it work that way?',
+    store: { pages: () => assert.fail('legacy page loading'), clips: () => assert.fail('legacy clip loading') },
+    turns, historySummary: null,
+    searchBook: async (book, query, progress) => {
+      assert.deepEqual(book, botBook);
+      assert.equal(query, 'section design and dependencies');
+      progress('queued');
+      progress('running');
+      return { status: 'indexing', hits: [
+        { ...book, id: 'match', scope: 'page-ocr', page: 169, snippet: 'Current match' },
+        { ...book, folder: 'Foreign', id: 'wrong', scope: 'page-ocr', page: 169, snippet: 'Foreign match' },
+      ] };
+    },
+    onProgress: ({ phase }) => phases.push(phase),
+    request: async (_url, init) => {
+      const { messages } = JSON.parse(init.body);
+      const context = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+      calls.push(context);
+      assert.deepEqual(context.book.outline, botOutline);
+      assert.deepEqual(context.history.turns[0].addedPages, [128]);
+      if (calls.length === 1) return streamReply('{"query":"section design and dependencies"}');
+      assert.deepEqual(context.evidence, { retrievalStatus: 'indexing', omittedMatches: 0,
+        matches: [{ scope: 'page-ocr', page: 169, text: 'Current match' }] });
+      assert.equal(messages.at(-1).content, 'Why did it work that way?');
+      return streamReply('The evidence explains it.');
+    },
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(phases, ['analyzing', 'queued', 'loadingPages', 'generating']);
+  assert.deepEqual(result.outlineKeys, []);
+  assert.deepEqual(result.addedPages.map(({ page }) => page), [169]);
+});
+
+test('an unavailable or empty vector index does not trigger an outline lookup', async () => {
+  for (const status of ['unconfigured', 'indexing', 'unavailable', 'ready']) {
+    let calls = 0;
+    await answerBookQuestion({
+      model: { baseUrl: 'http://vector.test/v1', model: 'fixture' },
+      book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Explain chapter four',
+      store: {}, turns: [], historySummary: null, searchBook: async () => ({ status, hits: [] }),
+      request: async (_url, init) => {
+        const { messages } = JSON.parse(init.body);
+        if (++calls === 1) return streamReply('{"query":"chapter four design"}');
+        const { evidence } = JSON.parse(messages.find(({ role }) => role === 'tool').content);
+        assert.deepEqual(evidence, { retrievalStatus: status, omittedMatches: 0, matches: [] });
+        return streamReply('The lookup returned no passage evidence.');
+      },
+    });
+    assert.equal(calls, 2);
+  }
+});
+
+test('a queued embedding starts its deadline when the shared worker takes it', async (t) => {
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (ms) => { deadlines.push(ms); return new AbortController().signal; });
+  const release = Promise.withResolvers();
+  let requests = 0;
+  const client = new EmbeddingClient(async () => {
+    if (++requests === 1) await release.promise;
+    return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+  });
+  const endpoint = { baseUrl: 'http://embedding.test/v1', headers: {},
+    model: { name: 'fixture', dimensions: 2, indexDimensions: 2, embeddingConcurrency: 2 } };
+  const phases = [];
+  const background = client.embed(endpoint, ['Indexing'], true);
+  const foreground = client.embed(endpoint, ['Book Bot query'], false, undefined, (phase) => phases.push(phase));
+  assert.deepEqual(phases, ['queued']);
+  assert.deepEqual(deadlines, [30_000]);
+  release.resolve();
+  await Promise.all([background, foreground]);
+  assert.deepEqual(phases, ['queued', 'running']);
+  assert.deepEqual(deadlines, [30_000, 20_000]);
+});
 
 test('Bot provides chosen OCR as a tool result and streams only the reply to the user', async () => {
   const calls = [];

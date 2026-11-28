@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const { PDFIT_TEST_ORIGIN: origin, PDFIT_TEST_CONTAINER: container, PDFIT_TEST_PROJECT: project } = process.env;
 assert.ok(origin && new URL(origin).hostname === '127.0.0.1' && new URL(origin).port !== '15203');
@@ -47,7 +48,20 @@ SELECT folder, filename, i, size, CASE WHEN i = 11 THEN 'stale-version' ELSE mod
 WHERE folder='Scan' AND filename='Parallel.pdf'
 ON CONFLICT (folder,filename,page_index) DO UPDATE SET source_modified_at=EXCLUDED.source_modified_at, body=EXCLUDED.body;`), /INSERT 0 40/);
 
+sql(`
+  INSERT INTO books (folder, filename, size, modified_at)
+    SELECT 'Foreign', filename, size, modified_at FROM books WHERE (folder, filename) = ('Scan', 'Parallel.pdf')
+    ON CONFLICT DO NOTHING;
+  INSERT INTO book_page_ocr_search (folder, filename, page_index, source_size, source_modified_at, body)
+    SELECT folder, filename, 0, size, modified_at, 'FOREIGN stronger vector'
+    FROM books WHERE (folder, filename) IN (('Foreign', 'Parallel.pdf'), ('Scan', 'Other.pdf'))
+    ON CONFLICT (folder, filename, page_index) DO UPDATE SET body = EXCLUDED.body;
+  INSERT INTO book_comments (id, folder, filename, body, reference_pages)
+    VALUES ('${randomUUID()}', 'Scan', 'Parallel.pdf', 'Reader vector note', ARRAY[30]);
+`);
+
 const calls = [];
+const queryInputs = [];
 let holdBrowserStages = false;
 const browserPlan = Promise.withResolvers();
 const browserFirstDelta = Promise.withResolvers();
@@ -55,7 +69,19 @@ const browserFinalDelta = Promise.withResolvers();
 const upstream = createServer(async (req, res) => {
   const data = [];
   for await (const chunk of req) data.push(chunk);
-  const { messages } = JSON.parse(Buffer.concat(data));
+  const { messages, input } = JSON.parse(Buffer.concat(data));
+  if (req.url === '/v1/embeddings') {
+    const vectors = input.map((text, index) => {
+      if (text.startsWith('query: ')) queryInputs.push(text);
+      const embedding = text.includes('FOREIGN') || text.startsWith('query: ') ? [0, 1, 0, 0]
+        : text.includes('marker 30') ? [0.1, 1, 0, 0]
+        : text.includes('Reader vector note') ? [0.2, 1, 0, 0] : [1, 0, 0, 0];
+      return { index, embedding };
+    });
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ data: vectors }));
+    return;
+  }
   const context = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
   const emit = (content) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, index: 0 }] }) + '\n\n';
   const done = 'data: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
@@ -67,10 +93,8 @@ const upstream = createServer(async (req, res) => {
   calls.push({ context, messages });
   if (!context.evidence) {
     if (holdBrowserStages) await browserPlan.promise;
-    const outlineKeys = context.question === 'Summarize chapter four' ? ['1'] : [];
-    const historySummary = messages[0].content.includes('rolling summary')
-      ? (context.history.summary ? 'SECOND INTERNAL SUMMARY' : 'FIRST INTERNAL SUMMARY') : undefined;
-    res.write(emit(JSON.stringify({ outlineKeys, historySummary })));
+    const query = context.question === 'What have we discussed?' ? null : 'Relevant semantic marker';
+    res.write(emit(JSON.stringify({ query })));
   } else {
     res.write(emit(messages[0].content.includes('Start with exactly one line')
       ? 'TITLE: Fixture\nFirst fragment. ' : 'First fragment. '));
@@ -86,11 +110,27 @@ upstream.listen(0, '0.0.0.0');
 await once(upstream, 'listening');
 let serverId;
 try {
-  const server = JSON.parse(await send('/api/settings/ai-servers', 'POST', {
+  const { id } = JSON.parse(await send('/api/settings/ai-servers', 'POST', {
     name: 'Book Bot test', url: 'http://host.docker.internal:' + upstream.address().port + '/v1',
     models: { llm: 'qwen36-35b' }, ocrConcurrency: 2, botContextTokens: 150_000,
+    embeddingCandidates: [{ name: 'fixture/book-vectors', dimensions: 4, indexDimensions: 2,
+      embeddingConcurrency: 12, maxInputTokens: 512, matryoshka: true, revision: '',
+      queryPrefix: 'query: ', documentPrefix: 'doc: ' }],
   }, 201));
-  serverId = server.id;
+  serverId = id;
+  const servers = JSON.parse(await send('/api/settings/ai-servers'));
+  const server = servers.find((candidate) => candidate.id === serverId);
+  await send('/api/settings/ai-models/defaults', 'PATCH', {
+    role: 'embedding', choice: { serverId, modelId: server.embeddingCandidates[0].id },
+  });
+  const deadline = Date.now() + 50_000;
+  let indexed = 0;
+  while (Date.now() < deadline) {
+    indexed = Number(sql('SELECT count(DISTINCT source) FROM embedding_chunks'));
+    if (indexed >= 42) break;
+    await delay(400);
+  }
+  assert.ok(indexed >= 42, `Expected the 39 current book pages, a note and two foreign pages, indexed ${indexed}`);
   const sessionId = randomUUID();
   const sessions = '/api/book-bot/sessions?' + bookQuery + '&id=' + sessionId;
   const opened = JSON.parse(await send(sessions, 'POST', undefined, 201));
@@ -113,8 +153,12 @@ try {
   assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool', 'user']);
   assert.equal(calls[1].messages[2].tool_calls[0].id, calls[1].messages[3].tool_call_id);
   assert.deepEqual(calls[1].messages.at(-1), { role: 'user', content: first.question });
-  const wantedPages = Array.from({ length: 14 }, (_, i) => i + 8).filter((page) => page !== 12);
-  assert.deepEqual(calls[1].context.evidence.pages.map(({ page }) => page), wantedPages);
+  const { matches } = calls[1].context.evidence;
+  assert.equal(matches.length, 12);
+  assert.deepEqual(matches[0], { scope: 'page-ocr', page: 30, text: 'Synthetic OCR marker 30' });
+  assert.deepEqual(matches[1], { scope: 'book-comment', page: 30, text: 'Reader vector note' });
+  assert.ok(matches.every(({ page, text }) => page !== 12 && !text.includes('FOREIGN')));
+  assert.deepEqual(queryInputs, ['query: Relevant semantic marker']);
   assert.deepEqual(events.filter(({ type }) => type === 'progress').map(({ phase }) => phase),
     ['preparing', 'analyzing', 'loadingPages', 'generating', 'saving']);
   assert.deepEqual(events.filter(({ type }) => type === 'delta').map(({ text }) => text), ['First fragment. ', 'Second fragment.']);
@@ -123,27 +167,27 @@ try {
   assert.equal((await postTurn(first)).at(-1).revision, 1);
   assert.equal(calls.length, 2);
   const firstSaved = JSON.parse(sql(`SELECT turns->0 FROM book_bot_sessions WHERE id='${sessionId}';`));
+  const wantedPages = matches.filter(({ scope }) => scope === 'page-ocr').map(({ page }) => page);
   assert.deepEqual(firstSaved.addedPages.map(({ page }) => page), wantedPages);
+  assert.deepEqual(firstSaved.outlineKeys, []);
 
-  // Seed the token accounting above 80% without sending a 120,000-token fixture.
-  const markLarge = (index) => sql(`UPDATE book_bot_sessions SET turns =
-    jsonb_set(turns, '{${index},addedPages}', '[{"page":8,"tokens":120001}]'::jsonb) WHERE id='${sessionId}';`);
-  markLarge(0);
+  // Resume an existing session whose earlier turn has already been compacted.
+  sql(`UPDATE book_bot_sessions SET history_summary =
+    '{"through":1,"text":"FIRST INTERNAL SUMMARY"}'::jsonb WHERE id='${sessionId}';`);
   assert.equal((await postTurn({ turnId: randomUUID(), revision: 1, question: 'What have we discussed?' })).at(-1).revision, 2);
-  assert.equal(calls[2].context.history.turns[0].question, first.question);
-  assert.deepEqual(calls[3].context.history, { summary: 'FIRST INTERNAL SUMMARY', turns: [] });
-  assert.deepEqual(calls[3].context.evidence.pages, []);
-  markLarge(1);
-  assert.equal((await postTurn({ turnId: randomUUID(), revision: 2, question: 'Continue' })).at(-1).revision, 3);
-  assert.equal(calls[4].context.history.summary, 'FIRST INTERNAL SUMMARY');
+  assert.deepEqual(calls[2].context.history, { summary: 'FIRST INTERNAL SUMMARY', turns: [] });
+  assert.deepEqual(calls[3].context.evidence, { retrievalStatus: 'not_requested', omittedMatches: 0, matches: [] });
+  assert.equal(queryInputs.length, 1);
+
+  assert.equal((await postTurn({ turnId: randomUUID(), revision: 2, question: 'Continue explaining the design.' })).at(-1).revision, 3);
   assert.deepEqual(calls[4].context.history.turns.map(({ question }) => question), ['What have we discussed?']);
-  assert.deepEqual(calls[5].context.history, { summary: 'SECOND INTERNAL SUMMARY', turns: [] });
+  assert.deepEqual(calls[5].context.evidence.matches.slice(0, 2), matches.slice(0, 2));
+  assert.equal(queryInputs.length, 2);
   assert.equal(calls.length, 6);
   assert.ok(calls.every(({ context }) => JSON.stringify(context.book) === JSON.stringify(opened.context)));
-  assert.deepEqual(JSON.parse(sql(`SELECT history_summary FROM book_bot_sessions WHERE id='${sessionId}';`)),
-    { through: 2, text: 'SECOND INTERNAL SUMMARY' });
   const restored = JSON.parse(await send(sessions));
-  assert.deepEqual(restored.session.turns.map(({ question }) => question), [first.question, 'What have we discussed?', 'Continue']);
+  assert.deepEqual(restored.session.turns.map(({ question }) => question),
+    [first.question, 'What have we discussed?', 'Continue explaining the design.']);
   assert.doesNotMatch(JSON.stringify(restored), /INTERNAL SUMMARY|addedPages|outlineKeys/);
   const output = process.env.PDFIT_TEST_OUTPUT;
   assert.ok(output);
@@ -175,16 +219,24 @@ try {
     await page.getByRole('button', { name: 'Bot', exact: true }).click();
     await dialog.getByRole('log').getByText('First fragment. Second fragment.', { exact: true }).waitFor();
     assert.equal(calls.length, 8);
+    assert.equal(queryInputs.length, 3);
     assert.deepEqual(pageErrors, []);
   } finally {
     browserPlan.resolve();
     browserFinalDelta.resolve();
     await browser.close();
   }
-  console.log(JSON.stringify({ apiCalls: 6, browserCalls: 2, wantedPages, stalePageExcluded: 12, rollovers: 2, restoredTurns: 3,
+  console.log(JSON.stringify({ apiCalls: 6, browserCalls: 2, wantedPages, firstMatch: matches[0].page, foreignHits: 0, stalePageExcluded: 12,
+    vectorQueries: queryInputs.length, restoredTurns: 3,
     phases: events.filter(({ type }) => type === 'progress').map(({ phase }) => phase), browserErrors: 0 }, null, 2));
 } finally {
-  upstream.closeAllConnections();
-  await new Promise((resolve) => upstream.close(resolve));
-  if (serverId) await send('/api/settings/ai-servers/' + serverId, 'DELETE');
+  try {
+    if (serverId) {
+      await send('/api/settings/ai-models/defaults', 'PATCH', { role: 'embedding', choice: null });
+      await send('/api/settings/ai-servers/' + serverId, 'DELETE');
+    }
+  } finally {
+    upstream.closeAllConnections();
+    await new Promise((resolve) => upstream.close(resolve));
+  }
 }

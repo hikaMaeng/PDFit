@@ -1,4 +1,9 @@
 import type { BookBotBook, BookBotContext, BookBotSession, BookBotSessionSummary, BookBotTurn } from '../../common/protocol/book-bot/index.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
+import type { SemanticSearchResult } from '../../common/protocol/embedding-search/index.js';
+
+export type BookBotVectorSearch =
+  (book: BookBotBook, query: string, onProgress?: (phase: AiModelProgress) => void) => Promise<SemanticSearchResult>;
 export type BookBotPageRange = { first: number; last: number | null };
 export type BookBotPage = { page: number; text: string };
 export type BookBotClip = { id: string; page: number; createdAt: string; ocr: string | null; comment: string | null; imageDescription: string | null };

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { isSemanticScope, type ModelChoice, type SemanticSearchResult } from '../../common/protocol/embedding-search/index.js';
+import type { AiModelProgress } from '../../common/protocol/ai-model/index.js';
+import { isSemanticScope, type ModelChoice, type SemanticScope, type SemanticSearchResult } from '../../common/protocol/embedding-search/index.js';
 import type { TaskScheduler } from '../tasks/taskScheduler.js';
 import type { ChunkBatch, PlannedChunk } from './chunks.worker.js';
 import { EmbeddingClient, EmbeddingUpstreamError, embeddingBatchWidth, type EmbeddingEndpoint } from './client.js';
@@ -8,6 +9,7 @@ import { EmbeddingStore, type ActiveIndex, type ReservedWork } from './store.js'
 const TASK = 'embedding-index';
 const SLICES_PER_PERIOD = 256;
 type Run = 'period' | 'drain' | 'activation';
+class SearchInputTooLong extends Error {}
 
 export class EmbeddingService {
   private scheduler?: TaskScheduler;
@@ -165,6 +167,49 @@ export class EmbeddingService {
       skippedPeriods: this.skippedPeriods };
   }
 
+  searchBook(book: { folder: string; filename: string }, q: string, onProgress?: (phase: AiModelProgress) => void) {
+    return this.search(q, { book, limit: 12, onProgress });
+  }
+
+  private async search(q: string, options: { limit: number; scope?: SemanticScope; book?: { folder: string; filename: string };
+    signal?: AbortSignal; onProgress?: (phase: AiModelProgress) => void }): Promise<SemanticSearchResult> {
+    const { book, limit, scope, signal, onProgress } = options;
+    try {
+      signal?.throwIfAborted();
+      const active = await this.store.active();
+      if (!active) return { status: 'unconfigured', hits: [] };
+      if (active.blocked) return { status: 'unavailable', hits: [] };
+      const endpoint = await this.getEndpoint(active.choice);
+      if (!endpoint) return { status: 'unavailable', hits: [] };
+      const { queryPrefix, maxInputTokens, indexDimensions } = endpoint.model;
+      let query = q.trim();
+      const budget = maxInputTokens - Buffer.byteLength(queryPrefix) - 8;
+      if (Buffer.byteLength(query) > budget) {
+        if (!book) throw new SearchInputTooLong();
+        let bytes = 0;
+        let end = 0;
+        for (const char of query) {
+          bytes += Buffer.byteLength(char);
+          if (bytes > budget) break;
+          end += char.length;
+        }
+        query = query.slice(0, end).trimEnd();
+      }
+      if (!query) return { status: 'unavailable', hits: [] };
+      const [vector] = await this.client.embed(endpoint, [queryPrefix + query], false, signal, onProgress);
+      signal?.throwIfAborted();
+      const hits = book ? await this.store.searchBook(active, vector, limit, book)
+        : await this.store.search(active, vector, indexDimensions, limit, scope);
+      const { state } = await this.store.status(active);
+      const current = await this.store.active();
+      return current?.generation === active.generation ? { status: state, hits }
+        : { status: current ? 'indexing' : 'unconfigured', hits: [] };
+    } catch (error) {
+      if (error instanceof SearchInputTooLong) throw error;
+      return { status: 'unavailable', hits: [] };
+    }
+  }
+
   router(): Router {
     const router = Router();
     router.post('/', async (req, res) => {
@@ -174,25 +219,12 @@ export class EmbeddingService {
       const controller = new AbortController();
       res.once('close', () => controller.abort());
       res.set('Cache-Control', 'no-store');
-      let result: SemanticSearchResult = { status: 'unconfigured', hits: [] };
       try {
-        const active = await this.store.active();
-        if (active?.blocked) result = { status: 'unavailable', hits: [] };
-        else if (active) {
-          const endpoint = await this.getEndpoint(active.choice);
-          if (!endpoint) throw new Error('Embedding model is unavailable');
-          const input = endpoint.model.queryPrefix + q.trim();
-          if (Buffer.byteLength(input) + 8 > endpoint.model.maxInputTokens) { res.sendStatus(400); return; }
-          const [vector] = await this.client.embed(endpoint, [input], false, controller.signal);
-          controller.signal.throwIfAborted();
-          const hits = await this.store.search(active, vector, endpoint.model.indexDimensions, limit, scope);
-          const { state } = await this.store.status(active);
-          const current = await this.store.active();
-          result = current?.generation === active.generation ? { status: state, hits }
-            : { status: current ? 'indexing' : 'unconfigured', hits: [] };
-        }
-      } catch { result = { status: 'unavailable', hits: [] }; }
-      if (!controller.signal.aborted) res.json(result);
+        const result = await this.search(q, { limit, scope, signal: controller.signal });
+        if (!controller.signal.aborted) res.json(result);
+      } catch {
+        if (!controller.signal.aborted) res.sendStatus(400);
+      }
     });
     return router;
   }

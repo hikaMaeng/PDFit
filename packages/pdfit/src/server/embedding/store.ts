@@ -343,4 +343,37 @@ export class EmbeddingStore {
       return exact.rows.length >= approximate.rows.length ? exact.rows : approximate.rows;
     });
   }
+
+  async searchBook(active: ActiveIndex, query: number[], limit: number, book: { folder: string; filename: string }): Promise<SemanticHit[]> {
+    const table = quoteTable(active.table);
+    return this.transaction(async (client) => {
+      // Build the candidate set from the book's source keys before comparing vectors.
+      // A library-wide HNSW shortlist could miss every relevant chunk in this book.
+      const { rows } = await client.query<SemanticHit>(`
+        WITH book_refs AS MATERIALIZED (
+          SELECT 'page-ocr' AS scope, jsonb_build_array(folder, filename, page_index)::text AS refid
+          FROM book_page_ocr_search WHERE (folder, filename) = ($1, $2)
+          UNION ALL
+          SELECT kind.scope, p.id::text FROM bookmarks p
+          CROSS JOIN (VALUES ('clip-ocr'), ('clip-memo')) kind(scope)
+          WHERE (p.folder, p.filename) = ($1, $2)
+          UNION ALL
+          SELECT 'book-comment', id::text FROM book_comments WHERE (folder, filename) = ($1, $2)
+        ), ranked AS (
+          SELECT s.refid AS id, s.scope, src.folder, src.filename, src.page, hit.contents AS snippet,
+            hit.embedding <=> $3::vector AS distance,
+            row_number() OVER (PARTITION BY s.id ORDER BY hit.embedding <=> $3::vector, hit.id) AS occurrence
+          FROM book_refs r JOIN embedding_sources s USING (scope, refid)
+          JOIN embedding_work w ON w.profile = $4 AND w.source = s.id AND w.revision = s.revision AND w.ready
+          JOIN embedding_chunks m ON m.profile = w.profile AND m.source = w.source AND m.revision = w.revision
+          JOIN ${table} hit ON hit.id = m.id
+          JOIN LATERAL (${lookupSource}) src ON true
+          WHERE (src.folder, src.filename) = ($1, $2)
+            AND EXISTS (SELECT 1 FROM embedding_control WHERE singleton AND generation = $5)
+        ) SELECT id, scope, folder, filename, page, snippet
+        FROM ranked WHERE occurrence = 1 ORDER BY distance, scope, id LIMIT $6
+      `, [book.folder, book.filename, JSON.stringify(query), active.profile, active.generation, limit]);
+      return rows;
+    });
+  }
 }

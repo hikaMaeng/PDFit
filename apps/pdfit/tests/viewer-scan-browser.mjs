@@ -443,7 +443,7 @@ async function verifyScan() {
     await tag.getByRole('progressbar', { name: 'AI 모델의 응답을 기다리는 중…' }).waitFor();
     assert.equal(inFlight, 2);
 
-    outstanding[firstIndex + 2].respond(200, '{"outlineKeys":[]}');
+    outstanding[firstIndex + 2].respond(200, '{"query":null}');
     await calls(firstIndex + 5);
     const answerStartedFirst = outstanding[firstIndex + 4].system?.includes("PDFit's reading companion");
     if (!answerStartedFirst) {

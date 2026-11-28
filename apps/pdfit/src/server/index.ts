@@ -104,6 +104,7 @@ const app = createPdfitServer({
   bookBot: {
     store: metadataStore.bookBot,
     resolveModel: resolveChatModel,
+    searchBook: (book, query, onProgress) => embedding.searchBook(book, query, onProgress),
     request: fetchAiModel,
   },
   backgroundTasks: {
