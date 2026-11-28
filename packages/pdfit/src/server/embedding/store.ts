@@ -9,7 +9,14 @@ const PAGE = 100;
 const MAX_PENDING = 2000;
 const REF_TABLES = { 'page-ocr': 'book_page_ocr_search', 'clip-ocr': 'bookmarks', 'clip-memo': 'bookmarks', 'book-comment': 'book_comments' };
 
-export interface ActiveIndex { profile: string; table: string; generation: string; choice: ModelChoice; blocked: string | null }
+export interface ActiveIndex {
+  profile: string;
+  table: string;
+  generation: string;
+  choice: ModelChoice;
+  blocked: string | null;
+  retryAt: Date | null;
+}
 export interface Work { source: string; revision: string; scope: SemanticScope; refid: string; position: number; attempts: number; text: string; partial: boolean }
 export interface ReservedWork { lease: string; jobs: Work[] }
 export interface EmbeddedChunk { job: Work; chunk: Chunk; vector: number[] | null }
@@ -56,7 +63,8 @@ export class EmbeddingStore {
 
   async active(db: Pool | PoolClient = this.db): Promise<ActiveIndex | null> {
     const { rows: [row] } = await db.query<ActiveIndex>(`
-      SELECT c.profile, p.table_name AS "table", c.generation, c.model_choice AS choice, c.blocked_error AS blocked
+      SELECT c.profile, p.table_name AS "table", c.generation, c.model_choice AS choice, c.blocked_error AS blocked,
+        c.retry_not_before AS "retryAt"
       FROM embedding_control c JOIN embedding_profiles p ON p.profile = c.profile WHERE c.singleton
     `);
     return row ?? null;
@@ -65,7 +73,7 @@ export class EmbeddingStore {
   async activate(client: PoolClient, choice: ModelChoice | null, endpoint: EmbeddingEndpoint | null): Promise<void> {
     const current = await this.active(client);
     if (!choice || !endpoint) {
-      await client.query(`UPDATE embedding_control SET profile = NULL, model_choice = NULL, blocked_error = NULL,
+      await client.query(`UPDATE embedding_control SET profile = NULL, model_choice = NULL, blocked_error = NULL, retry_not_before = NULL,
         generation = gen_random_uuid() WHERE singleton`);
       return;
     }
@@ -91,7 +99,8 @@ export class EmbeddingStore {
     if (!rowCount) throw new Error('Embedding table needs index repair');
     if (current?.profile === profile && current.choice.modelId === choice.modelId && !current.blocked) return;
     await client.query(`UPDATE embedding_control SET profile = $1, model_choice = $2, generation = gen_random_uuid(),
-      scan_cursor = 0, scan_done = false, blocked_error = NULL WHERE singleton`, [profile, JSON.stringify(choice)]);
+      scan_cursor = 0, scan_done = false, dirty_cursor = 0, blocked_error = NULL, retry_not_before = NULL WHERE singleton`,
+    [profile, JSON.stringify(choice)]);
   }
 
   async prepareCacheBooks(): Promise<void> {
@@ -142,15 +151,27 @@ export class EmbeddingStore {
 
   async refill(active: ActiveIndex): Promise<boolean> {
     return this.transaction(async (client) => {
-      const { rows: [control] } = await client.query<{ scan_cursor: string; scan_done: boolean }>(`
-        SELECT scan_cursor, scan_done FROM embedding_control WHERE singleton AND generation = $1 FOR UPDATE`, [active.generation]);
+      const { rows: [control] } = await client.query<{ scan_cursor: string; scan_done: boolean; dirty_cursor: string }>(`
+        SELECT scan_cursor, scan_done, dirty_cursor FROM embedding_control WHERE singleton AND generation = $1 FOR UPDATE`, [active.generation]);
       if (!control) return false;
+      // A stale pending job already owns a queue slot. Refresh it even when admission is closed.
+      const refreshed = await client.query(`
+        WITH stale AS MATERIALIZED (
+          SELECT s.id, s.revision FROM embedding_work w JOIN embedding_sources s ON s.id = w.source
+          WHERE w.profile = $1 AND NOT w.ready AND NOT w.failed AND w.revision <> s.revision
+          ORDER BY w.due, w.source LIMIT ${PAGE} FOR UPDATE OF s
+        ), replaced AS (
+          UPDATE embedding_work w SET revision = stale.revision, position = 0, partial = false,
+            attempts = 0, due = now(), lease = NULL, expires = NULL, error = NULL
+          FROM stale WHERE w.profile = $1 AND w.source = stale.id RETURNING w.source, w.revision
+        ) UPDATE embedding_sources s SET dirty = false FROM replaced r WHERE s.id = r.source AND s.revision = r.revision`,
+      [active.profile]);
       const { rows: [{ count }] } = await client.query<{ count: number }>(`
         SELECT count(*)::int FROM (SELECT 1 FROM embedding_work WHERE profile = $1 AND NOT ready AND NOT failed LIMIT ${MAX_PENDING}) q`, [active.profile]);
-      if (count > MAX_PENDING - 2 * PAGE) return false;
+      if (count > MAX_PENDING - 2 * PAGE) return Boolean(refreshed.rowCount);
       const discovering = await this.discover(client);
       const { rows: dirty } = await client.query<{ id: string; revision: string }>(`
-        SELECT id, revision FROM embedding_sources WHERE dirty ORDER BY id LIMIT ${PAGE} FOR UPDATE`);
+        SELECT id, revision FROM embedding_sources WHERE dirty AND id > $1 ORDER BY id LIMIT ${PAGE} FOR UPDATE`, [control.dirty_cursor]);
       const { rows: scan } = control.scan_done ? { rows: [] } : await client.query<{ id: string; revision: string }>(`
         SELECT id, revision FROM embedding_sources WHERE id > $1 ORDER BY id LIMIT ${PAGE} FOR UPDATE`, [control.scan_cursor]);
       const next = [...new Map([...dirty, ...scan].map((row) => [row.id, row])).values()];
@@ -163,9 +184,13 @@ export class EmbeddingStore {
       if (dirty.length) await client.query(`UPDATE embedding_sources s SET dirty = false
         FROM unnest($1::bigint[], $2::uuid[]) AS observed(id, revision)
         WHERE s.id = observed.id AND s.revision = observed.revision`, [dirty.map((row) => row.id), dirty.map((row) => row.revision)]);
-      if (!control.scan_done) await client.query(`UPDATE embedding_control SET scan_cursor = $1, scan_done = $2 WHERE singleton`,
-        [scan.at(-1)?.id ?? control.scan_cursor, scan.length < PAGE]);
-      return discovering || next.length > 0;
+      const dirtyCursor = dirty.length === PAGE ? dirty[PAGE - 1].id : '0';
+      if (!control.scan_done || dirtyCursor !== control.dirty_cursor) {
+        await client.query(`UPDATE embedding_control SET scan_cursor = $1, scan_done = $2, dirty_cursor = $3 WHERE singleton`,
+          [scan.at(-1)?.id ?? control.scan_cursor, control.scan_done || scan.length < PAGE, dirtyCursor]);
+      }
+      // A wrap may have more dirty rows before the old cursor, even if this slice was empty.
+      return Boolean(refreshed.rowCount) || discovering || next.length > 0 || control.dirty_cursor !== dirtyCursor;
     });
   }
 
@@ -216,6 +241,22 @@ export class EmbeddingStore {
     });
   }
 
+  async renewCurrent(active: ActiveIndex, reservation: ReservedWork): Promise<Set<string>> {
+    const { rows } = await this.db.query<{ source: string }>(`
+      UPDATE embedding_work w SET expires = now() + interval '2 minutes' FROM embedding_sources s, embedding_control c
+      WHERE w.profile = $1 AND w.lease = $2 AND s.id = w.source AND s.revision = w.revision
+      AND c.singleton AND c.generation = $3 AND c.blocked_error IS NULL AND coalesce(c.retry_not_before <= now(), true)
+      RETURNING w.source`, [active.profile, reservation.lease, active.generation]);
+    return new Set(rows.map(({ source }) => source));
+  }
+
+  async pause(active: ActiveIndex, retryAt: number | undefined): Promise<void> {
+    const now = Date.now();
+    const until = new Date(Math.min(now + 86_400_000, Math.max(now + 30_000, Number.isFinite(retryAt) ? retryAt! : now)));
+    await this.db.query(`UPDATE embedding_control SET retry_not_before = greatest(retry_not_before, $2::timestamptz)
+      WHERE singleton AND generation = $1`, [active.generation, until]);
+  }
+
   async release(active: ActiveIndex, reservation: ReservedWork): Promise<void> {
     await this.db.query('UPDATE embedding_work SET lease = NULL, expires = NULL WHERE profile = $1 AND lease = $2',
       [active.profile, reservation.lease]);
@@ -261,7 +302,7 @@ export class EmbeddingStore {
         (SELECT count(*)::int FROM (SELECT 1 FROM embedding_work WHERE profile = $1 AND ready AND partial LIMIT ${MAX_PENDING}) q) AS partial,
         (SELECT error FROM embedding_work WHERE profile = $1 AND failed ORDER BY source LIMIT 1) AS "recentError"
       FROM embedding_control WHERE singleton`, [active.profile]);
-    return { ...row, recentError: active.blocked ?? row.recentError,
+    return { ...row, recentError: active.blocked ?? row.recentError, retryAt: active.retryAt?.toISOString() ?? null,
       state: active.blocked ? 'unavailable' as const : row.indexing || row.pending ? 'indexing' as const : row.failed ? 'unavailable' as const : 'ready' as const };
   }
 

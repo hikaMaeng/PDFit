@@ -11,6 +11,7 @@ const SLICES_PER_PERIOD = 256;
 export class EmbeddingService {
   private scheduler?: TaskScheduler;
   private remaining = 0;
+  private rescanRequested = false;
   private working = false;
   private pendingWorker?: ChunkBatch;
   private lastError: string | null = null;
@@ -33,7 +34,7 @@ export class EmbeddingService {
   }
 
   wake(): void {
-    this.remaining = SLICES_PER_PERIOD;
+    this.rescanRequested = true;
     void this.slice();
   }
 
@@ -44,14 +45,19 @@ export class EmbeddingService {
   }
 
   private async slice(): Promise<void> {
-    if (!this.scheduler || this.working || this.remaining <= 0) return;
+    if (!this.scheduler || this.working) return;
+    if (this.rescanRequested) {
+      this.rescanRequested = false;
+      this.remaining = SLICES_PER_PERIOD;
+    }
+    if (this.remaining <= 0) return;
     this.working = true;
     this.remaining -= 1;
     let more = false;
     try {
       const active = await this.store.active();
       const cleanup = await this.store.cleanup();
-      if (active && !active.blocked) {
+      if (active && !active.blocked && (!active.retryAt || active.retryAt.getTime() <= Date.now())) {
         const endpoint = await this.getEndpoint(active.choice);
         if (!endpoint) throw new Error('Selected embedding model is unavailable');
         const refilled = await this.store.refill(active);
@@ -74,7 +80,7 @@ export class EmbeddingService {
     } finally {
       if (!this.reservation) this.working = false;
     }
-    if (more) setImmediate(() => void this.slice());
+    if (more || this.rescanRequested) setImmediate(() => void this.slice());
   }
 
   private async finish(plan: PlannedChunk[] | null): Promise<void> {
@@ -83,15 +89,15 @@ export class EmbeddingService {
     const { active, endpoint, work } = reservation;
     try {
       if (!plan) throw new Error('Could not split embedding input');
-      if ((await this.store.active())?.generation !== active.generation) {
-        await this.store.release(active, work);
-        return;
-      }
-      const texts = plan.filter(({ chunk }) => chunk.contents.trim()).map(({ chunk }) => endpoint.model.documentPrefix + chunk.contents);
-      const vectors = texts.length ? await this.embedBatch(endpoint, texts) : [];
+      const current = await this.store.renewCurrent(active, work);
+      const eligible = plan.filter(({ job }) => current.has(work.jobs[job].source));
+      if (!eligible.length) return;
+      const texts = eligible.filter(({ chunk }) => chunk.contents.trim()).map(({ chunk }) => endpoint.model.documentPrefix + chunk.contents);
+      // Recursive retry splits share one deadline shorter than the reservation.
+      const vectors = texts.length ? await this.embedBatch(endpoint, texts, AbortSignal.timeout(100_000)) : [];
       let index = 0;
       const invalid = new Set<string>();
-      const items = plan.map(({ chunk, job }) => {
+      const items = eligible.map(({ chunk, job }) => {
         const vector = chunk.contents.trim() ? vectors[index++] : null;
         if (chunk.contents.trim() && !vector) invalid.add(work.jobs[job].source);
         return { job: work.jobs[job], chunk, vector };
@@ -106,30 +112,33 @@ export class EmbeddingService {
       try {
         await this.store.retry(active, work, this.lastError, upstream?.retryAt, permanent);
         if (permanent) await this.store.block(active, this.lastError);
+        else if (upstream?.status === 429) await this.store.pause(active, upstream.retryAt);
       }
       catch { /* The durable reservation can be acquired after its expiry. */ }
       if (permanent || upstream?.status === 429) this.remaining = 0;
     } finally {
+      try { await this.store.release(active, work); }
+      catch { /* An unreleased reservation expires in the database. */ }
       this.reservation = undefined;
       this.working = false;
       setImmediate(() => void this.slice());
     }
   }
 
-  private async embedBatch(endpoint: EmbeddingEndpoint, texts: string[]): Promise<(number[] | null)[]> {
-    try { return await this.client.embed(endpoint, texts, true); }
+  private async embedBatch(endpoint: EmbeddingEndpoint, texts: string[], signal: AbortSignal): Promise<(number[] | null)[]> {
+    try { return await this.client.embed(endpoint, texts, true, signal); }
     catch (error) {
       if (!(error instanceof EmbeddingUpstreamError) || ![400, 413, 422].includes(error.status)) throw error;
       if (texts.length === 1) return [null];
       const middle = Math.floor(texts.length / 2);
-      const first = await this.embedBatch(endpoint, texts.slice(0, middle));
-      return first.concat(await this.embedBatch(endpoint, texts.slice(middle)));
+      const first = await this.embedBatch(endpoint, texts.slice(0, middle), signal);
+      return first.concat(await this.embedBatch(endpoint, texts.slice(middle), signal));
     }
   }
 
   async status() {
     const status = await this.store.status(await this.store.active());
-    return { ...status, lastError: this.lastError };
+    return { ...status, lastError: this.lastError, working: this.working, rescanRequested: this.rescanRequested };
   }
 
   router(): Router {

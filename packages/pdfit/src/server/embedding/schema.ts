@@ -11,7 +11,9 @@ export const embeddingSchema = `
     selection UUID, scan_cursor BIGINT NOT NULL DEFAULT 0, scan_done BOOLEAN NOT NULL DEFAULT false
   );
   INSERT INTO embedding_control (singleton) VALUES (true) ON CONFLICT DO NOTHING;
-  ALTER TABLE embedding_control ADD COLUMN IF NOT EXISTS blocked_error TEXT;
+  ALTER TABLE embedding_control ADD COLUMN IF NOT EXISTS blocked_error TEXT,
+    ADD COLUMN IF NOT EXISTS dirty_cursor BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS retry_not_before TIMESTAMPTZ;
   CREATE TABLE IF NOT EXISTS embedding_sources (
     id BIGSERIAL PRIMARY KEY, scope TEXT NOT NULL, refid TEXT NOT NULL,
     revision UUID NOT NULL DEFAULT gen_random_uuid(), dirty BOOLEAN NOT NULL DEFAULT true,
