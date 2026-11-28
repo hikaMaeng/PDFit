@@ -98,6 +98,7 @@ async function verifyScan() {
   const startInput = (page) => page.getByRole('spinbutton', { name: '스캔 시작 페이지' });
   const progress = (page, pattern) => page.getByRole('progressbar', { name: pattern });
   const coverage = (page) => page.getByRole('meter', { name: '스캔 완료 페이지 비율' });
+  const pageNumber = (page) => page.getByRole('textbox', { name: '페이지 번호', exact: true });
   const shot = (page, filename) => page.screenshot({ path: path.join(output, filename), animations: 'disabled' });
   async function verifyStatusHeader(dialog) {
     const heading = dialog.getByRole('heading', { name: '스캔 상태', exact: true });
@@ -212,8 +213,8 @@ async function verifyScan() {
     await mixed.getByRole('toolbar').screenshot({ path: path.join(output, 'scan-toolbar.png') });
     await button(mixed, '스캔 상태').click();
     const initial = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
-    const saved = initial.getByRole('listitem', { name: '2페이지, 텍스트 저장됨' });
-    const unsaved = initial.getByRole('listitem', { name: '3페이지, 저장된 텍스트 없음' });
+    const saved = button(initial, '2페이지, 텍스트 저장됨');
+    const unsaved = button(initial, '3페이지, 저장된 텍스트 없음');
     await saved.waitFor();
     assert.equal(await initial.getByRole('listitem').count(), 5);
     await verifyStatusHeader(initial);
@@ -225,6 +226,46 @@ async function verifyScan() {
     await initial.waitFor({ state: 'hidden' });
     assert.equal(await button(mixed, '스캔 상태').evaluate((element) => element === document.activeElement), true);
     await shot(mixed, 'scan-idle.png');
+
+    await button(mixed, '스캔 상태').click();
+    await saved.press('Enter');
+    await initial.waitFor({ state: 'hidden' });
+    assert.equal(await pageNumber(mixed).inputValue(), '2');
+
+    const loadingStatus = await context.newPage();
+    loadingStatus.on('pageerror', (error) => pageErrors.push(`scan status loading: ${error.message}`));
+    let releaseStatus;
+    const heldStatus = new Promise((resolve) => { releaseStatus = resolve; });
+    await loadingStatus.route('**/api/ocr/scan/pages?*', async (route) => {
+      await heldStatus;
+      await route.fulfill({ json: { pages: [] } });
+    });
+    try {
+      await loadingStatus.goto(`${origin}/viewer/Scan/Parallel.pdf`);
+      const continuous = button(loadingStatus, '연속 스크롤');
+      if (await continuous.getAttribute('aria-pressed') !== 'true') await continuous.click();
+      await button(loadingStatus, '스캔 상태').click();
+      const status = loadingStatus.getByRole('dialog', { name: '스캔 상태', exact: true });
+      await status.getByRole('status').waitFor();
+      assert.equal(await status.getByRole('listitem').count(), 40);
+      await shot(loadingStatus, 'scan-navigation-loading.png');
+      await button(status, '뷰어에서 35페이지로 이동').click();
+      await status.waitFor({ state: 'hidden' });
+      assert.equal(await pageNumber(loadingStatus).inputValue(), '35');
+      const targetPage = loadingStatus.getByTestId('pdfgpu-page-shell').and(loadingStatus.locator('[data-page-index="34"]'));
+      assert.ok(await targetPage.evaluate((element) => {
+        const page = element.getBoundingClientRect();
+        const area = element.closest('[data-testid="pdfgpu-scroll-area"]').getBoundingClientRect();
+        const center = (area.top + area.bottom) / 2;
+        return page.top <= center && page.bottom > center;
+      }), 'The selected page must already be centered in the viewport.');
+      await shot(loadingStatus, 'scan-navigation-destination.png');
+    } finally {
+      releaseStatus();
+      await loadingStatus.unrouteAll({ behavior: 'wait' });
+      await loadingStatus.close();
+    }
+    steps.push('Enter opened a saved page; WebGPU jumped to page 35 in continuous scroll with the status response held');
 
     await start(mixed, 2);
     await calls(2);
@@ -245,8 +286,11 @@ async function verifyScan() {
     assert.equal(mixedJob.processedPages, 1);
     const duplicate = await api('/api/ocr/scan', 'POST', { folder: 'Scan', filename: 'Mixed.pdf', startPage: 5 }, 202);
     assert.equal(duplicate.job.id, mixedJob.id);
-    await button(mixed, '다음 페이지').click();
-    assert.equal(await mixed.getByRole('textbox', { name: '페이지 번호' }).inputValue(), '2');
+    await button(mixed, '스캔 상태').click();
+    await unsaved.click();
+    await initial.waitFor({ state: 'hidden' });
+    assert.equal(await pageNumber(mixed).inputValue(), '3');
+    assert.deepEqual((await job('Mixed.pdf')).activePages, [3, 4]);
     await shot(mixed, 'parallel-progress.png');
     steps.push('Two pages displayed together, DB index skipped, viewer navigated while OCR was held');
 
@@ -284,8 +328,8 @@ async function verifyScan() {
 
     await button(mixed, '스캔 상태').click();
     const complete = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
-    await complete.getByRole('listitem', { name: '5페이지, 텍스트 저장됨' }).waitFor();
-    await complete.getByRole('listitem', { name: '1페이지, 저장된 텍스트 없음' }).waitFor();
+    await button(complete, '5페이지, 텍스트 저장됨').waitFor();
+    await button(complete, '1페이지, 저장된 텍스트 없음').waitFor();
     await shot(mixed, 'page-status.png');
     await button(complete, '닫기').click();
 
@@ -322,13 +366,32 @@ async function verifyScan() {
     assert.ok(outstanding.every(({ model, image }) => model === 'vision-fixture' && image));
     steps.push('Vision failure stopped dispatch; one saved page was skipped on retry; stale cancel left the new job running');
 
+    const failedStatus = await context.newPage();
+    failedStatus.on('pageerror', (error) => pageErrors.push(`scan status failed: ${error.message}`));
+    await failedStatus.route('**/api/ocr/scan/pages?*', (route) => route.fulfill({ status: 503, json: { error: 'Fixture unavailable' } }));
+    await failedStatus.goto(`${origin}/viewer/Scan/Parallel.pdf`);
+    await button(failedStatus, '스캔 상태').click();
+    const unavailableStatus = failedStatus.getByRole('dialog', { name: '스캔 상태', exact: true });
+    await button(unavailableStatus, '다시 시도').waitFor();
+    await button(unavailableStatus, '뷰어에서 38페이지로 이동').click();
+    await unavailableStatus.waitFor({ state: 'hidden' });
+    await until(() => pageNumber(failedStatus).inputValue(), (value) => value === '38', 'WebGPU selected page 38');
+    await shot(failedStatus, 'scan-navigation-gpu.png');
+    await failedStatus.close();
+    steps.push('WebGPU jumped to page 38 after a scan status request returned HTTP 503');
+
     await mixed.setViewportSize({ width: 320, height: 730 });
     await button(mixed, '스캔 상태').click();
     const mobileStatus = mixed.getByRole('dialog', { name: '스캔 상태', exact: true });
-    await mobileStatus.getByRole('listitem', { name: '5페이지, 텍스트 저장됨' }).waitFor();
+    const mobilePage = button(mobileStatus, '5페이지, 텍스트 저장됨');
+    await mobilePage.waitFor();
     await verifyStatusHeader(mobileStatus);
     await shot(mixed, 'mobile-page-status.png');
-    await button(mobileStatus, '닫기').click();
+    await mobilePage.click();
+    await mobileStatus.waitFor({ state: 'hidden' });
+    assert.equal(await pageNumber(mixed).inputValue(), '5');
+    assert.deepEqual(pageErrors, []);
+    steps.push('A saved page in the 320px status dialog opened on click');
     const width = await mixed.getByRole('toolbar').evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     assert.ok(width.scroll <= width.client, JSON.stringify(width));
     await expectCoverage(mixed, 80);

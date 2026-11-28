@@ -17,7 +17,7 @@ function scanNotice(job: OcrScanJob | null, requestFailed: boolean, t: PdfitI18n
   return null;
 }
 
-function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, onClose }: {
+function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, onClose, onSelectPage }: {
   pageCount: number;
   pages: ReadonlySet<number> | null;
   failed: boolean;
@@ -25,18 +25,23 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
   failure: OcrScanJob['failure'];
   onRetry: () => void;
   onClose: () => void;
+  onSelectPage: (page: number) => void;
 }) {
   const { t } = usePdfitI18n();
   const title = useId();
 
   const saved = t(scanKeys.saved);
   const unsaved = t(scanKeys.unsaved);
-  const statusStyle = (indexed: boolean) => ({
+  const statusStyle = (indexed: boolean | undefined) => ({
     border: '1px solid', textAlign: 'center',
     borderColor: indexed ? 'success.main' : 'divider',
-    bgcolor: (theme: import('@mui/material').Theme) => indexed ? alpha(theme.palette.success.main, 0.16) : theme.palette.action.hover,
+    bgcolor: (theme: import('@mui/material').Theme) => {
+      if (indexed === undefined) return 'transparent';
+      return indexed ? alpha(theme.palette.success.main, 0.16) : theme.palette.action.hover;
+    },
   } as const);
   const status = t(scanKeys.status);
+  const knownPages = failed ? null : pages;
   return <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby={title} PaperProps={{
     sx: { m: { xs: 1.5, sm: 4 }, width: { xs: 'calc(100% - 24px)', sm: 'calc(100% - 64px)' } },
   }}>
@@ -46,7 +51,7 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
     }}>
       <Typography id={title} component="h2" variant="h6" noWrap title={status} dir="auto"
         sx={{ flex: 1, textAlign: 'left', fontSize: { xs: '0.8125rem', sm: '1.25rem' } }}>{status}</Typography>
-      {pages && !failed && <Box sx={{
+      {knownPages && <Box sx={{
         display: 'flex', gap: { xs: '3px', sm: 0.5 }, whiteSpace: 'nowrap',
         '& > span': { borderRadius: 0.5, px: { xs: '3px', sm: 0.5 }, py: '2px', fontSize: { xs: '10px', sm: '12px' }, lineHeight: 1.25 },
       }}>
@@ -62,19 +67,25 @@ function ScanPagesDialog({ pageCount, pages, failed, notice, failure, onRetry, o
       {failed && <Alert severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>{t('retry')}</Button>}>
         {t(scanKeys.requestFailed)}
       </Alert>}
-      {!pages && !failed && <Typography role="status" variant="body2">{t('loading')}</Typography>}
-      {pages && !failed && <Box component="ul" role="list" aria-labelledby={title} sx={{
+      {!pages && !failed && <Typography role="status" variant="body2" sx={{ mb: 1 }}>{t('loading')}</Typography>}
+      <Box component="ul" role="list" aria-labelledby={title} sx={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(30px, 1fr))', gap: '3px', listStyle: 'none', m: 0, p: 0,
         fontSize: '10px', lineHeight: '14px', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
       }}>
         {Array.from({ length: pageCount }, (_, index) => {
-          const indexed = pages.has(index);
+          const indexed = knownPages?.has(index);
           const page = index + 1;
-          const label = t(scanKeys.pageStatus, { page, status: indexed ? saved : unsaved });
-          return <Box component="li" key={page} aria-label={label} title={label}
-            sx={{ ...statusStyle(indexed), borderRadius: 0.5, py: '1px' }}>{page}</Box>;
+          const action = t(scanKeys.goToPage, { page });
+          const label = indexed === undefined ? action : t(scanKeys.pageStatus, { page, status: indexed ? saved : unsaved });
+          return <li key={page}>
+            <ButtonBase aria-label={label} title={action} onClick={() => onSelectPage(page)} sx={{
+              ...statusStyle(indexed), width: '100%', borderRadius: 0.5, py: '1px',
+              font: 'inherit', fontVariantNumeric: 'inherit',
+              '&:hover, &.Mui-focusVisible': { borderColor: 'primary.main' },
+            }}>{page}</ButtonBase>
+          </li>;
         })}
-      </Box>}
+      </Box>
     </DialogContent>
   </Dialog>;
 }
@@ -119,7 +130,10 @@ function ActiveScanPagesDialog({ id, pages, modelPages, notice, onClose }: {
 }
 
 // see apps/pdfit/docs/usage.md#document-scan
-export const ScanControls = memo(function ScanControls({ folder, filename, pageCount }: OcrScanBook & { pageCount: number }) {
+export const ScanControls = memo(function ScanControls({ folder, filename, pageCount, onNavigateToPage }: OcrScanBook & {
+  pageCount: number;
+  onNavigateToPage: (page: number) => void;
+}) {
   const { t, language } = usePdfitI18n();
   const model = getOcrScanModel(folder, filename);
   useSyncExternalStore(model.subscribe, model.getVersion, model.getVersion);
@@ -193,7 +207,8 @@ export const ScanControls = memo(function ScanControls({ folder, filename, pageC
       <Button type="submit" size="small" color="inherit" sx={{ minWidth: 0, px: 0.5, textTransform: 'none' }} disabled={!validPage}>{t(scanKeys.start)}</Button>
     </Box>}
     {dialogOpen && <ScanPagesDialog pageCount={pageCount} pages={model.pages} failed={model.pagesFailed} onRetry={model.refreshPages}
-      notice={notice ?? (active ? progressLabel : null)} failure={job?.failure} onClose={() => setDialogOpen(false)} />}
+      notice={notice ?? (active ? progressLabel : null)} failure={job?.failure} onClose={() => setDialogOpen(false)}
+      onSelectPage={(page) => { setDialogOpen(false); onNavigateToPage(page); }} />}
     {activeDialogOpen && <ActiveScanPagesDialog id={activeDialogId} pages={activePages} modelPages={job?.modelPages}
       notice={notice ?? (cancelling || !activePages.length ? progressLabel : null)} onClose={() => setActiveDialogOpen(false)} />}
   </Box>;

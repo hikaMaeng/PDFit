@@ -167,7 +167,7 @@ The small percentage beside **Scan** shows the share of all pages in the PDF wit
 
 A document has one active scan shared by every viewer of that document. Cancellation or an OCR or storage error stops additional page admissions and removes that book's waiting model calls. An active model call can finish and save its result. A restart clears active jobs, and saved text remains available on the next scan.
 
-Open **Scan** for a compact, color-coded grid of all pages. The title bar shows the saved-text legend and has an **X** to close the dialog. Green means the database has text for that page in the current file version. A page that produced empty text remains in the other group. See the [scan API](../../../packages/pdfit/docs/api.md#document-scan).
+Open **Scan** for a compact, color-coded grid of all pages. Select any page number to close the dialog and jump directly to that page. The numbers work during a scan and while the saved-text status is loading or unavailable. The title bar shows the saved-text legend and has an **X** to close the dialog. Green means the database has text for that page in the current file version. A page that produced empty text remains in the other group. See the [scan API](../../../packages/pdfit/docs/api.md#document-scan).
 
 ## Background tasks
 

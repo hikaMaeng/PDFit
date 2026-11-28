@@ -470,6 +470,7 @@ export default function PdfGpuViewer({
           onNext={() => goToPage(currentPage + pageStep)}
           onPageInputChange={setPageInput}
           onSubmitPage={submitPageInput}
+          onScanPageSelect={goToPage}
         />
       )}
 

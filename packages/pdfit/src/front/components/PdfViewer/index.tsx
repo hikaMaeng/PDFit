@@ -514,7 +514,7 @@ export default function PdfViewer({
   }, [outlineDocument, outlineLookup]);
 
   // ── goToPage (안정적인 ref 기반) ──────────────────────────────
-  const goToPage = useCallback((n: number, mode?: ViewMode) => {
+  const goToPage = useCallback((n: number, mode?: ViewMode, scroll: ScrollIntoViewOptions = { behavior: 'smooth', block: 'start' }) => {
     const m = mode ?? viewModeRef.current;
     const total = totalPagesRef.current;
     interactionRef.current = reduceViewerInteraction(interactionRef.current, { type: 'setMode', mode: m }).state;
@@ -525,9 +525,14 @@ export default function PdfViewer({
     setCurrentPage(target);
     setPageInput(String(target));
     if (m === 'scroll') {
-      pageRefs.current[target - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      pageRefs.current[target - 1]?.scrollIntoView(scroll);
     }
   }, []);
+
+  const selectScanPage = useCallback((page: number) => {
+    scrollRestoredRef.current = true;
+    goToPage(page, undefined, { behavior: 'instant', block: 'center' });
+  }, [goToPage]);
 
   const prevPage = useCallback(() => {
     const m = viewModeRef.current;
@@ -646,6 +651,7 @@ export default function PdfViewer({
       return;
     }
     const timer = setTimeout(() => {
+      if (scrollRestoredRef.current) return;
       if (containerRef.current) {
         containerRef.current.scrollTop = initialScrollTop;
       }
@@ -916,6 +922,7 @@ export default function PdfViewer({
           onPrevious={prevPage}
           onNext={nextPage}
           onPageInputChange={setPageInput}
+          onScanPageSelect={selectScanPage}
           onSubmitPage={(value) => {
             const page = Number.parseInt(value, 10);
             if (Number.isFinite(page)) goToPage(page);

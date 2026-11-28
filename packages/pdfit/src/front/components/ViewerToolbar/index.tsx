@@ -65,6 +65,7 @@ type Props = {
   onNext: () => void;
   onPageInputChange: (value: string) => void;
   onSubmitPage: (value: string) => void;
+  onScanPageSelect: (page: number) => void;
 };
 
 const buttonStyle = { minWidth: 36, minHeight: 36, px: 0.75, py: 0.25, borderRadius: 1 };
@@ -205,7 +206,7 @@ export function ViewerToolbar(props: Props) {
     </Box>
     <Box sx={{ ...groupStyle, flexShrink: 1, minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end', marginInlineStart: 'auto' }}>
       {props.scanBook && props.pageCount > 0 && <ScanControls key={JSON.stringify([props.scanBook.folder, props.scanBook.filename])}
-        {...props.scanBook} pageCount={props.pageCount} />}
+        {...props.scanBook} pageCount={props.pageCount} onNavigateToPage={props.onScanPageSelect} />}
       <ToolbarButton icon={<TocIcon />} caption={labels.contents} label={t('tableOfContents')}
         id={`${props.outlineId}-trigger`} data-testid="viewer-outline-open" aria-haspopup="dialog"
         aria-expanded={props.outlineOpen} aria-controls={props.outlineOpen ? props.outlineId : undefined}

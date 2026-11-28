@@ -75,4 +75,5 @@ export const scanKeys = {
   saved: 'scanSaved',
   unsaved: 'scanUnsaved',
   pageStatus: 'scanPageStatus',
+  goToPage: 'viewer.ocr.goToPage.button',
 } as const;
