@@ -114,6 +114,11 @@ const botOutline = [
   { key: '2', title: '▣ 05장: 컨텍스트 엔진 강화', depth: 0, page: 162 },
 ];
 
+function bookBotReference(messages) {
+  const { content } = messages[1];
+  return JSON.parse(content.startsWith('Book reference data (JSON)\n') ? content.split('\n', 2)[1] : content);
+}
+
 test('Bot vector evidence uses the current book and skips legacy page loading', async () => {
   const phases = [];
   const calls = [];
@@ -137,14 +142,14 @@ test('Bot vector evidence uses the current book and skips legacy page loading', 
     onProgress: ({ phase }) => phases.push(phase),
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      const context = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+      const context = bookBotReference(messages);
       calls.push(context);
       assert.deepEqual(context.book.outline, botOutline);
       assert.deepEqual(context.history.turns[0].addedPages, [128]);
       if (calls.length === 1) return streamReply('{"query":"section design and dependencies"}');
       assert.deepEqual(context.evidence, { retrievalStatus: 'indexing', omittedMatches: 0,
         matches: [{ scope: 'page-ocr', page: 169, text: 'Current match' }] });
-      assert.equal(messages.at(-1).content, 'Why did it work that way?');
+      assert.ok(messages.at(-1).content.endsWith('\n\nLatest reader question\nWhy did it work that way?'));
       return streamReply('The evidence explains it.');
     },
   });
@@ -164,7 +169,7 @@ test('an unavailable or empty vector index does not trigger an outline lookup', 
       request: async (_url, init) => {
         const { messages } = JSON.parse(init.body);
         if (++calls === 1) return streamReply('{"query":"chapter four design"}');
-        const { evidence } = JSON.parse(messages.find(({ role }) => role === 'tool').content);
+        const { evidence } = bookBotReference(messages);
         assert.deepEqual(evidence, { retrievalStatus: status, omittedMatches: 0, matches: [] });
         return streamReply('The lookup returned no passage evidence.');
       },
@@ -195,7 +200,7 @@ test('a queued embedding starts its deadline when the shared worker takes it', a
   assert.deepEqual(deadlines, [30_000, 20_000]);
 });
 
-test('Bot provides chosen OCR as a tool result and streams only the reply to the user', async () => {
+test('Bot sends chosen OCR before the original question and streams only the reply', async () => {
   const calls = [];
   const phases = [];
   const visible = [];
@@ -213,7 +218,7 @@ test('Bot provides chosen OCR as a tool result and streams only the reply to the
     } },
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      const reference = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+      const reference = bookBotReference(messages);
       calls.push(reference);
       if (calls.length === 1) {
         assert.equal(reference.question, question);
@@ -221,11 +226,9 @@ test('Bot provides chosen OCR as a tool result and streams only the reply to the
         return streamReply('{"outlineKeys":["unknown","1.0",', '"1","1"]}');
       }
       assert.equal(reference.question, undefined);
-      assert.deepEqual(messages[1], { role: 'user', content: question });
-      assert.deepEqual(messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool', 'user']);
-      assert.equal(messages[2].tool_calls[0].id, messages[3].tool_call_id);
-      assert.equal(messages[2].tool_calls[0].function.name, 'read_book_context');
-      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
+      assert.deepEqual(messages.map(({ role }) => role), ['system', 'user']);
+      assert.ok(messages.at(-1).content.endsWith('\n\nLatest reader question\n' + question));
+      assert.doesNotMatch(JSON.stringify(messages), /tool_calls|read_book_context/);
       assert.match(messages[0].content, /Put the direct answer in the opening sentence/);
       return streamReply('TITLE: Chapter four\n', 'First line.', ' Second line.');
     },
@@ -243,6 +246,27 @@ test('Bot provides chosen OCR as a tool result and streams only the reply to the
   assert.deepEqual(calls[1].evidence.pages.map(({ page }) => page), [128, 161]);
 });
 
+test('Bot rejects raw tool markup even if it spans deltas, including for a non-streaming caller', async () => {
+  const raw = '<tool_call>\n<function=read_book_context>\n</function>\n</tool_call>';
+  for (const [withDeltas, reply] of [
+    [true, () => streamReply('TITLE: Fixture\n', '<to', 'ol_', 'call>', '\n<function=read_book_context>')],
+    [true, () => completion(raw)],
+    [false, () => streamReply(raw)],
+  ]) {
+    let calls = 0;
+    const visible = [];
+    await assert.rejects(answerBookQuestion({
+      model: { baseUrl: 'http://tool-markup.test/v1', model: 'fixture' },
+      book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Explain chapter four',
+      store: {}, turns: [], historySummary: null, searchBook: async () => ({ status: 'ready', hits: [] }),
+      request: async () => ++calls === 1 ? streamReply('{"query":null}') : reply(),
+      onAnswerDelta: withDeltas ? (text) => visible.push(text) : undefined,
+    }), { code: 'unexpected_tool_markup' });
+    assert.equal(calls, 2);
+    assert.deepEqual(visible, []);
+  }
+});
+
 test('an outline-only question skips source reads when there are no retained pages', async () => {
   for (const outline of [botOutline, [], null]) {
     let calls = 0;
@@ -252,7 +276,7 @@ test('an outline-only question skips source reads when there are no retained pag
       question: 'What is in the table of contents?',
       request: async (_url, init) => {
         const { messages } = JSON.parse(init.body);
-        const { evidence } = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+        const { evidence } = bookBotReference(messages);
         if (++calls === 1) return streamReply('{"outlineKeys":[]}');
         assert.deepEqual(evidence.pages, []);
         return streamReply('Overview without a title line');
@@ -279,7 +303,7 @@ test('a follow-up sees previous page references and adds only new page reference
     } },
     request: async (_url, init) => {
       const { messages } = JSON.parse(init.body);
-      const prompt = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+      const prompt = bookBotReference(messages);
       assert.deepEqual(prompt.history.turns[0].addedPages, [128, 129]);
       assert.equal(prompt.history.turns[0].answer, 'Earlier answer');
       if (++calls === 1) {
@@ -287,7 +311,7 @@ test('a follow-up sees previous page references and adds only new page reference
         return streamReply('{"outlineKeys":["2"]}');
       }
       assert.deepEqual(prompt.evidence.pages.map(({ page }) => page), [162, 128]);
-      assert.deepEqual(messages.at(-1), { role: 'user', content: question });
+      assert.ok(messages.at(-1).content.endsWith('\n\nLatest reader question\n' + question));
       return streamReply('Compared');
     },
   });
@@ -308,7 +332,7 @@ test('repeated rollover summarizes the previous summary and tail while keeping t
       question: 'What have we discussed?',
       request: async (_url, init) => {
         const { messages } = JSON.parse(init.body);
-        const { book, history, evidence } = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+        const { book, history, evidence } = bookBotReference(messages);
         assert.deepEqual(book.outline, botOutline);
         if (++calls === 1) {
           assert.match(messages[0].content, /rolling summary/);
@@ -342,7 +366,7 @@ test('oversized selected OCR fits the Qwen answer window without extra model cal
   assert.equal(calls.length, 2);
   const count = await bookBotPromptTokenCounter(model.model);
   assert.ok(calls.every((call) => count(call.messages) + call.max_tokens <= model.contextTokens));
-  const { evidence } = JSON.parse(calls[1].messages.find(({ role }) => role === 'tool').content);
+  const { evidence } = bookBotReference(calls[1].messages);
   assert.ok(evidence.omittedOcrPages > 0);
   assert.ok(evidence.pages.length > 0);
   assert.equal(evidence.pages.length + evidence.omittedOcrPages, pages.length);

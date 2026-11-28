@@ -8,9 +8,9 @@ Opening a chat loads the book title and original table of contents. The [viewer 
 
 1. [Plan the turn](../src/server/book-bot/turnPlan.ts) with the question, outline and active dialogue. The planner supplies a semantic query when the answer needs source evidence. The original outline can resolve a chapter name or a follow-up reference.
 2. [Look up matching passages](../src/server/embedding/store.ts#searchBook) in the active embedding profile. PostgreSQL selects sources by exact folder and filename before ranking them. The ranked results include up to 12 matches from page OCR, clip OCR, clip memos and book comments. Each result retains its source type and optional PDF page. The model receives excerpt text and the index status, including when the index is empty or unavailable.
-3. [Stream the answer](../src/server/book-bot/answer.ts#answerBookQuestion) from the tool result and the original question. The result carries the title, complete outline, dialogue and matches. The session stores one turn. Only answer text reaches the browser as deltas.
+3. [Stream the answer](../src/server/book-bot/answer.ts#answerBookQuestion). The user message contains the title, complete outline, dialogue and matches as reference JSON, followed by the reader's original question. The session stores one turn. Only answer text reaches the browser as deltas.
 
-Free wires the book-scoped embedding service into Bot. The previous outline lookup remains available to callers that explicitly use that flow. Free reports missing evidence when the vector index has no matches. [Book-scoped search](content-search.md#의미-검색) · [Outline lookup](../src/server/book-bot/outlineLookup.ts) · [LM Studio tool result format](https://lmstudio.ai/docs/developer/openai-compat/tools)
+Free wires the book-scoped embedding service into Bot. The previous outline lookup remains available to callers that explicitly use that flow. Free reports missing evidence when the vector index has no matches. [Book-scoped search](content-search.md#의미-검색) · [Outline lookup](../src/server/book-bot/outlineLookup.ts)
 
 Set **Bot context limit (tokens)** on the LLM server to the available model window. Bot [counts Qwen3.6 and ToolSpace 35B A3B tokens locally](../src/server/book-bot/promptTokens.ts#bookBotPromptTokenCounter). Other models use a byte estimate. The default window is 16,384 tokens. The answer reserves 4,096 output tokens and 128 tokens for chat-template differences. When the matches exceed the space left for evidence, Bot sends the best-ranked matches that fit and reports the omitted count.
 
@@ -34,13 +34,13 @@ Send `Accept: text/event-stream` to receive `delta` frames for answer text and a
 
 Each model call within the turn enters the [shared AI queue](api.md#ai-model-requests) with the same priority as automatic tagging. The viewer shows `queued` while the call waits and resumes the active phase when the worker takes it. Planning and answering enter the queue separately and share a worker-time deadline. The foreground embedding request uses the embedding queue and starts its own timeout when dispatched.
 
-The [router](../src/server/book-bot/router.ts#createBookBotRouter) returns 409 for a stale revision or a concurrent turn and 503 for missing LLM configuration before opening the stream. An interrupted or incomplete model reply reports 502. Retrying a completed turn ID returns the saved turn without generating it again.
+The [router](../src/server/book-bot/router.ts#createBookBotRouter) returns 409 for a stale revision or a concurrent turn and 503 for missing LLM configuration before opening the stream. An interrupted or incomplete reply or a reply containing raw model tool syntax reports 502. Retrying a valid completed turn ID returns the saved turn without generating it again.
 
 ## Storage
 
 [PostgreSQL](../src/server/postgres/bookBot.ts#createPostgresBookBot) keeps session IDs, initial timestamps, first-turn titles, and ordered exchanges. The book foreign key follows a rename or move and drops conversations when the library record is deleted. The initial draft is stored with its first successful turn. A user-created **New chat** is stored immediately. PostgreSQL admits one append per session revision. The same write stores added page references and advances the hidden summary when needed. The public transcript includes the original exchanges. No database connection stays checked out during model generation.
 
-During generation, the server accumulates the answer in memory while sending visible text to the viewer. It commits the complete exchange once the upstream model finishes successfully, then emits `saved`. If the browser disconnects, the upstream request can still finish and commit. If the upstream response is incomplete, the turn is discarded and the viewer retains the draft for retry.
+During generation, the server accumulates the answer in memory while sending visible text to the viewer. It commits the complete exchange once the upstream model finishes successfully, then emits `saved`. If the browser disconnects, the upstream request can still finish and commit. After a generation failure, the viewer retains the draft for retry. A historic reply containing raw tool syntax has an empty public answer and appears as a retry notice. The original row and session revision remain in storage.
 
 ## Verification
 

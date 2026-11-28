@@ -5,6 +5,7 @@ import {
 } from '../../common/protocol/book-bot/index.js';
 import { answerBookQuestion } from './answer.js';
 import { openEventStream } from '../services/eventStream.js';
+import { hasBookBotControlText } from './answerText.js';
 import type { BookBotModelConfig, BookBotStore, BookBotStoredSession, BookBotVectorSearch } from './types.js';
 
 export interface BookBotOptions {
@@ -16,7 +17,9 @@ export interface BookBotOptions {
 }
 
 function publicSession({ id, title, createdAt, turns }: BookBotStoredSession): BookBotSession {
-  return { id, title, createdAt, turns: turns.map(({ id, question, answer }) => ({ id, question, answer })) };
+  return { id, title, createdAt, turns: turns.map(({ id, question, answer }) => ({
+    id, question, answer: hasBookBotControlText(answer) ? '' : answer,
+  })) };
 }
 
 export function createBookBotRouter(options: BookBotOptions): Router {
@@ -94,6 +97,7 @@ export function createBookBotRouter(options: BookBotOptions): Router {
       const replay = existing?.turns.find((turn) => turn.id === turnId);
       if (existing && replay) {
         if (replay.question !== question) { res.status(409).end(); return; }
+        if (hasBookBotControlText(replay.answer)) { fail(502); return; }
         succeed(existing, { id: replay.id, question: replay.question, answer: replay.answer });
         return;
       }

@@ -153,7 +153,9 @@ function Conversation({ model, documentUrl, pageCount, onPage }: PageNavigation 
         <Typography color="text.secondary" sx={{ px: 0.5 }}>{t(BOT.EMPTY)}</Typography>}
       {turns.map((turn) => <Stack key={turn.id} gap={1.25}>
         <ChatMessage author={t(BOT.YOU)} text={turn.question} reader />
-        <ChatMessage author={t(BOT.BUTTON)} text={turn.answer} pageCount={pageCount} onPage={onPage} />
+        {turn.answer
+          ? <ChatMessage author={t(BOT.BUTTON)} text={turn.answer} pageCount={pageCount} onPage={onPage} />
+          : <Alert severity="error">{t(BOT.SEND_ERROR)}</Alert>}
       </Stack>)}
       {model.pending && <ChatMessage author={t(BOT.YOU)} text={model.pending} reader />}
       {model.pendingAnswer && <ChatMessage author={t(BOT.BUTTON)} text={model.pendingAnswer} pageCount={pageCount} onPage={onPage} streaming />}

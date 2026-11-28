@@ -82,7 +82,8 @@ const upstream = createServer(async (req, res) => {
     res.end(JSON.stringify({ data: vectors }));
     return;
   }
-  const context = JSON.parse(messages.find(({ role }) => role === 'tool')?.content ?? messages[1].content);
+  const content = messages[1].content;
+  const context = JSON.parse(content.startsWith('Book reference data (JSON)\n') ? content.split('\n', 2)[1] : content);
   const emit = (content) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, index: 0 }] }) + '\n\n';
   const done = 'data: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
   res.setHeader('Content-Type', 'text/event-stream');
@@ -95,6 +96,10 @@ const upstream = createServer(async (req, res) => {
     if (holdBrowserStages) await browserPlan.promise;
     const query = context.question === 'What have we discussed?' ? null : 'Relevant semantic marker';
     res.write(emit(JSON.stringify({ query })));
+  } else if (content.endsWith('\nLatest reader question\nSimulate tool markup')) {
+    for (const fragment of ['<tool_', 'call>', '\n<function=read_book_context>', '\n</function>\n</tool_call>']) {
+      res.write(emit(fragment));
+    }
   } else {
     res.write(emit(messages[0].content.includes('Start with exactly one line')
       ? 'TITLE: Fixture\nFirst fragment. ' : 'First fragment. '));
@@ -149,10 +154,9 @@ try {
   assert.equal(calls[0].messages.length, 2);
   assert.deepEqual(calls[1].context.book, opened.context);
   assert.equal(calls[1].context.question, undefined);
-  assert.deepEqual(calls[1].messages[1], { role: 'user', content: first.question });
-  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool', 'user']);
-  assert.equal(calls[1].messages[2].tool_calls[0].id, calls[1].messages[3].tool_call_id);
-  assert.deepEqual(calls[1].messages.at(-1), { role: 'user', content: first.question });
+  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user']);
+  assert.ok(calls[1].messages[1].content.endsWith('\n\nLatest reader question\n' + first.question));
+  assert.doesNotMatch(JSON.stringify(calls[1].messages), /tool_calls|read_book_context/);
   const { matches } = calls[1].context.evidence;
   assert.equal(matches.length, 12);
   assert.deepEqual(matches[0], { scope: 'page-ocr', page: 30, text: 'Synthetic OCR marker 30' });
@@ -189,6 +193,18 @@ try {
   assert.deepEqual(restored.session.turns.map(({ question }) => question),
     [first.question, 'What have we discussed?', 'Continue explaining the design.']);
   assert.doesNotMatch(JSON.stringify(restored), /INTERNAL SUMMARY|addedPages|outlineKeys/);
+
+  const legacySessionId = randomUUID();
+  const legacySession = '/api/book-bot/sessions?' + bookQuery + '&id=' + legacySessionId;
+  const legacyTurn = { id: randomUUID(), question: 'Earlier unanswered question',
+    answer: '<tool_call>\n<function=read_book_context>\n</function>\n</tool_call>' };
+  await send(legacySession, 'POST', undefined, 201);
+  sql(`UPDATE book_bot_sessions SET turns = '${JSON.stringify([legacyTurn])}'::jsonb WHERE id='${legacySessionId}';`);
+  assert.deepEqual(JSON.parse(await send(legacySession)).session.turns, [{ ...legacyTurn, answer: '' }]);
+  await send('/api/book-bot/turns?' + bookQuery, 'POST', { sessionId: legacySessionId,
+    revision: 0, turnId: legacyTurn.id, question: legacyTurn.question }, 502);
+  assert.deepEqual(JSON.parse(sql(`SELECT turns->0 FROM book_bot_sessions WHERE id='${legacySessionId}';`)), legacyTurn);
+
   const output = process.env.PDFIT_TEST_OUTPUT;
   assert.ok(output);
   await mkdir(output, { recursive: true });
@@ -203,6 +219,10 @@ try {
     await page.getByRole('button', { name: '스캔 상태', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Bot', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Bot' });
+    await dialog.getByRole('log').getByText(legacyTurn.question, { exact: true }).waitFor();
+    await dialog.getByRole('log').getByRole('alert').getByText('답변을 받지 못했습니다. 질문을 다시 보내 재시도하세요.').waitFor();
+    assert.doesNotMatch(await dialog.getByRole('log').innerText(), /tool_call|read_book_context/);
+    await page.screenshot({ path: path.join(output, 'invalid-saved-reply.png') });
     await dialog.getByRole('button', { name: '새 채팅' }).click();
     await dialog.getByRole('textbox', { name: '질문' }).fill('Summarize chapter four');
     await dialog.getByRole('button', { name: '질문 보내기' }).click();
@@ -226,9 +246,14 @@ try {
     browserFinalDelta.resolve();
     await browser.close();
   }
-  console.log(JSON.stringify({ apiCalls: 6, browserCalls: 2, wantedPages, firstMatch: matches[0].page, foreignHits: 0, stalePageExcluded: 12,
+  const badEvents = await postTurn({ turnId: randomUUID(), revision: 3, question: 'Simulate tool markup' });
+  assert.deepEqual(badEvents.filter(({ type }) => type !== 'progress'), [{ type: 'error', status: 502 }]);
+  assert.equal(JSON.parse(await send(sessions)).session.turns.length, 3);
+  assert.equal(calls.length, 10);
+  console.log(JSON.stringify({ apiCalls: 8, browserCalls: 2, wantedPages, firstMatch: matches[0].page, foreignHits: 0, stalePageExcluded: 12,
     vectorQueries: queryInputs.length, restoredTurns: 3,
-    phases: events.filter(({ type }) => type === 'progress').map(({ phase }) => phase), browserErrors: 0 }, null, 2));
+    phases: events.filter(({ type }) => type === 'progress').map(({ phase }) => phase), browserErrors: 0,
+    invalidReply: { leakedDeltas: 0, status: 502, saved: false, historicMarkupHidden: true } }, null, 2));
 } finally {
   try {
     if (serverId) {
