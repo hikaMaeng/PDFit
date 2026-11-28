@@ -198,6 +198,12 @@ const ChatMessage = memo(function ChatMessage({ author, text, reader = false, st
         components={{
           a: ({ href, children }) => {
             const page = pdfPageFromCitation(href);
+            if (href?.startsWith('/viewer/')) {
+              const route = new URL(href, 'http://localhost');
+              if (/^\/viewer\/[^/?#]+\/[^/?#]+(?:\?page=[1-9]\d*)?$/.test(route.pathname + route.search)) {
+                return <Link href={href}>{children}</Link>;
+              }
+            }
             if (!onPage || page === null || page > pageCount) return <>{children}</>;
             return <Link href={href} title={t(BOT.GO_TO_PAGE, { page })} onClick={(event) => {
               event.preventDefault();

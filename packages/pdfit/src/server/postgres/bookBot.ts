@@ -97,6 +97,30 @@ export function createPostgresBookBot(db: Pool, metadata: MetadataStore): BookBo
       const outline = await (metadata.getBookOutline?.(folder, filename) ?? null);
       return { title: bookTitleFromFilename(filename), outline };
     },
+    async relatedBooks({ folder, filename }) {
+      const { rows } = await db.query<{ folder: string; filename: string; sharedTags: string[] }>(`
+        SELECT b.folder, b.filename, array_agg(t.name ORDER BY t.name) AS "sharedTags"
+        FROM book_tags origin JOIN book_tags related USING (tag_id)
+        JOIN books b ON (b.folder, b.filename) = (related.folder, related.filename)
+        JOIN tags t ON t.id = origin.tag_id
+        WHERE (origin.folder, origin.filename) = ($1, $2)
+          AND (b.folder, b.filename) <> ($1, $2)
+        GROUP BY b.folder, b.filename
+        ORDER BY count(*) DESC, b.folder, b.filename LIMIT 10
+      `, [folder, filename]);
+      return rows.map((row) => ({ ...row, title: bookTitleFromFilename(row.filename) }));
+    },
+    async findBooks(name, folder) {
+      const { rows } = await db.query<{ folder: string; filename: string }>(`
+        SELECT folder, filename FROM books
+        WHERE ($2::text IS NULL OR folder = $2)
+          AND (lower(normalize(filename)) = lower(normalize($1))
+            OR lower(btrim(regexp_replace(regexp_replace(normalize(filename), '[.]pdf$', '', 'i'),
+              '[_[:space:]]+', ' ', 'g'))) = lower($3))
+        ORDER BY folder, filename LIMIT 10
+      `, [name, folder ?? null, bookTitleFromFilename(name)]);
+      return rows.map((row) => ({ ...row, title: bookTitleFromFilename(row.filename) }));
+    },
     async pages({ folder, filename }, ranges) {
       if (!ranges.length) return [];
       const { rows } = await db.query<BookBotPage>(`

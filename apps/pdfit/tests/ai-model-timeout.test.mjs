@@ -21,6 +21,16 @@ function streamReply(...pieces) {
   return new Response(pieces.map(delta).join('') + stop, { headers: { 'content-type': 'text/event-stream' } });
 }
 
+function toolReply(name, args, id = 'call_1') {
+  const input = JSON.stringify(args);
+  const frame = (delta) => 'data: ' + JSON.stringify({ choices: [{ index: 0, delta }] }) + '\n\n';
+  return new Response(frame({ content: 'I will look that up.' }) +
+    frame({ tool_calls: [{ index: 0, id, type: 'function', function: { name, arguments: input.slice(0, 8) } }] }) +
+    frame({ tool_calls: [{ index: 0, function: { arguments: input.slice(8) } }] }) +
+    'data: {"choices":[{"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n',
+  { headers: { 'content-type': 'text/event-stream' } });
+}
+
 const modelReply = (...pieces) => async (_url, init) => {
   assert.equal(JSON.parse(init.body).stream, true);
   return streamReply(...pieces);
@@ -122,6 +132,7 @@ function bookBotReference(messages) {
 test('Bot vector evidence uses the current book and skips legacy page loading', async () => {
   const phases = [];
   const calls = [];
+  const visible = [];
   const turns = [{ id: 'old', question: 'Summarize chapter four', answer: 'Earlier answer',
     outlineKeys: ['1'], addedPages: [{ page: 128, tokens: 145_000 }] }];
   const result = await answerBookQuestion({
@@ -140,21 +151,27 @@ test('Bot vector evidence uses the current book and skips legacy page loading', 
       ] };
     },
     onProgress: ({ phase }) => phases.push(phase),
+    onAnswerDelta: (text) => visible.push(text),
     request: async (_url, init) => {
-      const { messages } = JSON.parse(init.body);
+      const { messages, tools, tool_choice } = JSON.parse(init.body);
       const context = bookBotReference(messages);
       calls.push(context);
       assert.deepEqual(context.book.outline, botOutline);
       assert.deepEqual(context.history.turns[0].addedPages, [128]);
-      if (calls.length === 1) return streamReply('{"query":"section design and dependencies"}');
-      assert.deepEqual(context.evidence, { retrievalStatus: 'indexing', omittedMatches: 0,
+      assert.deepEqual(tools.map(({ function: fn }) => fn.name), ['search_current_book', 'list_related_books', 'search_library_book']);
+      assert.equal(tool_choice, 'auto');
+      if (calls.length === 1) return toolReply('search_current_book', { query: 'section design and dependencies' });
+      assert.deepEqual(JSON.parse(messages.at(-1).content), { retrievalStatus: 'indexing', omittedMatches: 0,
         matches: [{ scope: 'page-ocr', page: 169, text: 'Current match' }] });
-      assert.ok(messages.at(-1).content.endsWith('\n\nLatest reader question\nWhy did it work that way?'));
+      assert.equal(messages[2].tool_calls[0].function.arguments, '{"query":"section design and dependencies"}');
+      assert.equal(messages.at(-1).tool_call_id, 'call_1');
+      assert.ok(messages[1].content.endsWith('\n\nLatest reader question\nWhy did it work that way?'));
       return streamReply('The evidence explains it.');
     },
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(phases, ['analyzing', 'queued', 'loadingPages', 'generating']);
+  assert.deepEqual(phases, ['generating', 'queued', 'loadingPages', 'generating']);
+  assert.deepEqual(visible, ['The evidence explains it.']);
   assert.deepEqual(result.outlineKeys, []);
   assert.deepEqual(result.addedPages.map(({ page }) => page), [169]);
 });
@@ -168,8 +185,8 @@ test('an unavailable or empty vector index does not trigger an outline lookup', 
       store: {}, turns: [], historySummary: null, searchBook: async () => ({ status, hits: [] }),
       request: async (_url, init) => {
         const { messages } = JSON.parse(init.body);
-        if (++calls === 1) return streamReply('{"query":"chapter four design"}');
-        const { evidence } = bookBotReference(messages);
+        if (++calls === 1) return toolReply('search_current_book', { query: 'chapter four design' });
+        const evidence = JSON.parse(messages.at(-1).content);
         assert.deepEqual(evidence, { retrievalStatus: status, omittedMatches: 0, matches: [] });
         return streamReply('The lookup returned no passage evidence.');
       },
@@ -259,12 +276,85 @@ test('Bot rejects raw tool markup even if it spans deltas, including for a non-s
       model: { baseUrl: 'http://tool-markup.test/v1', model: 'fixture' },
       book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Explain chapter four',
       store: {}, turns: [], historySummary: null, searchBook: async () => ({ status: 'ready', hits: [] }),
-      request: async () => ++calls === 1 ? streamReply('{"query":null}') : reply(),
+      request: async () => { calls += 1; return reply(); },
       onAnswerDelta: withDeltas ? (text) => visible.push(text) : undefined,
     }), { code: 'unexpected_tool_markup' });
-    assert.equal(calls, 2);
+    assert.equal(calls, 1);
     assert.deepEqual(visible, []);
   }
+});
+
+test('Bot bounds tool calls and accepts standard JSON tool replies', async () => {
+  let calls = 0;
+  let searches = 0;
+  let previousLength = 0;
+  const result = await answerBookQuestion({
+    model: { baseUrl: 'http://tool-limit.test/v1', model: 'fixture' },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Find all sections',
+    store: {}, turns: [], historySummary: null,
+    searchBook: async () => { searches += 1; return { status: 'ready', hits: [] }; },
+    request: async (_url, init) => {
+      const { messages, tool_choice } = JSON.parse(init.body);
+      assert.ok(messages.length > previousLength);
+      previousLength = messages.length;
+      if (++calls === 2) {
+        assert.equal(tool_choice, 'none');
+        assert.equal(JSON.parse(messages.at(-1).content).error, 'tool_limit');
+        return completion('TITLE: Fixture\nHere is what I found.');
+      }
+      return Response.json({ choices: [{ finish_reason: 'tool_calls', message: { content: null,
+        tool_calls: Array.from({ length: 7 }, (_, index) => ({
+          id: 'call_' + index, type: 'function', function: { name: 'search_current_book', arguments: '{"query":"Test"}' },
+        })) } }] });
+    },
+  });
+  assert.equal(result.answer, 'Here is what I found.');
+  assert.equal(searches, 6);
+});
+
+test('the current-book tool cannot accept an alternate book argument', async () => {
+  let calls = 0;
+  const result = await answerBookQuestion({
+    model: { baseUrl: 'http://tool-arguments.test/v1', model: 'fixture' },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'Explain this book',
+    store: {}, turns: [], historySummary: null,
+    searchBook: async () => assert.fail('invalid current-book arguments must not reach retrieval'),
+    request: async (_url, init) => {
+      if (++calls === 1) return toolReply('search_current_book', { query: 'Test', folder: 'Foreign' });
+      const { messages } = JSON.parse(init.body);
+      assert.deepEqual(JSON.parse(messages.at(-1).content), { error: 'invalid_arguments' });
+      return streamReply('I need passage evidence to answer.');
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.answer, 'I need passage evidence to answer.');
+});
+
+test('the agent compacts active history and still sends the full outline', async () => {
+  const turns = ['A', 'B'].map((part) => ({ id: part, question: part, answer: part.repeat(14_000) }));
+  let calls = 0;
+  const result = await answerBookQuestion({
+    model: { baseUrl: 'http://agent-history.test/v1', model: 'fixture', contextTokens: 16_384 },
+    book: botBook, source: { title: 'Fixture', outline: botOutline }, question: 'What topics did we discuss?',
+    store: {}, turns, historySummary: null, searchBook: async () => assert.fail('conversation-only question'),
+    request: async (_url, init) => {
+      const { messages, tools } = JSON.parse(init.body);
+      if (++calls === 1) {
+        assert.equal(tools, undefined);
+        assert.match(messages[0].content, /rolling summary/);
+        assert.deepEqual(bookBotReference(messages).turns.map(({ question }) => question), ['A']);
+        return streamReply('Summary of A');
+      }
+      assert.equal(tools.length, 3);
+      const { book, history } = bookBotReference(messages);
+      assert.deepEqual(book.outline, botOutline);
+      assert.equal(history.summary, 'Summary of A');
+      assert.deepEqual(history.turns.map(({ question }) => question), ['B']);
+      return streamReply('We discussed A and B.');
+    },
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(result.historySummary, { through: 1, text: 'Summary of A' });
 });
 
 test('an outline-only question skips source reads when there are no retained pages', async () => {

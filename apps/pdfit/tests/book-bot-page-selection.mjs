@@ -58,6 +58,11 @@ sql(`
     ON CONFLICT (folder, filename, page_index) DO UPDATE SET body = EXCLUDED.body;
   INSERT INTO book_comments (id, folder, filename, body, reference_pages)
     VALUES ('${randomUUID()}', 'Scan', 'Parallel.pdf', 'Reader vector note', ARRAY[30]);
+  INSERT INTO tags (name) VALUES ('AI'), ('agents');
+  INSERT INTO book_tags (folder, filename, tag_id)
+    SELECT b.folder, b.filename, t.id FROM books b CROSS JOIN tags t
+    WHERE (b.folder, b.filename) IN (('Scan','Parallel.pdf'), ('Scan','Other.pdf'))
+      OR ((b.folder, b.filename) = ('Foreign','Parallel.pdf') AND t.name = 'AI');
 `);
 
 const calls = [];
@@ -69,7 +74,7 @@ const browserFinalDelta = Promise.withResolvers();
 const upstream = createServer(async (req, res) => {
   const data = [];
   for await (const chunk of req) data.push(chunk);
-  const { messages, input } = JSON.parse(Buffer.concat(data));
+  const { messages, input, tools, tool_choice } = JSON.parse(Buffer.concat(data));
   if (req.url === '/v1/embeddings') {
     const vectors = input.map((text, index) => {
       if (text.startsWith('query: ')) queryInputs.push(text);
@@ -91,12 +96,29 @@ const upstream = createServer(async (req, res) => {
     res.end(emit(JSON.stringify(context)) + done);
     return;
   }
-  calls.push({ context, messages });
-  if (!context.evidence) {
+  calls.push({ context, messages, tools, tool_choice });
+  const question = content.split('\nLatest reader question\n').at(-1);
+  const last = messages.at(-1);
+  const call = (name, args, id) => {
+    const parts = JSON.stringify(args);
+    const frame = (entry) => 'data: ' + JSON.stringify({ choices: [{ delta: { tool_calls: [entry] }, index: 0 }] }) + '\n\n';
+    res.end(emit('Looking up sources.') +
+      frame({ id, type: 'function', index: 0, function: { name, arguments: parts.slice(0, 10) } }) +
+      frame({ index: 0, function: { arguments: parts.slice(10) } }) +
+      'data: {"choices":[{"index":0,"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n');
+  };
+  if (question === 'Summarize chapter four' && last.role === 'user') {
     if (holdBrowserStages) await browserPlan.promise;
-    const query = context.question === 'What have we discussed?' ? null : 'Relevant semantic marker';
-    res.write(emit(JSON.stringify({ query })));
-  } else if (content.endsWith('\nLatest reader question\nSimulate tool markup')) {
+    return call('search_current_book', { query: 'Relevant semantic marker' }, 'current-search');
+  }
+  if (question === 'Continue explaining the design.') {
+    if (last.role === 'user') return call('list_related_books', {}, 'related');
+    if (last.tool_call_id === 'related') return call('search_library_book', { book: 'Parallel', query: 'Relevant semantic marker' }, 'ambiguous');
+    if (last.tool_call_id === 'ambiguous') return call('search_library_book', { book: 'Other', folder: 'Scan', query: 'Relevant semantic marker' }, 'other');
+    res.end(emit('Compare with [Other, page 1](/viewer/Scan/Other.pdf?page=1).') + done);
+    return;
+  }
+  if (question === 'Simulate tool markup') {
     for (const fragment of ['<tool_', 'call>', '\n<function=read_book_context>', '\n</function>\n</tool_call>']) {
       res.write(emit(fragment));
     }
@@ -150,21 +172,25 @@ try {
   const first = { turnId: randomUUID(), revision: 0, question: 'Summarize chapter four' };
   const events = await postTurn(first);
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[0].context, { book: opened.context, history: { summary: null, turns: [] }, question: first.question });
+  assert.deepEqual(calls[0].context, { book: opened.context, history: { summary: null, turns: [] } });
   assert.equal(calls[0].messages.length, 2);
+  assert.deepEqual(calls[0].tools.map(({ function: fn }) => fn.name),
+    ['search_current_book', 'list_related_books', 'search_library_book']);
+  assert.equal(calls[0].tool_choice, 'auto');
   assert.deepEqual(calls[1].context.book, opened.context);
-  assert.equal(calls[1].context.question, undefined);
-  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user']);
+  assert.deepEqual(calls[1].messages.map(({ role }) => role), ['system', 'user', 'assistant', 'tool']);
   assert.ok(calls[1].messages[1].content.endsWith('\n\nLatest reader question\n' + first.question));
-  assert.doesNotMatch(JSON.stringify(calls[1].messages), /tool_calls|read_book_context/);
-  const { matches } = calls[1].context.evidence;
+  assert.deepEqual(calls[1].messages[2].tool_calls, [{ id: 'current-search', type: 'function',
+    function: { name: 'search_current_book', arguments: '{"query":"Relevant semantic marker"}' } }]);
+  assert.equal(calls[1].messages[3].tool_call_id, 'current-search');
+  const { matches } = JSON.parse(calls[1].messages[3].content);
   assert.equal(matches.length, 12);
   assert.deepEqual(matches[0], { scope: 'page-ocr', page: 30, text: 'Synthetic OCR marker 30' });
   assert.deepEqual(matches[1], { scope: 'book-comment', page: 30, text: 'Reader vector note' });
   assert.ok(matches.every(({ page, text }) => page !== 12 && !text.includes('FOREIGN')));
   assert.deepEqual(queryInputs, ['query: Relevant semantic marker']);
   assert.deepEqual(events.filter(({ type }) => type === 'progress').map(({ phase }) => phase),
-    ['preparing', 'analyzing', 'loadingPages', 'generating', 'saving']);
+    ['preparing', 'generating', 'loadingPages', 'generating', 'saving']);
   assert.deepEqual(events.filter(({ type }) => type === 'delta').map(({ text }) => text), ['First fragment. ', 'Second fragment.']);
   assert.equal(events.at(-1).revision, 1);
   assert.deepEqual(Object.keys(events.at(-1).turn), ['id', 'question', 'answer']);
@@ -180,14 +206,27 @@ try {
     '{"through":1,"text":"FIRST INTERNAL SUMMARY"}'::jsonb WHERE id='${sessionId}';`);
   assert.equal((await postTurn({ turnId: randomUUID(), revision: 1, question: 'What have we discussed?' })).at(-1).revision, 2);
   assert.deepEqual(calls[2].context.history, { summary: 'FIRST INTERNAL SUMMARY', turns: [] });
-  assert.deepEqual(calls[3].context.evidence, { retrievalStatus: 'not_requested', omittedMatches: 0, matches: [] });
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2].messages.length, 2);
   assert.equal(queryInputs.length, 1);
 
   assert.equal((await postTurn({ turnId: randomUUID(), revision: 2, question: 'Continue explaining the design.' })).at(-1).revision, 3);
-  assert.deepEqual(calls[4].context.history.turns.map(({ question }) => question), ['What have we discussed?']);
-  assert.deepEqual(calls[5].context.evidence.matches.slice(0, 2), matches.slice(0, 2));
+  assert.deepEqual(calls[3].context.history.turns.map(({ question }) => question), ['What have we discussed?']);
+  const related = JSON.parse(calls[4].messages.at(-1).content);
+  assert.deepEqual(related.books.map(({ folder, filename, sharedTags }) => ({ folder, filename, sharedTags })), [
+    { folder: 'Scan', filename: 'Other.pdf', sharedTags: ['AI', 'agents'] },
+    { folder: 'Foreign', filename: 'Parallel.pdf', sharedTags: ['AI'] },
+  ]);
+  const ambiguous = JSON.parse(calls[5].messages.at(-1).content);
+  assert.equal(ambiguous.error, 'ambiguous_book');
+  assert.deepEqual(ambiguous.books.map(({ folder }) => folder), ['Foreign', 'Scan']);
+  const other = JSON.parse(calls[6].messages.at(-1).content);
+  assert.deepEqual(other.book, { folder: 'Scan', filename: 'Other.pdf', title: 'Other' });
+  assert.deepEqual(other.matches, [{ scope: 'page-ocr', page: 1, text: 'FOREIGN stronger vector',
+    viewerUrl: '/viewer/Scan/Other.pdf?page=1' }]);
+  assert.deepEqual(JSON.parse(sql(`SELECT turns->2->'addedPages' FROM book_bot_sessions WHERE id='${sessionId}';`)), []);
   assert.equal(queryInputs.length, 2);
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
   assert.ok(calls.every(({ context }) => JSON.stringify(context.book) === JSON.stringify(opened.context)));
   const restored = JSON.parse(await send(sessions));
   assert.deepEqual(restored.session.turns.map(({ question }) => question),
@@ -226,20 +265,28 @@ try {
     await dialog.getByRole('button', { name: '새 채팅' }).click();
     await dialog.getByRole('textbox', { name: '질문' }).fill('Summarize chapter four');
     await dialog.getByRole('button', { name: '질문 보내기' }).click();
-    await dialog.getByRole('status').getByText('질문에 필요한 페이지를 찾는 중…').waitFor();
-    await page.screenshot({ path: path.join(output, 'analyzing.png') });
+    await dialog.getByRole('status').getByText('답변을 생성하는 중…').waitFor();
+    await page.screenshot({ path: path.join(output, 'deciding.png') });
     browserPlan.resolve();
     await browserFirstDelta.promise;
-    await dialog.getByRole('log').getByText('First fragment.', { exact: true }).waitFor();
-    await page.screenshot({ path: path.join(output, 'first-delta.png') });
+    await dialog.getByRole('log').getByText('First fragment.', { exact: true }).waitFor({ state: 'hidden' });
     browserFinalDelta.resolve();
     await dialog.getByRole('log').getByText('First fragment. Second fragment.', { exact: true }).waitFor();
+    assert.doesNotMatch(await dialog.getByRole('log').innerText(), /Looking up sources|tool_calls/);
+    await page.screenshot({ path: path.join(output, 'final-answer.png') });
     await dialog.getByRole('textbox', { name: '질문' }).fill('');
     await page.reload();
     await page.getByRole('button', { name: 'Bot', exact: true }).click();
     await dialog.getByRole('log').getByText('First fragment. Second fragment.', { exact: true }).waitFor();
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 9);
     assert.equal(queryInputs.length, 3);
+    holdBrowserStages = false;
+    await dialog.getByRole('textbox', { name: '질문' }).fill('Continue explaining the design.');
+    await dialog.getByRole('button', { name: '질문 보내기' }).click();
+    const relatedLink = dialog.getByRole('link', { name: 'Other, page 1' });
+    await relatedLink.waitFor();
+    assert.equal(await relatedLink.getAttribute('href'), '/viewer/Scan/Other.pdf?page=1');
+    await page.screenshot({ path: path.join(output, 'other-book-citation.png') });
     assert.deepEqual(pageErrors, []);
   } finally {
     browserPlan.resolve();
@@ -249,8 +296,9 @@ try {
   const badEvents = await postTurn({ turnId: randomUUID(), revision: 3, question: 'Simulate tool markup' });
   assert.deepEqual(badEvents.filter(({ type }) => type !== 'progress'), [{ type: 'error', status: 502 }]);
   assert.equal(JSON.parse(await send(sessions)).session.turns.length, 3);
-  assert.equal(calls.length, 10);
-  console.log(JSON.stringify({ apiCalls: 8, browserCalls: 2, wantedPages, firstMatch: matches[0].page, foreignHits: 0, stalePageExcluded: 12,
+  assert.equal(calls.length, 14);
+  console.log(JSON.stringify({ apiCalls: 8, browserCalls: 6, wantedPages, firstMatch: matches[0].page, foreignHits: 0, stalePageExcluded: 12,
+    related: related.books.map(({ title, sharedTags }) => ({ title, sharedTags })), resolvedOther: other.book.title,
     vectorQueries: queryInputs.length, restoredTurns: 3,
     phases: events.filter(({ type }) => type === 'progress').map(({ phase }) => phase), browserErrors: 0,
     invalidReply: { leakedDeltas: 0, status: 502, saved: false, historicMarkupHidden: true } }, null, 2));

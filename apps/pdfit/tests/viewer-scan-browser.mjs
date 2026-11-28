@@ -516,43 +516,30 @@ async function verifyScan() {
     outstanding[firstIndex].respond();
     await calls(firstIndex + 3);
     assert.equal(outstanding[firstIndex + 2].model, 'llm-fixture');
-    assert.match(outstanding[firstIndex + 2].system, /Decide what source material/);
-    await bot.getByRole('status').getByText('질문에 필요한 페이지를 찾는 중…', { exact: true }).waitFor();
-    await shot(mixed, 'bot-model-analyzing.png');
+    assert.match(outstanding[firstIndex + 2].system, /reading companion/);
+    await bot.getByRole('status').getByText('답변을 생성하는 중…', { exact: true }).waitFor();
+    await shot(mixed, 'bot-model-running.png');
     outstanding[firstIndex + 1].respond();
     await calls(firstIndex + 4);
     assert.equal(outstanding[firstIndex + 3].model, 'llm-fixture');
     await tag.getByRole('progressbar', { name: 'AI 모델의 응답을 기다리는 중…' }).waitFor();
     assert.equal(inFlight, 2);
 
-    outstanding[firstIndex + 2].respond(200, '{"query":null}');
+    outstanding[firstIndex + 2].respond(200, 'TITLE: Queue test\n우선순위 큐 응답입니다.');
+    await bot.getByRole('log').getByText('우선순위 큐 응답입니다.', { exact: true }).waitFor();
     await calls(firstIndex + 5);
-    const answerStartedFirst = outstanding[firstIndex + 4].system?.includes("PDFit's reading companion");
-    if (!answerStartedFirst) {
-      assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'progress', phase: 'running' });
-      await bot.getByRole('status').getByText('AI 작업 큐에서 대기 중…', { exact: true }).waitFor();
-    }
+    assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'progress', phase: 'running' });
     outstanding[firstIndex + 3].respond(200, '["컴퓨터 공학", "프로그래밍", "소프트웨어 공학", "알고리즘", "자료구조"]');
     await tag.getByRole('progressbar').waitFor({ state: 'hidden' });
     const assigned = await api('/api/tags/book/Scan/Priority.pdf');
     assert.ok(assigned.includes('프로그래밍'), JSON.stringify(assigned));
-    await calls(firstIndex + 6);
-    if (answerStartedFirst) {
-      assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'progress', phase: 'running' });
-    }
-    const answerCall = outstanding[firstIndex + (answerStartedFirst ? 4 : 5)];
-    assert.match(answerCall.system, /reading companion/);
-    await bot.getByRole('status').getByText('답변을 생성하는 중…', { exact: true }).waitFor();
-    await shot(mixed, 'bot-model-running.png');
-    answerCall.respond(200, 'TITLE: Queue test\n우선순위 큐 응답입니다.');
-    await bot.getByRole('log').getByText('우선순위 큐 응답입니다.', { exact: true }).waitFor();
-    outstanding[firstIndex + (answerStartedFirst ? 5 : 4)].respond(200, '["스캔"]');
+    outstanding[firstIndex + 4].respond(200, '["스캔"]');
     assert.deepEqual(JSON.parse((await translationEvents.next()).value), { type: 'result', status: 200, body: { translations: ['스캔'] } });
     await translationEvents.return();
-    await calls(firstIndex + 8);
-    assert.ok(outstanding.slice(firstIndex + 6).every(({ image }) => image));
+    await calls(firstIndex + 7);
+    assert.ok(outstanding.slice(firstIndex + 5).every(({ image }) => image));
+    outstanding[firstIndex + 5].respond();
     outstanding[firstIndex + 6].respond();
-    outstanding[firstIndex + 7].respond();
     await waitJob('Other.pdf', (value) => value.status === 'completed');
     await waitJob('Priority.pdf', (value) => value.status === 'completed');
     assert.deepEqual(await pages('Priority.pdf'), [0, 1, 2]);

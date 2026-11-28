@@ -1,8 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
+import type { AiChatToolCall } from '../services/aiModelRequest.js';
 
-export type BotPromptMessage = { role: 'system' | 'user'; content: string };
+export type BotPromptMessage = { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls: AiChatToolCall[] }
+  | { role: 'tool'; content: string; tool_call_id: string };
 
 type CountPromptTokens = (messages: BotPromptMessage[]) => number;
 let qwenCounter: Promise<CountPromptTokens | null> | undefined;
@@ -16,8 +19,13 @@ export async function bookBotPromptTokenCounter(model: string): Promise<CountPro
   ]).then(([{ Tokenizer }, bytes]): CountPromptTokens => {
     const tokenizer = new Tokenizer(JSON.parse(bytes.toString('utf8')), {});
     return (messages) => {
-      const prompt = messages.map(({ role, content }) => `<|im_start|>${role}\n${content.trim()}<|im_end|>\n`)
-        .join('') + '<|im_start|>assistant\n<think>\n';
+      const prompt = messages.map((message) => {
+        const content = message.content?.trim() ?? '';
+        if (message.role === 'tool') return `<|im_start|>user\n<tool_response>\n${content}\n</tool_response><|im_end|>\n`;
+        const calls = message.role === 'assistant'
+          ? '\n' + message.tool_calls.map((call) => `<tool_call>\n${JSON.stringify(call)}\n</tool_call>`).join('\n') : '';
+        return `<|im_start|>${message.role}\n${content}${calls}<|im_end|>\n`;
+      }).join('') + '<|im_start|>assistant\n<think>\n';
       return tokenizer.encode(prompt, { add_special_tokens: false }).ids.length;
     };
   }).catch(() => {

@@ -4,17 +4,23 @@ Free enables Bot from [the viewer entry](../../../apps/pdfit/src/front/viewer-ma
 
 ## Answer context
 
-Opening a chat loads the book title and original table of contents. The [viewer model](../src/front/components/book-bot/model.ts) reads the PDF's embedded outline if the server has no stored copy. An empty stored outline records a deletion. Both stages receive the complete available outline with its original titles and PDF page numbers.
+Opening a chat loads the open book's title and original table of contents. The [viewer model](../src/front/components/book-bot/model.ts) reads the PDF's embedded outline if the server has no stored copy. An empty stored outline records a deletion. The model receives the full available outline, the active dialogue and the reader's question before any search.
 
-1. [Plan the turn](../src/server/book-bot/turnPlan.ts) with the question, outline and active dialogue. The planner supplies a semantic query when the answer needs source evidence. The original outline can resolve a chapter name or a follow-up reference.
-2. [Look up matching passages](../src/server/embedding/store.ts#searchBook) in the active embedding profile. PostgreSQL selects sources by exact folder and filename before ranking them. The ranked results include up to 12 matches from page OCR, clip OCR, clip memos and book comments. Each result retains its source type and optional PDF page. The model receives excerpt text and the index status, including when the index is empty or unavailable.
-3. [Stream the answer](../src/server/book-bot/answer.ts#answerBookQuestion). The user message contains the title, complete outline, dialogue and matches as reference JSON, followed by the reader's original question. The session stores one turn. Only answer text reaches the browser as deltas.
+Free sends three function definitions with the first model request. [Agent loop](../src/server/book-bot/agent.ts#runBookAgent) · [LM Studio tool use](https://lmstudio.ai/docs/developer/openai-compat/tools)
 
-Free wires the book-scoped embedding service into Bot. The previous outline lookup remains available to callers that explicitly use that flow. Free reports missing evidence when the vector index has no matches. [Book-scoped search](content-search.md#의미-검색) · [Outline lookup](../src/server/book-bot/outlineLookup.ts)
+| Tool | Arguments and result |
+| --- | --- |
+| `search_current_book` | A semantic query. Search the open book for page OCR or reader annotations. |
+| `list_related_books` | No arguments. List up to 10 other books by the number of tags they share with the open book. |
+| `search_library_book` | A title or filename, an optional folder and a semantic query. Resolve one other book before searching it. An ambiguous name returns candidates for the model to disambiguate. Results carry the other book's identity and viewer page links. |
+
+For either search tool, PostgreSQL limits candidates to one exact folder and filename before ranking. Each lookup returns up to 12 excerpts with source type, optional PDF page and index status. The [catalog queries](../src/server/postgres/bookBot.ts#createPostgresBookBot) use existing book and tag records. [Book-scoped vector lookup](../src/server/embedding/store.ts#searchBook)
+
+The model may answer directly or return structured tool calls. The server appends the model's calls and one tool result per call ID before asking the model again. Each turn allows six tool invocations, then asks for a final answer. Answer deltas stay buffered until the round is classified so text accompanying tool calls stays out of the chat. The session stores one final reply. The [outline lookup](../src/server/book-bot/outlineLookup.ts) remains available to callers that explicitly use that flow.
 
 Set **Bot context limit (tokens)** on the LLM server to the available model window. Bot [counts Qwen3.6 and ToolSpace 35B A3B tokens locally](../src/server/book-bot/promptTokens.ts#bookBotPromptTokenCounter). Other models use a byte estimate. The default window is 16,384 tokens. The answer reserves 4,096 output tokens and 128 tokens for chat-template differences. When the matches exceed the space left for evidence, Bot sends the best-ranked matches that fit and reports the omitted count.
 
-Once the active dialogue reaches 80% of the model window, the next planner call updates its hidden summary. The summary combines the previous summary and unsummarized turns. The original outline remains a separate field. Earlier page references remain in dialogue metadata and can inform later searches. The current lookup supplies the actual excerpts. Bot compacts sooner when the available space cannot fit the base context next to the active conversation. When existing history already exceeds the planner window, Bot summarizes it in fitting batches before planning. A model window too small to fit the full outline and question fails the turn.
+Once the active dialogue reaches 80% of the model window, a separate model call updates its hidden summary before the agent starts. The summary combines the previous summary and unsummarized turns. The original outline remains a separate field. Earlier page references remain in dialogue metadata and can inform later searches. Bot compacts sooner when the base context and active conversation cannot fit together. Oversized history is summarized in fitting batches. A model window too small to fit the full outline and question fails the turn.
 
 The bundled tokenizer is the [Qwen3.6-35B-A3B release asset](https://huggingface.co/Qwen/Qwen3.6-35B-A3B/blob/main/tokenizer.json) with its Apache-2.0 license. The SHA-256 of the uncompressed file is `5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42`.
 
@@ -32,7 +38,7 @@ The [wire contract](../src/common/protocol/book-bot/index.ts) identifies each bo
 
 Send `Accept: text/event-stream` to receive `delta` frames for answer text and a `saved` frame for the persisted turn, session metadata and revision. Send `X-PDFit-Bot-Progress: 3` for context preparation, queue wait, query analysis, book evidence lookup, answer generation and saving. Version `2` reports analysis and book evidence lookup as preparation. Version `1` also omits the queue phase. Thinking activity uses a phase event. Keep-alive comments may arrive while the server prepares the answer. After the stream opens, generation or persistence failures arrive as a terminal `error` frame. Without the SSE accept header, the route returns the existing JSON session document.
 
-Each model call within the turn enters the [shared AI queue](api.md#ai-model-requests) with the same priority as automatic tagging. The viewer shows `queued` while the call waits and resumes the active phase when the worker takes it. Planning and answering enter the queue separately and share a worker-time deadline. The foreground embedding request uses the embedding queue and starts its own timeout when dispatched.
+Each model call within the turn enters the [shared AI queue](api.md#ai-model-requests) with the same priority as automatic tagging. The viewer shows `queued` while the call waits and resumes the active phase when the worker takes it. All model rounds share a worker-time deadline. Each foreground embedding call uses the embedding queue and starts its own timeout when dispatched.
 
 The [router](../src/server/book-bot/router.ts#createBookBotRouter) returns 409 for a stale revision or a concurrent turn and 503 for missing LLM configuration before opening the stream. An interrupted or incomplete reply or a reply containing raw model tool syntax reports 502. Retrying a valid completed turn ID returns the saved turn without generating it again.
 

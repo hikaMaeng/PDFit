@@ -4,6 +4,16 @@ import { aiModelTimeoutMs, type AiModelProgress } from '../../common/protocol/ai
 export const AI_MODEL_REQUEST_TIMEOUT_MS = aiModelTimeoutMs();
 export const AI_MODEL_PRIORITY = { background: 0, interactive: 1, foreground: 2 } as const;
 const MAX_COMPLETION_LENGTH = 256 * 1024;
+const MAX_TOOL_CALL_LENGTH = 32 * 1024;
+const MAX_TOOL_CALLS = 16;
+
+export type AiChatToolCall = {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+};
+
+export type AiChatCompletion = { content: string; toolCalls: AiChatToolCall[] };
 
 type QueueStats = { active: number; pending: number; limit: number };
 type QueueEntry = { priority: number; start(stats: QueueStats): Promise<void> };
@@ -54,14 +64,23 @@ type Completion = {
   error?: unknown;
   choices?: Array<{
     index?: number;
-    delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
-    message?: { content?: unknown };
+    delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown; tool_calls?: unknown };
+    message?: { content?: unknown; tool_calls?: unknown };
     finish_reason?: string | null;
   }>;
 };
 
 // See docs/api.md#ai-model-requests. A worker owns the slot until the body settles.
-export async function streamAiCompletion(endpoint: string, payload: object, options: ModelOptions): Promise<string> {
+export function streamAiCompletion(endpoint: string, payload: object, options: ModelOptions): Promise<string> {
+  return queueCompletion(endpoint, options, async (active) => (await readAiCompletion(endpoint, payload, active, false)).content);
+}
+
+export function streamAiChatCompletion(endpoint: string, payload: object, options: ModelOptions): Promise<AiChatCompletion> {
+  return queueCompletion(endpoint, options, (active) => readAiCompletion(endpoint, payload, active, true));
+}
+
+async function queueCompletion<T>(endpoint: string, options: ModelOptions,
+  read: (active: ModelOptions & { signal: AbortSignal }) => Promise<T>): Promise<T> {
   const { concurrency, queueSignal, priority = AI_MODEL_PRIORITY.background, onQueued, onStarted } = options;
   const waitingSignal = queueSignal ?? options.signal;
   waitingSignal?.throwIfAborted();
@@ -81,7 +100,7 @@ export async function streamAiCompletion(endpoint: string, payload: object, opti
           onStarted?.(stats);
           options.onProgress?.('running');
           signal.throwIfAborted();
-          resolve(await readAiCompletion(endpoint, payload, { ...options, signal }));
+          resolve(await read({ ...options, signal }));
         } catch (error) { reject(error); }
       },
     };
@@ -112,9 +131,31 @@ export async function streamAiCompletion(endpoint: string, payload: object, opti
 
 async function readAiCompletion(endpoint: string, payload: object, {
   headers: configuredHeaders, signal, request = fetch, onDelta, onHttpStatus, onReasoning,
-}: ModelOptions & { signal: AbortSignal }): Promise<string> {
+}: ModelOptions & { signal: AbortSignal }, allowToolCalls: boolean): Promise<AiChatCompletion> {
   let content = '';
   let finishReason: string | null = null;
+  const calls = new Map<number, AiChatToolCall>();
+  const invalidToolCall = () => new Error('AI model returned an invalid tool call');
+  const keepToolCalls = (value: unknown, streaming: boolean) => {
+    if (!allowToolCalls || value == null) return;
+    if (!Array.isArray(value) || value.length > MAX_TOOL_CALLS) throw invalidToolCall();
+    for (const [position, item] of value.entries()) {
+      const index = streaming ? item?.index ?? (value.length === 1 ? 0 : position) : position;
+      if (!item || !Number.isInteger(index) || index < 0 || index >= MAX_TOOL_CALLS ||
+          (item.type != null && item.type !== 'function')) throw invalidToolCall();
+      const call = calls.get(index) ?? { id: '', type: 'function', function: { name: '', arguments: '' } };
+      for (const field of [item.id, item.function?.name, item.function?.arguments]) {
+        if (field != null && (typeof field !== 'string' || field.includes('\0'))) throw invalidToolCall();
+      }
+      call.id += item.id ?? '';
+      call.function.name += item.function?.name ?? '';
+      call.function.arguments += item.function?.arguments ?? '';
+      if (call.id.length > 256 || call.function.name.length > 128 || call.function.arguments.length > MAX_TOOL_CALL_LENGTH) {
+        throw invalidToolCall();
+      }
+      calls.set(index, call);
+    }
+  };
   const keep = (text: unknown) => {
     if (typeof text !== 'string') return;
     const clean = text.replaceAll('\0', '');
@@ -150,6 +191,7 @@ async function readAiCompletion(endpoint: string, payload: object, {
           onReasoning();
         }
         keep(choice?.delta?.content);
+        keepToolCalls(choice?.delta?.tool_calls, true);
         if (choice?.finish_reason) finishReason = choice.finish_reason;
       }
       if (!done && !finishReason) throw new Error('AI stream ended before completion');
@@ -157,12 +199,19 @@ async function readAiCompletion(endpoint: string, payload: object, {
       // Some compatible endpoints answer a streaming request with a complete JSON body.
       const frame = await response.json() as Completion | null;
       const choice = frame?.choices?.[0];
-      if (frame?.error || typeof choice?.message?.content !== 'string') throw new Error('AI model returned no message');
+      if (frame?.error || !choice?.message) throw new Error('AI model returned no message');
+      keepToolCalls(choice.message.tool_calls, false);
+      if (typeof choice.message.content !== 'string' && !calls.size) throw new Error('AI model returned no message');
       keep(choice.message.content);
       finishReason = choice.finish_reason ?? null;
     }
-    if (finishReason && finishReason !== 'stop') throw new Error(`AI model did not finish normally (${finishReason}).`);
-    return content;
+    if (finishReason && finishReason !== 'stop' && !(allowToolCalls && finishReason === 'tool_calls' && calls.size)) {
+      throw new Error(`AI model did not finish normally (${finishReason}).`);
+    }
+    const toolCalls = Array.from(calls).sort(([left], [right]) => left - right).map(([, call]) => call);
+    if (toolCalls.some(({ id, function: fn }) => !id.trim() || !fn.name.trim()) ||
+        new Set(toolCalls.map(({ id }) => id)).size !== toolCalls.length) throw invalidToolCall();
+    return { content, toolCalls };
   } catch (error) {
     signal.throwIfAborted();
     throw error;
