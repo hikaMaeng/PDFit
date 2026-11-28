@@ -7,11 +7,14 @@ import { EmbeddingStore, type ActiveIndex, type ReservedWork } from './store.js'
 
 const TASK = 'embedding-index';
 const SLICES_PER_PERIOD = 256;
+type Run = 'period' | 'drain' | 'activation';
 
 export class EmbeddingService {
   private scheduler?: TaskScheduler;
   private remaining = 0;
-  private rescanRequested = false;
+  private nextRun: Run | null = null;
+  private admissionOpen = false;
+  private skippedPeriods = 0;
   private working = false;
   private pendingWorker?: ChunkBatch;
   private lastError: string | null = null;
@@ -24,7 +27,7 @@ export class EmbeddingService {
     this.scheduler = scheduler;
     scheduler.register<ChunkBatch, PlannedChunk[]>({
       type: TASK, script: new URL('./chunks.worker.js', import.meta.url), preservePending: true, timeoutMs: 10_000,
-      plan: async () => { this.wake(); return []; },
+      plan: async () => { this.startPeriod(); return []; },
       onSettled: (_task, outcome) => {
         // Returning synchronously frees the shared worker before any remote I/O.
         void this.finish(outcome.ok ? outcome.result : null);
@@ -34,7 +37,19 @@ export class EmbeddingService {
   }
 
   wake(): void {
-    this.rescanRequested = true;
+    this.admissionOpen = false;
+    this.nextRun = 'activation';
+    void this.slice();
+  }
+
+  private startPeriod(): void {
+    if (this.working) {
+      this.skippedPeriods += 1;
+      this.admissionOpen = false;
+      this.nextRun ??= 'drain';
+    } else {
+      this.nextRun ??= 'period';
+    }
     void this.slice();
   }
 
@@ -46,8 +61,10 @@ export class EmbeddingService {
 
   private async slice(): Promise<void> {
     if (!this.scheduler || this.working) return;
-    if (this.rescanRequested) {
-      this.rescanRequested = false;
+    const next = this.nextRun;
+    if (next) {
+      this.nextRun = null;
+      this.admissionOpen = false;
       this.remaining = SLICES_PER_PERIOD;
     }
     if (this.remaining <= 0) return;
@@ -56,11 +73,17 @@ export class EmbeddingService {
     let more = false;
     try {
       const active = await this.store.active();
+      if (active && (next === 'period' || next === 'activation')) {
+        // Waiting leases and deferred retries count. They still occupy existing queue slots.
+        const pending = await this.store.hasPending(active);
+        if (pending && next === 'period') this.skippedPeriods += 1;
+        this.admissionOpen = !pending && this.nextRun === null;
+      }
       const cleanup = await this.store.cleanup();
       if (active && !active.blocked && (!active.retryAt || active.retryAt.getTime() <= Date.now())) {
         const endpoint = await this.getEndpoint(active.choice);
         if (!endpoint) throw new Error('Selected embedding model is unavailable');
-        const refilled = await this.store.refill(active);
+        const refilled = await this.store.refill(active, this.admissionOpen);
         const width = embeddingBatchWidth(endpoint.model);
         const work = await this.store.reserve(active, width);
         if (work.jobs.length) {
@@ -80,7 +103,7 @@ export class EmbeddingService {
     } finally {
       if (!this.reservation) this.working = false;
     }
-    if (more || this.rescanRequested) setImmediate(() => void this.slice());
+    if (more || this.nextRun) setImmediate(() => void this.slice());
   }
 
   private async finish(plan: PlannedChunk[] | null): Promise<void> {
@@ -138,7 +161,8 @@ export class EmbeddingService {
 
   async status() {
     const status = await this.store.status(await this.store.active());
-    return { ...status, lastError: this.lastError, working: this.working, rescanRequested: this.rescanRequested };
+    return { ...status, lastError: this.lastError, working: this.working, rescanRequested: this.nextRun !== null,
+      skippedPeriods: this.skippedPeriods };
   }
 
   router(): Router {

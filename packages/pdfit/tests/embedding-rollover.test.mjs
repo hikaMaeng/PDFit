@@ -48,14 +48,16 @@ async function until(check, description) {
   throw new Error(`Timed out waiting for ${description}`);
 }
 
-test('a tick during an empty database check requests exactly one later check', async () => {
+test('ticks during an in-progress check only request one drain pass', async () => {
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   let checks = 0;
+  const admission = [];
   const store = {
     active: async () => ({ choice, blocked: null, retryAt: null }),
+    hasPending: async () => false,
     cleanup: async () => false,
-    refill: async () => false,
+    refill: async (_active, admitNew) => { admission.push(admitNew); return false; },
     reserve: async () => { if (++checks === 1) await held; return { jobs: [] }; },
     status: async () => ({}),
   };
@@ -71,13 +73,15 @@ test('a tick during an empty database check requests exactly one later check', a
     release();
     await until(async () => checks === 2 && !(await service.status()).working, 'one follow-up check');
     assert.equal((await service.status()).rescanRequested, false);
+    assert.equal((await service.status()).skippedPeriods, 2);
+    assert.deepEqual(admission, [true, false]);
   } finally {
     release();
     await scheduler.stop();
   }
 });
 
-test('a full queue replaces stale work in place and leaves new change markers available', { skip: !database }, async () => {
+test('a full queue refreshes existing slots and leaves new markers for an empty-queue period', { skip: !database }, async () => {
   await fixture(async (db, store) => {
     await store.transaction((client) => store.activate(client, choice, { baseUrl: 'http://127.0.0.1/v1', headers: {}, model }));
     const active = await store.active();
@@ -90,7 +94,7 @@ test('a full queue replaces stale work in place and leaves new change markers av
     const newId = await insertComment(db, 'new while full');
     assert.equal((await store.renewCurrent(active, oldReservation)).size, 0);
     await store.release(active, oldReservation);
-    await store.refill(active);
+    await store.refill(active, false);
     assert.equal((await store.status(active)).pending, 2000);
     const next = await store.reserve(active, 1);
     assert.equal(next.jobs[0].text, 'latest');
@@ -102,13 +106,11 @@ test('a full queue replaces stale work in place and leaves new change markers av
     // Simulate acknowledgements freeing capacity. Discarding reservations and cursors in memory must not affect admission.
     await db.query('UPDATE embedding_work SET ready = true WHERE source IN (SELECT source FROM embedding_work ORDER BY source LIMIT 300)');
     const resumed = new EmbeddingStore(db);
-    await until(async () => {
-      await resumed.refill(active);
-      const found = await db.query('SELECT 1 FROM embedding_work WHERE source = $1', [newSource.id]);
-      if (found.rowCount) return true;
-      // Simulate another bounded drain before the next reconciliation.
-      await db.query('UPDATE embedding_work SET ready = true WHERE source IN (SELECT source FROM embedding_work WHERE NOT ready ORDER BY source LIMIT 200)');
-    }, 'new work admitted as space opens');
+    assert.equal(await resumed.hasPending(active), true);
+    await resumed.refill(active, false);
+    assert.equal((await db.query('SELECT 1 FROM embedding_work WHERE source = $1', [newSource.id])).rowCount, 0);
+    await db.query('UPDATE embedding_work SET ready = true WHERE NOT ready');
+    assert.equal(await resumed.hasPending(active), false);
   });
 });
 
@@ -133,7 +135,7 @@ test('repeated edits of earlier IDs do not starve later change markers', { skip:
   });
 });
 
-test('overlapping ticks coalesce while a request is held and publish only the latest source revision', { skip: !database }, async () => {
+test('overlapping periods skip admission until the next period that finds the queue empty', { skip: !database }, async () => {
   await fixture(async (db, store) => {
     let release;
     const held = new Promise((resolve) => { release = resolve; });
@@ -155,26 +157,32 @@ test('overlapping ticks coalesce while a request is held and publish only the la
     provider.listen(0, '127.0.0.1');
     await once(provider, 'listening');
     const endpoint = { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, headers: {}, model };
-    const scheduler = new TaskScheduler({ intervalMs: 200, initialDelayMs: 0, concurrency: 1 });
+    const scheduler = new TaskScheduler({ intervalMs: 60_000, concurrency: 1 });
     const service = new EmbeddingService(store, async () => endpoint);
     service.register(scheduler);
     try {
       await store.transaction((client) => store.activate(client, choice, endpoint));
       const oldId = await insertComment(db, 'old document');
-      scheduler.start();
+      await scheduler.planNow();
       await until(() => requests.length === 1, 'first embedding HTTP request');
-      const firstPlan = scheduler.status().planCount;
       await db.query('UPDATE book_comments SET body = $2 WHERE id = $1', [oldId, 'intermediate edit']);
       await db.query('UPDATE book_comments SET body = $2 WHERE id = $1', [oldId, 'final edit']);
-      await insertComment(db, 'another document');
-      await until(() => scheduler.status().planCount >= firstPlan + 3, 'three scheduler ticks during the same request');
+      const newId = await insertComment(db, 'another document');
+      for (let tick = 0; tick < 3; tick++) await scheduler.planNow();
       assert.deepEqual(requests, [['old document']]);
       assert.equal((await service.status()).rescanRequested, true);
+      assert.equal((await service.status()).skippedPeriods, 3);
       release();
+      const active = await store.active();
+      await until(async () => !(await store.hasPending(active)) && !(await service.status()).working, 'old queue drained');
+      assert.deepEqual(requests, [['old document'], ['final edit']]);
+      const { rows: [pending] } = await db.query(`SELECT dirty, EXISTS (SELECT 1 FROM embedding_work w WHERE w.source = s.id) AS admitted
+        FROM embedding_sources s WHERE s.refid = $1`, [newId]);
+      assert.deepEqual(pending, { dirty: true, admitted: false });
+      await scheduler.planNow();
       await until(async () => (await service.status()).state === 'ready', 'all latest revisions published');
       assert.equal(peak, 1);
       assert.deepEqual(requests.flat().sort(), ['another document', 'final edit', 'old document']);
-      const active = await store.active();
       const { rows } = await db.query(`SELECT contents FROM "${active.table}" ORDER BY contents`);
       assert.deepEqual(rows.map((row) => row.contents), ['another document', 'final edit']);
       const hits = await store.search(active, [1, 2, 3, 4], 2, 10, 'book-comment');
@@ -213,16 +221,24 @@ test('a provider retry deadline survives a scheduler replacement and subsequent 
         return status.retryAt && !status.working;
       }, 'provider retry deadline saved');
       await firstScheduler.stop();
+      const newId = await insertComment(db, 'Arrived during cooldown');
       for (let tick = 0; tick < 3; tick++) {
         await secondScheduler.planNow();
         await until(async () => !(await secondService.status()).working, 'paused scheduler check');
       }
       assert.equal(calls, 1);
       assert.equal((await secondService.status()).pending, 2);
+      assert.equal((await secondService.status()).skippedPeriods, 3);
       await db.query('UPDATE embedding_control SET retry_not_before = now(); UPDATE embedding_work SET due = now()');
       await secondScheduler.planNow();
-      await until(async () => (await secondService.status()).state === 'ready', 'retry and remaining work completed');
+      const active = await store.active();
+      await until(async () => !(await store.hasPending(active)) && !(await secondService.status()).working, 'retry and remaining work completed');
       assert.equal(calls, 3);
+      assert.equal((await secondService.status()).skippedPeriods, 4);
+      assert.equal((await db.query('SELECT dirty FROM embedding_sources WHERE refid = $1', [newId])).rows[0].dirty, true);
+      await secondScheduler.planNow();
+      await until(async () => (await secondService.status()).state === 'ready', 'remaining changes admitted');
+      assert.equal(calls, 4);
     } finally {
       await firstScheduler.stop();
       await secondScheduler.stop();

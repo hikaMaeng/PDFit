@@ -2,6 +2,8 @@
 
 2026-11-27 독립 리뷰 반영본. Free 구현 계약과 실행 결과는 후속 문서에서 확인한다. [구현 계약](../packages/pdfit/docs/content-search.md#의미-검색) · [격리 Free 검증 보고서](../apps/pdfit/tests/reports/embedding-search/20261128_001226.md)
 
+후속 운영 규칙에 따라 임베딩 큐가 남아 있는 주기에는 신규 등록을 건너뛴다. 기존 작업을 이어서 처리하고 큐가 빈 뒤 다음 주기에서 변경 기록을 읽는다. [처리 중 도래한 다음 주기](../packages/pdfit/docs/content-search.md#처리-중-도래한-다음-주기)
+
 ## 첫 적용 범위
 
 첫 적용은 Free로 잡는다. 원문 조회, PostgreSQL 저장, 큐와 검색은 `packages/pdfit`이 맡는다. Free의 AI 설정과 라우터 연결은 `apps/pdfit`에 둔다. Pro 적용에는 계정별 원문·검색·삭제를 공용 로직과 연결하는 별도 설계가 필요하다.

@@ -149,7 +149,13 @@ export class EmbeddingStore {
     return true;
   }
 
-  async refill(active: ActiveIndex): Promise<boolean> {
+  async hasPending(active: ActiveIndex): Promise<boolean> {
+    const { rows: [row] } = await this.db.query<{ pending: boolean }>(`
+      SELECT EXISTS (SELECT 1 FROM embedding_work WHERE profile = $1 AND NOT ready AND NOT failed) AS pending`, [active.profile]);
+    return row.pending;
+  }
+
+  async refill(active: ActiveIndex, admitNew = true): Promise<boolean> {
     return this.transaction(async (client) => {
       const { rows: [control] } = await client.query<{ scan_cursor: string; scan_done: boolean; dirty_cursor: string }>(`
         SELECT scan_cursor, scan_done, dirty_cursor FROM embedding_control WHERE singleton AND generation = $1 FOR UPDATE`, [active.generation]);
@@ -166,6 +172,7 @@ export class EmbeddingStore {
           FROM stale WHERE w.profile = $1 AND w.source = stale.id RETURNING w.source, w.revision
         ) UPDATE embedding_sources s SET dirty = false FROM replaced r WHERE s.id = r.source AND s.revision = r.revision`,
       [active.profile]);
+      if (!admitNew) return Boolean(refreshed.rowCount);
       const { rows: [{ count }] } = await client.query<{ count: number }>(`
         SELECT count(*)::int FROM (SELECT 1 FROM embedding_work WHERE profile = $1 AND NOT ready AND NOT failed LIMIT ${MAX_PENDING}) q`, [active.profile]);
       if (count > MAX_PENDING - 2 * PAGE) return Boolean(refreshed.rowCount);
